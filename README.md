@@ -6,8 +6,8 @@ Ursprungsversion von: Rob Cai <rocaj74@gmail.com>
 erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>                                                                   
 
 Die Version meiner Vor-Authoren wird die Grundlage für einen erweiterten Basic-Interpreter
-die Grundversion wurde erweitert durch:   -fliesskomma Arithmetik
-
+die Grundversion wurde erweitert durch:   
+                                          -fliesskomma Arithmetik
                                           -Grafikfunktionen
                                           -mathematische Funktionen
                                           -Stringfunktionen
@@ -21,6 +21,7 @@ die Grundversion wurde erweitert durch:   -fliesskomma Arithmetik
                                           -Exponential-Ein/Ausgabe
                                           -Verschiedene Sensoren und Komponenten HC-S04, Dallas DS18S20, DHT, LCD, Neopixel-LED, BMP180
                                           -Zeileneditor
+
 
  Author:Reinhard Zielinski <zille09@gmail.com>
  April 2021
