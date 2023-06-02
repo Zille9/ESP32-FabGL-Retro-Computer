@@ -1,0 +1,529 @@
+// v1.46b:29.03.2023          -nach anfänglichen Schwierigkeiten funktioniert der LED-Befehl jetzt zufriedenstellend
+//                            -Test mit LED-Strip erfolgreich
+//                            -Joy-Befehl entfernt und begonnen stattdessen eine Akkuüberwachung mittels Timer-Interrupt zu integrieren
+//                            -alle 60 sek. wird die Akkuspannung (Pin 39)gemessen und bei leerem Akku eine Warnung auf dem Bildschirm angezeigt
+//                            -mal sehen, ob sich das bewährt oder ob doch eine externe Überwachungsschaltung notwendig ist
+//                            -Versuch, die Input-Routine umzubauen für die Eingabe mehrerer Parameter (auch gemischt!?)
+//                            -20592 Zeilen/sek.
+//
+// v1.45b:23.03.2023          -FRAM funktioniert mit den gleichen Routinen, wie EEPROM
+//                            -LED Befehl zur Ansteuerung von LED-Strips mit WS2811 bzw. 2812 Chip integriert - muss noch getestet werden!
+//                            -LED(S,Anzahl,Pin,Typ), Helligkeit LED(B,0..255), Pixel setzen LED(P,r,g,b,nr), Füllen LED(F,r,g,b,start, Anzahl), Löschen LED(C)
+//                            -20658 Zeilen/sek. Font25
+//
+// v1.44b:18.03.2023          -IO-Karte bereit zum Test 1xMCP2307, 1xEEPROM(64kb) und/oder FRAM(32kb) (FRAM noch nicht verfügbar)
+//                            -LCD funktioniert mit der Karte, EEProm (Adresse 0x50) und MCP23017(Adresse 0x20) werden erkannt
+//                            -LCD-Set Hintergrundbeleuchtung standardmässig eingeschaltet
+//                            -LCD-Befehl 'N' erstellt, stellt die Anzahl der Nachkommastellen ein ->Standard ist 0 (ohne Nachkommastellen)
+//                            -DMP zu Testzwecken auf EEPROM-Read umgebaut ->scheint zu funktionieren
+//                            -20679 Zeilen/sek. Font25
+//
+// v1.43b:15.03.2023          -Dallas-Temperatursensor DS18B20 Routinen erweitert um die Angabe des Kanals, so können mehrere Fühler an einem Bus arbeiten
+//                            -Funktionstest erfolgreich! Wichtig ist der Pullupwiderstand zwischen dem Data-Pin und 3,3V (VDD) - 4,7kOhm
+//                            -LCD(P bzw.(W Befehl erweitert mit , und ; zur Aneinanderreihung von Ausgaben (wie bei Print)
+//                            -Fehler in VAL(String) Funktion behoben ->Konvertierung erfolgte nach Integer statt nach float
+//                            -Fehler in der Funktion ATN(x) (Arcustangens) behoben, bei Printanweisungen wurde ATN(X) mit der Print AT(x,y)-Funktion verwechselt
+//                            -TRON-BEFEHL hinzugefügt, damit wird der Programmablauf anhand der Zeilennummern nachvollziehbar ->TRON(DELAY) DELAY=1..255 Verzögerung zur besseren Kontrolle
+//                            -TRON(0) = off
+//                            -20676 Zeilen/sek. Font25
+//
+// v1.42b:14.03.2023          -Compiler-flags in platform.txt nach einem Hinweis aus dem Netz geändert:
+//                            -compiler.c.flags=-std=gnu99 -O2 -g3  (-O2 statt Os) -- (O2 ist die Optimierung für Performance)
+//                            -compiler.cpp.flags=-std=gnu++11 -O2 (O2 statt Os)
+//                            -compiler.S.flags=-c -O2 -g3
+//                            -compiler.c.elf.flags=-nostdlib -O2
+//                            -in C:\Users\Name\AppData\Local\Arduino15\packages\esp32\hardware\esp32\1.0.6\platform.txt
+//                            -Julia.bas ist jetz in 11.4Min fertig (vorher 16.3Min)
+//                            -Geschwindigkeitsvorteil ->20676 (Font25) Zeilen/sek. :-), compilieren dauert etwas länger aber der Vorteil überwiegt (ca.30% Steigerung)
+//                            -wenn ich jetzt noch herausbekomme, wie ich die RVfplib für die mathematischen Funktionen einbinde könnte noch was mehr gehen
+//
+// v1.41b:12.03.2023          -EEPROM-Routinen für externen EEPROM begonnen -> IO/Board wird einen externen EEPROM haben (und oder FRAM?)!
+//                            -wofür dieser verwendet wird, ist noch unklar
+//                            -Save-Routine korrigiert, beim speichern eines Files, welches noch nicht existiert, wurde ein "y" ausgegeben (Überschreib-Abfrage)
+//                            -Routine Print_info angepasst, jetzt wird die Überschrift immer mittig angezeigt (mode_offset[Mode_state])
+//                            -Video-Modes 0,3,4 entfernt -> sah doof aus, es gibt nur noch Modus 0 (320x240) und 1(400x300)
+//                            -neues Problem:bei anderem Font stimmt die Darstellung wieder nicht :-( also muss auch ein Font-offset eingebaut werden.
+//                            -Problem gelöst, jetzt schaut es gut aus :-)
+//                            -15798 Zeilen/sek. ->Font25
+//
+// v1.40b:10.03.2023          -DEL-Befehl mit Sicherheitsabfrage erweitert
+//                            -Sprite-Befehl zusammengefasst ->SPRT(C/D/S,PARAM,PARAM,PARAM..), dadurch zwei Befehle eingespart
+//                            -LCD-Backlight geändert, jetzt scheint es korrekt zu funktionieren(vorher ging das Licht bei jedem Befehl wieder an)
+//                            -15453 Zeilen/sek.
+//
+// v1.39b:09.03.2023          -Fehler in Tastenabfragen behoben, verursacht durch den Versuch des Editors, manche Tasten waren nicht mehr erreichbar
+//                            -okmsg entfernt und durch OK in Routine getln ersetzt, damit braucht man sich um die Ausgabe von OK nicht mehr zu kümmern
+//                            -break-Routine optisch verbessert, jetzt führt ein Break im Direktmodus nur zur Ausgabe von Break! ohne "in Linenumber"
+//
+// v1.38b:07.03.2023          -Fehler in den I2C-Routinen behoben, es war noch Wire statt myI2C als Schnittstelle angegeben
+//                            -I2C-Routinen funktionieren soweit man das beurteilen kann, ein MCP23017 konnte erfolgreich angesprochen werden ->siehe I2C.bas
+//                            -LCD-Modul mit I2C-Schnittstelle und MCP2307-Modul haben die gleichen Adressen -> beim LCD- oder MCP2307-Modul muss die Adresse geändert werden !
+//                            -DHT-Routinen funktionieren perfekt -> dht.bas + dht2.bas
+//                            -I2C-Routinen Write und RequestFrom von FUNC_IIC nach KW_IIC geändert, da diese Befehle keinen Rückgabewert haben
+//                            -Befehl IIC jetzt vereinheitlicht ->Start jetzt IIC(S,Adresse), Write IIC(W,Befehl), Request IIC(Q,Adresse,Anzahl Bytes)
+//                            -die Befehle onReceive und onRequest gibt es noch nicht, muss erst noch den Sinn klären
+//                            -MCP-Port-Routinen begonnen, Setzen und schreiben von PORT und PIN funktioniert
+//                            -es fehlen noch die Read-Funktionen für PIN und PORT
+//                            -Portfunktion S+W erweitert ->PORT(S,0) setzt Port A+B auf Ausgang, PORT(W,Wert) schreibt den Wert auf Port A+B als 16bit-Wert
+//                            -Port und Pin-Read-Funktionen sind funktionsfähig -> PRINT PORT(A),PORT(B),PIN(Nr),PORT()=(A+B)als 16bit Wert
+//                            -PI() Funktion musste in der Funktionstabelle hinter PIN platziert werden, kollidierte mit der PIN-Funktion!?
+//                            -14472 Zeilen/sek.
+//
+// v1.37b:05.03.2023          -LCD-Routinen begonnen, Befehl LCD(Kommando,..Parameter) funktioniert in den Grundzügen für HD44780-LCD-Typ mit I2C-Schnittstelle und PCF8574
+//                            -um das LCD zu verwenden muss zuerst LCD(S,Spalten,Zeilen,Adresse) eingegeben werden, diese Werte werden im EEPROM gespeichert und sind
+//                            -nach einem Neustart verfügbar, der Setbefehl ist nur einmal nötig, danach kann mit LCD(I,1) das LCD initialisiert und verwendet werden
+//                            -Ausgabe von Text und Zahlenwerten funktioniert, rechts und links scrollen ebenfalls (Befehle: S,B,C,M,L,I,P)
+//                            -I2C-Routinen auf Niveau des LCD-Befehls komprimiert (IIC(Kommando)  -> R,W,A,Q,E)
+//                            -I2C muss noch eingehend getestet werden, mir fehlen noch die Testobjekte
+//
+// v1.36b:03.03.2023          -Zeileneditor entwickelt sich sehr zäh,
+//                            -einige Fonts hinzugefügt -> insgesamt sind jetzt 25 Fontsets verfügbar
+//                            -Addition von Stringvariablen hinzugefügt (C$=A$+B$)
+//                            -Stringvariablen jetzt auch als zweibuchstabige Variablen realisiert - frisst aber ganz schön Speicher (ca.28kb)
+//                            -wieder deaktiviert, kostet zuviel RAM -> verhindert die fehlerfreie Umschaltung in andere Videomodes
+//                            -STRING$ gekürzt in STR$ ->Stringwiederholung ->STR$(Zeichenkette,Anzahl)
+//                            -Fehler in der Stringaddition behoben ->string_marker wurde nicht rechtzeitig zurückgesetzt, dadurch war die
+//                            -Bearbeitung von numerischen Variablen gestört!
+//                            -15384 Zeilen/sek.
+//// v1.35b:23.02.2023          -Befehl DEFN a() mit bis zu 4 Operatoren mit anschließender Auswertung mit FN a(x,y) funktioniert jetzt endlich korrekt
+//                            -ein ; nach einer IF-Abfrage führte dazu, das das Programm nach DEFN nicht weiter ausgeführt wurde, Zufallsentdeckung
+//                            -da sieht man es wieder : kleine Ursache große Wirkung!!!
+//                            -KC85-Befehl AT für Print zur Positionsausgabe von Printanweisungen hinzugefügt -> PRINT AT(x,y);"Text";Variable
+//                            -15423 Zeilen/sek.
+//
+// v1.34b:23.02.2023          -Integration des Befehls DEFN a() mit bis zu 4 Operatoren begonnen, Eingabe der Funktion scheint zu funktionieren ->DEF a(a,b,c,d)=[a*b/sin(c)*tan(d)]
+//                            -es sind 26 Funktions-Definitionen möglich (A..Z) -> Aufruf der Funktion wird FN a(x,y) sein
+//                            -Fontsatz 10 in COURIER 8x14 geändert
+//                            -15495 Zeilen/sek.
+//
+// v1.33b:21.02.2023          -I2C-Routinen auf TwoWire umgestellt, damit diverse Bibliotheken mit den geänderten I2C-Pins umgehen können
+//                            -Befehl BMP(Mode) zum Auslesen eines BMP085/180 Drucksensors - muss noch getestet werden!
+//                            -Befehl CD zum Wechseln des aktuellen SD-Karten-Verzeichnisses -> CHD"/Pfad" - Pfad wird global gespeichert
+//                            -die vorhandenen Dateioperationsbefehle mit der Pfad-Information aktualisiert
+//                            -Befehle MKD (MKDIR) und RMD (remove Dir) hinzugefügt
+//                            -15579 Zeilen/sek.
+//
+// v1.32b:19.02.2023          -Befehl ON für GOTO/GOSUB integriert ->ON A GOTO/GOSUB Zeilennr,Zeilennr,Zeilennr...
+//                            -RND-Befehl modifiziert RND(7) generierte nur eine Zahl zwischen 0...6, das ist doof, jetzt wird eine Zahl 0...7 generiert, das ist besser.
+//                            -Befehl GCOL(V/H) geschaffen, um die gesetzten Vorder- und Hintergrundfarbe zu ermitteln GCOL(0)=Vodergrundfarbe, GCOL(1)=Hintergrundfarbe ->Print GCOL(0)
+//                            -der Optik halber sollte der Befehl COLOR in COL umbenannt werden
+//                            -BEFEHL DHT(Port,Typ,T/H) eingefügt zum Auslesen von DHT11,DHT22 oder DHT21 Sensoren ->Typ 1=DHT11, 2=DHT22, 3=DHT21 ->T/H 0=Temperatur 1=Feuchte
+//                            -der Befehl ist noch ungetestet!!
+//                            -Dateibefehle soweit geändert, das der Dateiname in Anführungszeichen stehen muss (konnte vorher weggelassen werden - optisch falsch)
+//                            -werde warscheinlich einen MCP2307 einbauen, für mehr Port-Pins ->2 8bit Ports = 16 IO's,damit kann man schon was anfangen - neue Platine?
+//                            -15420 Zeilen/sek.
+//
+// v1.31b:18.02.2023          -INCHAR-Routine um printmsg(okmsg,0) erweitert, da nach dem Laden eines Programms kein READY ausgegeben wurde
+//                            -Theme 10 als 'LCD' etabliert - mit Fontsatz3 sieht das cool aus
+//                            -etwas mit ELSE herumexperimentiert, es gefällt mir nicht,das ELSE in einer neuen Zeile stehen muss aber momentan gehts nicht anders :-(
+//                            -zusätzliche Auflösung eingefügt (VGA_256x192_50Hz) mit anderem Monitor auch brauchbar
+//                            -15615 Zeile/sek. ist mir immer noch nicht klar, was die Ursache ist?!
+//                            -offensichtlich spielt auch die verwendete Schriftart eine Rolle, im ZX-Spectrum Theme ist er am schnellsten
+//                            -16029 Zeilen/sek.
+//
+//// v1.29b:16.02.2023          -Befehl AIN erweitert AIN(PORT,MODE) MODE 0=Ausgabe als Digitalwert, 1=Ausgabe als Spannungswert, 2=HC-SR04-Ultraschall-Sensorwert in cm, weitere können folgen
+//                            -Startbildschirm um die Information des gewählten Bildschirmthemes erweitert
+//                            -zusätzlich zum gewählten Theme und Video-Modes wird auch der ausgewählte Fontsatz im EEprom gespeichert und beim Start geladen
+//                            -zusätzliche Fontsätze integriert, es kann unter 20 Fontsätzen gewählt werden
+//                            -Funktionsliste nach enum portiert, so können einfacher Änderungen vorgenommen werden
+//                            -Versuch, einen WIFI-Fileserver zu integrieren scheitern am RAM-Speicher, schade :-(
+//                            -Dallas-Temperatur-Sensor-Routinen eingebaut ->PRINT TEMP(PORT) gibt die Temperatur des Sensors zurück - könnte, wie mit den AIN Modes auch als DIN mit Modeerweiterung realisiert werden
+//                            -z.Bsp.DIN(PORT,MODE) 0=Digitalwert, 1=Temperatur vom Dallas-Sensor -> muss ich nochmal ne Nacht drüber schlafen ;-)
+//                            -Ausführungsgeschwindigkeit schwankt noch immer sehr stark
+//                            -zur Zeit 14292 Zeilen/sek. jetzt ist Debug mit 15330 besser?!
+//
+// v1.28b:15.02.2023          -den Befehl Mode für unterschiedliche Auflösungen hizugefügt, möglich sind im 64Farb-Modus 320x240 (mode0) und 400x300 (mode1)
+//                            -und im 16Farb-Modus zusätzlich 512x384 (mode2) und 640x240 (mode3)
+//                            -ausgewählter Modus wird im EEprom gespeichert und Basic startet automatisch mit dem eingestellten Modus
+//                            -PULSE-Befehl erweitert, jetzt kann die Anzahl der Pulse und die High und Low-Zeit eingegeben werden ->Pulse(Port,Anzahl,Highzeit,Lowzeit) ->in mS
+//                            -15690 Zeilen/sek !? ->die Werte schwanken sehr stark ----------------->  keine=11127,fehler=15690,warn=14456,info=14589,debug=15123,verbose=15120
+//                            -offensichtlich spielt die Einstellung Core Debug die entscheidende Rolle--^
+//                            -die Werte sind reproduzierbar, Einstellung für Core Debug = Fehler ist offensichtlich das Optimum.
+//
+// v1.27b:14.02.2023          -Farbverwaltung erweitert und für die verschiedenen VGA-Modi's vereinheitlicht (16Farben, 64Farben)
+//                            -Themen-Farben im 16 Farbmodus angepasst, jetzt sieht es im 16 und 64 Farbmodus gleich aus (jedenfalls fast)
+//
+// v1.26b:13.02.2023          -Brush-Befehl entfernt -> Color kann das gleiche
+//                            -Pen-Befehl gekürzt, jetzt wird die Farbe von 0..63 eingegeben und die Striftbreite ist optional PEN farbe oder PEN farbe,breite
+//                            -PSET-Befehl erweitert PSET x,y,farbe (farbe ist optional und kann weggelassen werden)
+//                            -durch Wegfall von Brush und Kürzung von Pen wieder etwas mehr Geschwindigkeit
+//                            -14865 Zeilen/sek.
+//
+// v1.25b:11.02.2023          -Sound-Befehl integriert, ist nur rudimentär aber für einen Basic-Interpreter ok -> SND(waveform,frequency,duration,volume)
+//                            -noch nicht getestet, mir fehlt noch ein entsprechender Anschluss am Test-Board
+//                            -Wertenegation hinzugefügt a=!a
+//                            -Befehl Pulse hinzugefügt ->PULSE(Port,Zeit) gibt einen einzelnen Impuls an Port mit der Länge Zeit aus
+//                            -PEN und BRUSH Befehle werden geändert statt r,g,b wird nur die Farbe 0..64 eingegeben, damit ist der BRUSH-Befehl eigentlich überflüssig, da der Befehl Color existiert
+//                            -PEN-Befehl könnte in Pset eingebaut werden (farbe und breite)
+//                            -13647 Zeile/sek.
+//
+// v1.24b:09.02.2023          -Inkey_Routine etwas umgebaut, das kostet einfach zuviel Performance (13550 Zeilen/sek.).Gibt es keine bessere Methode?
+//                            -erstmal das Optimum gefunden, welche die Performance nicht zu stark bremst und auch fast optimal funktioniert
+//                            -seltsamerweise wird ab und zu eine 63 zurück gegeben was ist das ? , vielleicht per Abfrage ausschliessen!?
+//                            -14660 Zeilen/sek.
+//
+//
+// v1.23b:08.02.2023          -Sprite-Funktionen soweit funktionsfähig, allerdings ist die Ausführungsgeschwindigkeit drastisch eingebrochen (nur noch ca.13500 Zeile/sek.)!??
+//                            -nach der Deaktivierung der Befehle steigt die Geschwindigkeit wieder, ist aber noch immer ca.600 Zeilen langsamer als vorher, das versteh ich nicht
+//                            -warum auch immer, jetzt sind es mit den neuen Befehlen 14500 Zeilen/sek. das sieht wieder realistisch aus, komisch!?
+//
+// v1.22b:05.02.2023          -Beginn der Integration von Sprite-Befehlen, erster Befehl PIC stellt ein Bitmap an x,y dar.Wie ich die Daten allerdings in den Rechner kriege, muss
+//                            -ich mir noch überlegen.Grundlage ist das FabGl-Example CollisionsDetection, noch sind sie Bitmaps als Include-Datei eingefügt
+//                            -Befehl BYE entfernt ->NEW erledigt jetzt alles (Variablen löschen und Startbildschirm anzeigen)
+//                            -15111 Zeilen/sek.
+//// v1.24b:09.02.2023          -Inkey_Routine etwas umgebaut, das kostet einfach zuviel Performance (13550 Zeilen/sek.).Gibt es keine bessere Methode?
+//                            -erstmal das Optimum gefunden, welche die Performance nicht zu stark bremst und auch fast optimal funktioniert
+//                            -seltsamerweise wird ab und zu eine 63 zurück gegeben das ist das ? , vielleicht per Abfrage ausschliessen!?
+//                            -14660 Zeilen/sek.
+//
+//
+// v1.23b:08.02.2023          -Sprite-Funktionen soweit funktionsfähig, allerdings ist die Ausführungsgeschwindigkeit drastisch eingebrochen (nur noch ca.13500 Zeile/sek.)!??
+//                            -nach der Deaktivierung der Befehle steigt die Geschwindigkeit wieder, ist aber noch immer ca.600 Zeilen langsamer als vorher, das versteh ich nicht
+//                            -warum auch immer, jetzt sind es mit den neuen Befehlen 14500 Zeilen/sek. das sieht wieder realistisch aus, komisch!?
+//
+// v1.22b:05.02.2023          -Beginn der Integration von Sprite-Befehlen, erster Befehl PIC stellt ein Bitmap an x,y dar.Wie ich die Daten allerdings in den Rechner kriege, muss
+//                            -ich mir noch überlegen.Grundlage ist das FabGl-Example CollisionsDetection, noch sind sie Bitmaps als Include-Datei eingefügt
+//                            -Befehl BYE entfernt ->NEW erledigt jetzt alles (Variablen löschen und Startbildschirm anzeigen)
+//                            -15111 Zeilen/sek.
+//
+// v1.21b:03.02.2023          -Funktion VAL("numerische Zeichenkette") hinzugefügt - macht aus einer Stringzahl eine numerische Variable (print VAL(a$), b=VAL("123"))
+//                            -Start-Bildschirm um zusätzliche Informationen erweitert (Auflösung,Terminalauflösung,ESP-Memory)
+//                            -Funtion GETX und GETY zusammengefasst GET(0)=X-Position, GET(1)=Y-Position des Cursors, dadurch einen Befehl eingespart und etwas Geschwindigeit gewonnen
+//                            -Fehler in ASC(x) behoben, es wurden Stringvariablen falsch interpretiert.PRINT ASC("A") war richtig PRINT ASC(A$) wurde falsch interpretiert.
+//                            -Befehl MEM in Funktion umgewandelt, so sind Speicherabfragen innerhalb eines Programms möglich -> PRINT MEM oder A=MEM
+//                            -INPUT-Befehl um Stringvariablen für Textbeschreibung der Eingabe erweitert (vorher nur Zeichenetten)->INPUT"Name";b$ kann jetzt auch INPUT a$;b$ heissen (a$="Name")
+//                            -15096 Zeilen/sek
+//
+// v1.20b:30.01.2023          -Fehler in Right$ und Mid$ behoben - gab einen Fehler aus bei korrekter Eingabe (return a; entfernt)
+//                            -Fehler in INSTR und COMP$ behoben - Stringmarker wurde nicht zurückgesetzt, dadurch wurde der String und nicht der nummerische Wert zurückgegeben
+//                            -Funktion UC$(A$) - String in Grossbuchstaben umwandeln eingefügt
+//                            -Funktion LC$(A$) - String in Kleinbuchstaben umwandeln eingefügt
+//                            -15075 Zeilen/sek.
+//
+// v1.19b:28.01.2023          -AV-Bildschirmtreiber als Auswahlmöglichkeit integriert (#define AVOUT aktivieren). Wenn aukommentiert, erfolgt die Ausgabe über VGA
+//                            -CVBS-Treiber ist allerdings nur etwa halb so schnell, wie die VGA-Variante aber als Option für mehr IO-Ports ne interessante Sache
+//                            -15210 Zeilen/sek.(VGA), ca.8220 Zeilen/sek.(AV)
+//
+// v1.18b:27.01.2023          -Befehl CIRCLE geändert in CIRC, Befehl RENAME geändert in REN, ? und / entfernt dadurch etwas an Geschwindigkeit gewonnen
+//                            -15210 Zeilen/sek.
+//
+// v1.17b:24.01.2023          -Befehl DAC zur Ausgabe Analoger Spannungswerte an Pin 26 - muss mit dem neuen Board noch getestet werden (V1.0 hat am Pin26 Pullup-Widerstände, das verfälscht die Werte)
+//                            -Eingabe erfolgt als Spannungswert -> DAC(1.29) ->1.29 Volt
+//                            -AREAD in AIN, DREAD in DIN, DWRITE in DOUT geändert
+//                            -die Werte von AIN werden jetzt als Spannungswert ausgegeben -> bsp. PRINT AIN(25) -> 1.2456 (x=3.3/4096*Messwert)
+//                            -Sound- und Grafik-Spritebefehle fehlen noch!?
+//                            -1-Wire-Bus (DS1820 Temp.Fühler) ,DHT11, W2812-LED wäre auch noch schön
+//                            -15132 Zeilen/sek
+//
+// v1.16b:21.01.2023          -Startbildschirm etwas geändert (Starttext nach oben verschoben)
+//                            -Befehl JOY zur Abfrage eines Joysticks an Port 2,34,35,36,39 eingefügt (scheint zu funktionieren)
+//                            -HIWEIS:die Ports (ausser 2) des Joysticks sind nur Eingänge und müssen per externen Pullupwiderständen auf High gezogen werden
+//                            -Ports für SCL und SDA des I2C-Busses geändert auf 26(SDA) und 27(SCL) dafür fliegt die Mouse-Buchse vom Board
+//                            -Port-Funktionen für noch freie Pins integriert (noch experimentell)
+//                            -AREAD(PORT),DREAD(PORT),DWRITE(PORT,Wert),PWM(PORT,WERT)
+//                            -verwendete PINS: AREAD 2,12,26,27,34,35,36,39 ;DREAD 2,12,26,27,34,35,36,39;DWRITE 2,12,26,27;PWM 2,12,26,27)
+//                            -15100 Zeilen/sek.
+//
+// v1.15b:22.07.2021          -Theme 9 geändert
+//
+// v1.13b:16.06.2021          -Fehler in DATA-Funktion behoben, der Datapointer wurde bei Zeichenkettenverarbeitung nicht erhöht
+//                            -Schreibweise der Funktionen MODULO, Shift left /right, AND und OR geändert
+//                            -MODULO x % y, SHIFT Left/Right x SL y, x SR y, AND x & y, OR x | y
+//                            -15990 Zeilen/sek.
+// v1.12b:14.06.2021          
+//					-Taste ESC mit Virtual_Key abgefangen, führte zum Absturz des Interpreters -> ist noch nicht ideal, funktioniert aber
+//                            	-Auto-Start-Funktion vervollständigt -> es wurden keine Datazeilen eingelesen, damit stürtzte das Programm Globus.Bas ab
+//                            	-jetzt werden beim Autostart alle Variablen gelöscht und eventuell vorhandene Datazeilen eingelesen
+//                            	-15894 Zeilen/sek.
+//
+// v1.11b:08.06.2021          
+//					-I2C-Befehle eingefügt -> noch im Test aber der Adress-Scan funktioniert schonmal
+//                            	-IICR (Read), IICW(write), IICA (available), IICS (start), IICE (end), IICQ (request)
+//                            	-a=IICR(), IICW(val), a=IICA(), IICS(adress), a=IICE(),IICQ(adress,anzahl bytes)
+//                            	-ob das so bleibt, weiss ich noch nicht, weitere Tests werden es zeigen
+//                            	-15750 Zeilen/sek.
+//
+// v1.10b:05.06.2021          
+//					-es fehlen noch Sound und Port-Funktionen
+//
+// v1.09b:03.06.2021          
+//					-PEN-Befehl um den optionalen PEN-WIDHT Parameter erweitert (Strichstärke) PEN r,g,b<,1..>
+//                            	-nur für LINES und RECT ->später vielleicht auch den PATH-Befehl (für Polygone)
+//                            	-16236 Zeilen/sek.
+//
+// v1.08b:02.06.2021          
+//					-expr4() Unterprogramm von überflüssigen Abfragen befreit
+//                            	-Funktion POW zum Operanden geändert -> 8^2 (vorher POW(8,2))
+//                            	-Operanden XOR und NOT entfernt, ich glaube die braucht man kaum (nicht)
+//
+// v1.07b:01.06.2021          
+//					-RTC an Pin 3,1 angebunden (TX,RX), dadurch ist die Serial-Funktion nicht mehr nutzbar (auskommentiert)
+//                            	-SETDT - Befehl zum stellen der RTC hinzugefügt SETDT tag,monat,jahr,stunde,minute,sekunde
+//                            	-GDATE - Befehl zum Auslesen der RTC GDATE(0) -> Tag, GDATE(1) -> Monat, GDATE(2) -> Jahr , GDATE(3) -> Wochentag
+//                            	-GTIME - Befehl zum Auslesen der RTC GTIME(0) -> Stunde, GTIME(1) -> Minute, GTIME(2) -> Sekunde
+//                            	-Unterprogramm zum auslesen und füllen der Datum/Zeit-Arrays erstellt, um die Geschwindigkeit zu erhalten
+//                            	-bei direkter Ausführung im Unterprogramm expr4() bricht durch die langsame I2C Übertragung die Verarbeitungsgeschwindigkeit
+//                            	-auf 3000 Zeilen/sek ein, das ist nicht akzeptabel :-(
+//                            	-durch die Auslagerung steigt die Geschwindigkeit wieder auf 16074 Zeilen/sek.
+//
+// v1.06b:31.05.2021          
+//					-Fehler in DATA-Funktion gefunden und behoben (Datazeilenabfrage war fehlerhaft bei verketteten READ-Anweisungen (READ A,B,..))
+//                            	-Testprogramm GLOBUS.BAS funktioniert jetzt fehlerfrei :-) -> Ausführungszeit ca.6sek (das ist schnell).
+//                            	-INPUT - Befehl mit Beschriftung erweitert (INPUT"Eingabewert:";A) - wird noch um die Möglichkeit der Stringeingabe erweitert
+//                            	-Bsp.:INPUT"Name:";name$
+//                            	-INPUT-Befehl durch Stringeingabe erweitert (INPUT"Name:";a$)
+//                            	-16341 Zeilen/sek.
+//
+// v1.05b:31.05.2021          
+//					-Testprogramm GLOBUS.BAS funktioniert nur teilweise.Bei der Zeichnung der Karte besteht noch ein Fehler (wird nicht vollständig gezeichnet)
+//                            	-das muss erstmal analysiert werden (DATA-Funktion doch noch buggy?)
+//
+// v1.04b:30.05.2021          
+//					-STRING$ in Funktion umgewandelt, funktioniert jetzt nur noch mit Print (so,wie es sein sollte)
+//                            	-allerdings ist die Syntax gedreht (Print String$("Hallo",5) nicht String$(5,"Hallo")), das kann man verschmerzen (Implementierung war einfacher)
+//                            	-dadurch sind 2 Unterprogramme entfallen ->Speicherplatz gespart
+//                            	-Funktion CONST zur Begrenzung eines Wertebereiches entfernt -> kann man im Basic anders lösen
+//                            	-STRING$-Funktionsname auf STRG$ gekürzt ->ist schneller
+//                            	-Oktal-Zahlenverarbeitung entfernt -> wann braucht man schon Oktalzahlen?!
+//                            	-STYLE-Befehls-Optionen gekürzt Option 7 (doppelte Höhe und Breite) entfernt, funktioniert so nicht
+//                            	-Ausführungsgeschwindigkeit: 16347 Zeilen/sek.
+//
+// v1.03b:29.05.2021          
+//					-Name von ESP32-Basic in Basic32+ umbenannt, weil stark erweitert (+)
+//                            	-TAB-Befehl in Funktion umgewandelt, funktioniert jetzt so, wie es soll
+//                            	-dadurch ein freier Basic-Befehl
+//                            	-Funktion SPC(x) eingefügt, gibt Anzahl x Leerzeichen aus
+//                            	-16890 Zeilen/sek.
+//
+// v1.02b:28.05.2021         
+//					-DATA-READ funktioniert erstmal grundsätzlich, auch mit mehreren Variablen , auch gemischt(READ a,b,c,d$)
+//                            	-weitere Tests werden zeigen, ob die Funktion zufriedenstellend arbeitet
+//                            	-INPUT-Befehl arbeitet jetzt auch mit langen Variablennamen
+//
+// v1.01b:27.05.2021          
+//					-Versionssprung -> Interpreter funktioniert nach meinen Vorstellungen, noch zu lösende Aufgaben sind:
+//                            	-DATA - READ Funktion ,die Implementierung von Arrays und eventuell einen Zeileneditor
+//                            	-zusätzliche Funktionen für die Verwendung von GPIO bzw. AD/DA benötigen einen zusätzlichen Chip, da am ESP32
+//                            	-keine brauchbaren GPIO's mehr verfügbar sind
+//                            	-eventuell Sprite-Funktionen mit Kollisionsabfrage, das setzt aber eine funktionierende DATA - Funktion voraus.
+//                            	-Tokenizer erstmal abgebrochen, bisher keine zufriedenstellenden Ergebnisse
+//                            	-Datei Sicherheitsabfrage verfeinert -> explizite Abfrage von 'y' und 'n'
+//
+// v0.50b:25.05.2021
+//                            -durch eine kleine Änderung sind jetzt lange Variablennamen möglich (numerisch und String)
+//                            -allerding hat dies seinen Preis, die Verarbeitungsgeschwindigkeit ist auf 17025 Zeilen/sek. gesunken
+//                            -es wird die weitere Entwicklung zeigen, ob sich das lohnt
+//                            -Sicherheitsabfrage (überschreiben y/n) beim Speichern von Dateien hinzugefügt
+//
+// v0.49b:25.05.2021
+//        				-LEFT$,Right$ und MID$ funktionieren jetzt auch mit Zeichenketten in Anführungszeichen -> ob sinnvoll oder nicht
+//        				-nächste Baustellen:	- READ-Befehl vervollständigen
+//                            							- mehrdimensionale Arrays
+//                            							- Anbindung (seriell) eines externen Portmoduls für digitale Ein-/Ausgänge + SID-Sound-Emulator + RTC(NTP?) + I2C-BUS
+//                            							- Art des Prozessors noch nicht klar (2ter ESP32 ?, Teensy ?, ATMEGA? Propellerchip ?)
+//        				-20130 Zeilen/sek.
+//
+// v0.48b:24.05.2021
+//        				-Funktion LEFT$ eingefügt (momentan nur mit Stringvariablen, Keine Zeichenketten in Anführungszeichen -> macht das überhaupt Sinn?)
+//        				-Funktion RIGHT$ eingefügt (momentan nur mit Stringvariablen, Keine Zeichenketten in Anführungszeichen -> macht das überhaupt Sinn?)
+//        				-Funktion MID$ eingefügt (momentan nur mit Stringvariablen, Keine Zeichenketten in Anführungszeichen -> macht das überhaupt Sinn?)
+//
+// v0.47b:23.05.2021
+//       				-Einbinden von Dateioperationen (chdir, mkdir, rmdir) - abgebrochen (wieder entfernt), das Handling für einfache Operationen ist viel zu umständlich
+//        				-einzig der RENAME - Befehl ist geblieben, dieser funktioniert jetzt auch
+//        				-PI-Funktion geändert ->jetzt genügt die Eingabe von PI(), um einen Wert zu erhalten (in der Klammer darf kein Wert stehen)
+//        				-LN-Funktion (natürlicher Logarithmus) in LOG geändert
+//
+// v0.46b:22.05.2021
+//        				-RESTORE - Befehl funktioniert soweit, jetzt kommt der komplexere Teil der READ - Anweisung
+//        				-REN Befehl eingefügt, zum Umbenennen von Dateinamen -> funktioniert aber noch nicht
+//
+// v0.45b:21.05.2021
+//        				-GOSUB-Routine ausgelagert
+//        				-INPUT-Routine ausgelagert
+//        				-Code-Kommentare hinzugefügt
+//        				-Code muss noch etwas aufgeräumt werden
+//        				-Befehl PI geändert, durch die Möglichkeit szeibuchstabige Variablen zu nutzen wurde PI falsch interpretiert
+//        				-jetzt PI(0) (wobei die Zahl in Klammern egal ist)
+//        				-20211 Befehle/sek.
+//        				-um ein ständiges Scannen der Command-Liste einzusparen müssten die Befehle als Token gespeichert werden (0-128)
+//        				-das würde die Ausführungsgeschwindigkeit um einiges erhöhen
+//
+// v0.44b:20.05.2021
+//        				-Logischer Operator AND wieder eingebaut, es werden jetzt alle Zwischenergebnisse gespeichert und bei THEN ausgewertet
+//        				-Datei Logik.bas zeigte bisher nur richtige Ergebnisse an, scheint also zu funktionieren
+//        				-logischer Operator OR funktioniert jetzt auch korrekt
+//        				-20286 Befehle/sek. ->Ursache der vorherigen Verlangsamung war die Ausdehnung der expression-Funktion
+//        				-da AND und OR jetzt normale Basic-Befehle sind, ist auch die Geschwindigkeit wieder höher
+//        				-Octalwertausgabe hinzugefügt, Eingabe funktioniert ebenfalls
+//        				-Klammerrechnung funktioniert offensichtlich auch korrekt - nur mehrfach verschachtelte Klammern nicht
+//        				-20256 Befehle/sek.
+//        				-TAB-Funktion noch nicht optimal
+//        				-Befehl LET deaktiviert -> nicht nötig - frei für weiteren Befehl
+//
+// v0.43b:19.05.2021
+//        				-logische Operatoren AND OR und NOT erstmal wieder deaktiviert, funktioniert so nicht
+//        				-dafür müssten die jeweiligen Vergleichsergebnisse zwischengespeichert werden, hab ich noch keinen Plan
+//
+// v0.42b:18.05.2021
+//        				-logische Operatore AND, OR und NOT eingefügt, noch in der Testphase
+//        				-Klammerrechnung eingebaut (8+9)*2 ergibt jetzt das richtige Ergebnis 34 nicht 26
+//        				-irgendwo steck aber noch ein Fehler, bei komplexen Berechnungen wird der Wert verloren (Ausgabe: nan)?
+//        				-dies ist bei Fraktalberechnungen aufgefallen.
+//        				-Versuch begonnen DATA,READ und RESTORE zu verwirklichen, muss aber erst ein Konzept dazu entwickeln
+//        				-Befehl DEL zum Löschen von Dateien auf der SD-Karte hinzugefügt
+//        				-14538 Befehle/sek !?
+//        				-Comparebereich muss noch umgebaut werden IF funktioniert nicht korrekt mit AND OR NOT
+//
+// v0.41b:17.05.2021
+//        				-nach der Tastaturinitialisierung kurzen delay eingefügt, es gab immer wieder Startschwierigkeiten nach dem flashen
+//        				-keine Ahnung, ob das die Lösung ist, bisher funktioniert's
+//        				-Startbildschirm etwas modifiziert (nur noch 2 Zeilen aber breiter)
+//        				-momentane Geschwindigkeit=20523 Befehle/sek.
+//        				-Printausgabe für Hex und Bin Zahlen eingefügt (Print HEX(123), BIN(88) )
+//        				-Routine printUnum durch Terminal.print-Befehl ersetzt ->Ausgabe erfolgt nur über das FabGl-Terminal
+//        				-Serial-Ausgabe deaktiviert ->Ausgabe nur über FabGl-Terminal
+//        				-Geschwindigkeit=20650 Befehle/sek. - die Befehle/sek. variieren sehr stark, ist also nicht überzubewerten
+//        				-nach Compilierung ohne größere Änderungen 20160 Bef./sek. (Schwankungen der CPU-Frequenz?)
+//
+// v0.40b:16.05.2021
+//        				-Versionssprung, EEPROM-Speicherroutinen zur Speicherung und Lesen von Startparametern integriert
+//        				-mit dem Befehl THEME kann jetzt ein Colorschema permanent gespeichert und beim Start geladen werden
+//        				-dieser Befehl sollte nur im Kommandomodus verwendet werden, nicht im Programm (->Programmabsturz)
+//        				-zur Zeit sind 10 Themen integriert 0 .. 9 (C64,C128,CPC,ATARI800,ZX-Spectrum,Amiga,KC85,VIC20,TRS80,Warm)
+//        				-Routine printmsg modifiziert (Farbsetzbefehl), nach der Ausgabe konnte es passieren, das der Interpreter
+//        				-statt der Themen-Farben die Terminalfarben setzte, das wird hiermit verhindert
+//        				-etwas aufgeräumt und Kommentare hinzugefügt
+//        				-Hexadezimal- und Binär-Eingabe eingebaut -> noch im Test ->fehlt noch die Ausgabe
+//       				-Startbildschirm um die Anzeige der CPU-Frequenz erweitert
+//
+// v0.34b:15.05.2021
+//        				-Einige Programmteile zur Verarbeitung von Strings zusammengefasst
+//        				-TAB(x) integriert - setzt den Cursor auf die Spaltenposition x
+//        				-damit begonnen, den Code zu entflechten um von den GOTO Anweisungen wegzukommen
+//        				-Hauptschleife heisst jetzt Basic_interpreter(), als nächstes wird der Programmteil prompt: extrahiert
+//        				-die meisten Programmteile wurden als externe Routinen extrahiert - viel Potential für Zusammenfassungen
+//        				-die Geschwindigkeit hängt sehr stark von eventuellen Optimierungen ab
+//        				-zur Zeit arbeitet der Interpreter mit 19_668 Befehle pro Sekunde (schon recht fix, es waren aber mal mehr als 20_000)
+//        				-Umstellung von COLOR auf 64 Farben
+//
+// v0.33b:14.05.2021
+//        				-STRING$-Befehl auf Stringvariablen erweitert
+//        				-Befehl LEN für die Ermittlung von Stringlängen eingefügt (Print LEN(a$), b=LEN(t$))
+//        				-Nur für Stringvariablen vorgesehen (keine Zeichenketten in Anführungszeichen - weil das keinen Sinn machen würde)
+//        				-Funktion INSTR implementiert sucht Zeichenkette1 in Zeichenkette2 INSTR(zeichenkette1,zeichenkette2) und gibt die Position in Zeichenkette2 aus
+//        				-ist zeichenkette1 in zeichenkette2 nicht vorhanden wird als Wert 0 zurückgegeben
+//        				-funktioniert mit Zeichenketten in Anführungszeichen und mit Stringvariablen (a$-z$)
+//        				-Funktion COMP vergleicht zwei Strings (Zeichenketten) COMP(a$,b$)
+//        				-Rückgabe: 	-1 wenn a$<b$ (beachte Groß-und Kleinschreibung A < a )
+//                    						1 wenn a$>b$ (beachte Groß-und Kleinschreibung a > Z )
+//                    						0 wenn a$=b$
+//       		 		-Versuche, eine RTC einzubinden sind gescheitert (offensichtlich kann weder über NTP noch mit I2C RTC genutzt werden)
+//        				-Experimente mit der internen RTC funktionieren zwar, die Zeit ist aber nach einem Reset wieder weg, macht also keinen Sinn
+//        				-abgesehen davon soll die interne Uhr recht ungenau sein
+//
+// v0.32b:13.05.2021
+//        				-Stringvariablen funktionieren in den Grundfunktionen (a$="Text", print a$;b$)
+//        				-ob ich die Stringfunktionen LEFT$,RIGHT$ und MID$ einbaue, weiss ich noch nicht, Strings sind in Aduino Schei...
+//        				-STRING$-Funktion eingefügt (Stringwiederholung String$(5,"TEST") wiederholt 5x die Ausgabe von TEST) - momentan nur mit Strings in Anführungszeichen
+//        				-PRINT-Programmteil komplett umgebaut (mit case Anweisungen) -> jetzt etwas übersichtlicher und logischer aufgebaut
+//
+// v0.30b:10.05.2021
+//        				-VGAController auf 64 Farben und einer Auflösung von 320x240 Pixeln umgestellt
+//        				-Befehle BRUSH und PEN für die Nutzung der 64 Farben integriert
+//        				-Variablenbereich erweitert -> jetzt sind zweistellige Variablen erlaubt (aa,ab,...zz)
+//        				-Beginn der Integration von String-Variablen, gestaltet sich schwierig - Arduino hasst Strings!?
+//
+// v0.29b:09.05.2021
+//        				-POKE-Befehl korrigiert und vervollständigt ->es wurden falsche Datentypen verwendet
+//        				-Befehl TIMER hinzugefügt (fragt den internen Timer ab, damit lassen sich Zeitdifferenzen berechnen)
+//        				-MOD Operand hinzugefügt -> gibt den Modulo-Wert zurück (a=4 mod 5)
+//        				-Bit-Operation Shift left und Shift right (a<<b, a>>b) eingefügt
+//        				-Bit Operatoren AND OR XOR NOT (&&, | , ^ , ~ ) hinzugefügt
+//
+// v0.28b:08.05.2021
+//        				-Funktion SGN fehlerhaft, printUnum-Routine korrigiert (Minuswerte wurden falsch interpretiert)
+//        				-Versuch, einen Zeileneditor zu implementieren - bisher nicht sehr erfolgreich - muss erst die Speicherverwaltung durchschauen
+//        				-Memory_Dump ,List-Ausgabe und Files mit Warteschleifen nach n-Zeilen ausgestattet, um die Ausgabe nach n-Zeilen zu pausieren
+//        				-Befehl Inkey zum Abfragen der Tastatur hinzugefügt
+//        				-Befehl FONT gibt jetzt den aktuell ausgewählten Fontsatz zurück (Print FONT)
+//        				-Befehl ASC("x") hinzugefügt ->gibt den ASCII-Wert eines Char's zurück
+//
+// v0.27b:07.05.2021
+//        				-SD-Card Anbindung erfolgreich mit folgender Pinkonfiguration: 14,16,17,13 //SCK,MISO,MOSI,CS und standard SPI.h/SD.h
+//        				-Load und Save funktionieren auch, jetzt wird's auch was
+//        				-Funktion GETX und GETY zur Ermittlung der Cursorposition eingefügt
+//        				-Funktion CHR$ geschaffen
+//
+// v0.26b:05.05.2021
+//        				-Versuche ein Filesystem zu implementieren sind gescheitert, bei der Auflösung 640x480 und 16 Farben ist das nicht möglich
+//        				-außerdem werden die benötigten SPI-Pins durch den VGA-Anschluss blockiert, das SD-Card-Filesystem von Fabgl funktioniert auch nur mit geringeren Auflösungen
+//        				-Dateisystem wird ausgelagert -> am Besten Propeller-Chip, hier könnte neben dem Dateisystem eine SID-Emulation laufen u.a.
+//        				-werde erstmal am Basic selbst noch etwas optimieren/erweitern.
+//        				-Fehler im DUMP-Befehl behoben -> Fehler wurde nicht gelöscht
+//        				-Befehl STYLE für die verschiedenen Textstile eingefügt Style 1...6, Style 1,2,3 ->bold,italic,underline
+//
+// v0.25b:04.05.2021
+//        				-DUMP-Befehl eingefügt, ein Speichermonitor muss einfach sein
+//        				-da sich die Eingabe von Hexadezimalzahlen bisher als ziemlich tricky herausgestellt hat, wird hier mit dezimalen Speicheradressen gearbeitet (noch)
+//        				-SD-Card-Routinen müssen neu geschrieben werden, die vorhandenen setzen eine Pinconfiguration voraus, die durch VGA belegt ist
+//        				-außerdem bringt fabutils.h entsprechende Routinen mit, die müssen aber noch erforscht werden
+//        				-deshalb sind LOAD,SAVE usw.zur Zeit nicht nutzbar :-(
+//
+// v0.24b:03.05.2021
+//        				-Unterroutine spaces() eingebaut ->im Gegensatz zu ignore_blanks() wird das Aktuelle Zeichen zurückgegeben, damit sind einige Abfragen kürzer
+//        				-FOR-NEXT-Schleife kann jetzt auch in einer Zeile stehen
+//        				-eine Abfrage der Cursorposition wäre für viele Dinge sinnvoll ->muss mal schauen, wie ich das mit den verschiedenen Fonts hinbekomme
+//        				-mathematische Berechnungen auf Zahlentyp double umgestellt, das ist sehr viel genauer
+//        				-Befehl PRZ zum setzen der Nachkommastellen eingefügt -> Standardwert ist 6
+//        				-langsam wird's ein richtiger Basic-Interpreter :-)
+//
+// v0.23b:02.05.2021
+//        				-Exponentialschreibweise eingebaut Wertebereich 1E-37 bis 1E+38
+//        				-Canvas.GFX Funktion für Grafikroutinen verwendet ->ca.doppelte Grafikgeschwindigkeit als mit Terminal-Befehlen
+//        				-Cursor Ein-Aus - Funktion hinzugefügt
+//
+// v0.22: 01.05.2021
+//        				-THEN eingefügt, mit Fehlerabfrage, ob vorhanden ->sieht einfach besser aus
+//        				-ELSE eingefügt -> langsam wird's
+//        				-Funktionstastenbelegung funktioniert bei dieser Art des Programmaufbau's nicht - mal sehen, ob mir was einfällt
+//        				-Fehlermessage-Verwaltung muss ich noch besser hinbekommen
+//        				-PRINT Befehl erweitert, jetzt können mehrere Ausdrücke mit Komma oder Semikolon getrennt ausgegeben werden
+//        				-BYE Befehl verbessert, jetzt startet der Interpreter auch optisch neu (Startbildschirm)
+//
+// v0.21: 30.04.2021
+//        				-mathematische Funktionen MIN,MAX,POW,CONST eingefügt
+//        				-Tastaturabfrage verändert ->jetzt funktioniert auch Backspace und CTRL-C
+//        				-Error-Meldung für mathematische Funktionen eingefügt
+//        				-Befehl DELAY -> in PAUSE umbenannt
+//        				-Fehler in Zeilenabarbeitung behoben, es wurde nach Delay kein weiterer Befehl in der gleichen Zeile abgearbeitet
+//        				-Todo: 	-SD-Karte anbinden -> Routinen sind schon implementiert
+//               					-Code etwas entflechten und nicht benötigte Programmteile entfernen
+//               					-Port- bzw. Pin-Funktionen testen
+//               					-Befehl CLEAR funktioniert, ein Kommafehler war die Ursache
+//               					-ein Zeileneditor wäre noch cool
+//               					-THEN für IF einbauen
+//
+// v0.20: 28.04.2021 ->Versionssprung wegen erweiterter mathematischer Funktionen
+//        				-Funktionen SIN,COS,TAN,LN,SGN,SQR,PI eingefügt
+//        				-Anmerkung: die Genauigkeit der Fliesskomma-Funktionalität ist noch unbefriedigend - keine Ahnung, ob das lösbar ist
+//        				-Exponentialschreibweise muss noch eingepflegt werden, sonst ist das Ganze bei sehr großen Zahlen nicht mehr sinnvoll
+//        				-!!!!! es gibt für IF kein THEN - was soll das denn?
+//
+// V0.17: 27.04.2021
+//       				-Fliesskomma-Arithmetik funktioniert in den Grundzügen, nur die Genauigkeit von nur 2 Nachkommastellen stört mich noch
+//       				-For-Next funktioniert mit Fliesskomma
+//       				-Wertezuweisung der Variablen mit Fliesskomma funktioniert
+//       				-RND(X) Funktion gab es schon -> abgehakt!
+//
+// v0.16: 26.04.2021
+//       				-Befehle Circle, Line, Rect eingefügt
+//
+// v0.15: 25.04.2021
+//       				Vorlage zum experimentieren herangezogen
+//      				hinzugefügte Funktionen: CLS, COLOR, PSET
+//       				Basic-Speicher auf 64kB erhöht - (keine Ahnung, ob das funktioniert)
+//       				todo:	- RANDOM-Funktion
+//           					- weitere Grafikfunktionen
+//            					- versuchen Gleitkomma-Arithmetik zu implementieren
+//            					- danach mathematische Funktionen (SIN,COS,ATN,CTAN,EXP,LN,SQR,SGN)

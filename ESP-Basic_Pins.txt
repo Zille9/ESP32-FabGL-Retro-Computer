@@ -1,0 +1,23 @@
+PIN		Funktion		-	Externer Header		interner Header
+IO0	-	nur Ausgang	-				-SPI-RAM	- CLK, Flashmodus (Flash Taste gegen GND)
+IO2	-	Frei		-	Analog/Port/PWM		Frei --------------------------
+IO34	-	ADC, nur Eingang	-	Analog/In-Port		Frei --------------------------
+IO35	-	ADC, nur Eingang	-	Analog/In-Port		Frei --------------------------
+IO36	-	ADC, nur Eingang	-	Analog/In-Port		Frei --------------------------
+IO39	-	ADC, nur Eingang	-				Akku-Überwachung	
+IO26	-	(Mouse Clk), Frei	-	Analog/Port/PWM		Frei --------------------------
+IO27	-	(Mouse Dat), Frei	-				-SPI-RAM	- MISO	
+IO1-TX0	-	Frei		-	SDA			SDA
+IO3-RX0	-	Frei		-	SCL			SCL
+IO12	-	Frei		-				-SPI-RAM	- MOSI
+IO13        -	Frei		-				-SPI-RAM - CS
+IO14	-	SD-Card		-				-SD-Card	- CLK (SD-Card CS- fest auf GND)
+IO16	-	SD-Card		-				-SD-Card	- MISO
+IO17	-	SD-Card		-				-SD-Card	- MOSI
+IO25	-	Sound		-				-Sound
+EN	-	Reset		-				Reset-Taste gegen GND
+
+3,3V					3,3V
+3,3V					3,3V
+GND					GND
+GND					GND
