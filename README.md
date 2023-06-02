@@ -8,7 +8,8 @@ erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>
 Die Version meiner Vor-Authoren wird die Grundlage für einen erweiterten Basic-Interpreter
 die Grundversion wurde erweitert durch:   
 
--fliesskomma Arithmetik 	
+-fliesskomma Arithmetik
+
 -Grafikfunktionen 	
 
 -mathematische Funktionen 	
