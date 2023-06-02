@@ -1,6 +1,5 @@
 # ESP32-Basic
 ESP-Basic+
-/////////////////////////////////////////////////////;//////////////////////////////////////////////////////////////////////////////////////////////
 //             Basic32+ with FabGL VGA library + PS2 PS2Controller                                                                                //
 //               for VGA monitor output - May 2019                                                                                                //
 //                                                                                                                                                //
@@ -16,7 +15,6 @@ ESP-Basic+
 //      SD-Card 14, 2, 12, 13 (SCK, MISO, MOSI, CS)     TTGO                                                                                      //
 //      FRAM-Board 14, 16, 17, 0 (SCK, MISO, MOSI, CS)  512kB FRAM am SD-SPI-BUS                                                                  //
 //                                                                                                                                                //
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // Hinweis: Um die SD-Karte zu verwenden, diese Pinconfiguration verwenden: 14, 16, 17, 13 (SCK, MISO, MOSI, CS)
 //          -> Kompatibilität zu fabgl-Programmen (VIC20 Emu, CPM-Emu, ZX-Emu, Tiny-CPC usw.)
