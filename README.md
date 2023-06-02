@@ -6,7 +6,8 @@ Ursprungsversion von: Rob Cai <rocaj74@gmail.com>
 erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>                                                                   
 
 Die Version meiner Vor-Authoren wird die Grundlage für einen erweiterten Basic-Interpreter
-die Grundversion wurde erweitert durch:  -fliesskomma Arithmetik
+die Grundversion wurde erweitert durch:   -fliesskomma Arithmetik
+
                                           -Grafikfunktionen
                                           -mathematische Funktionen
                                           -Stringfunktionen
