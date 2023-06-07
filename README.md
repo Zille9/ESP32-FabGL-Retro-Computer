@@ -39,3 +39,4 @@ die Grundversion wurde erweitert durch:
  Author:Reinhard Zielinski <zille09@gmail.com>
  April 2021
 
+![image](https://github.com/Zille9/ESP32-Basic/assets/78110942/ecedcc85-2db3-4dfa-919c-8043cce69693)
