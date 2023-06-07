@@ -43,7 +43,7 @@ die Grundversion wurde erweitert durch:
 
 -erweiterte logische Operatoren (AND, OR) 	
 
--BIT-Manipulation &,|,%,SL,SR usw. 	
+-BIT-Manipulation &,|,%,<<,>> usw. 	
 
 -Klammerrechnung 	
 
