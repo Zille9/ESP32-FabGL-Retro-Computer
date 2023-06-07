@@ -39,8 +39,8 @@ die Grundversion wurde erweitert durch:
  Author:Reinhard Zielinski <zille09@gmail.com>
  April 2021
 
-![image](https://github.com/Zille9/ESP32-Basic/assets/78110942/ecedcc85-2db3-4dfa-919c-8043cce69693) 
-!-Startbildschirm
+![grafik](https://github.com/Zille9/ESP32-Basic/assets/78110942/ecedcc85-2db3-4dfa-919c-8043cce69693) 
+-Startbildschirm
 ![grafik](https://github.com/Zille9/ESP32-Basic/assets/78110942/f0f2f713-669e-4dde-8419-2a1ff2b8c28f)
 -Programm Globus.Bas
 ![grafik](https://github.com/Zille9/ESP32-Basic/assets/78110942/4f2c0fc6-77a0-4bcc-a2fc-f1bd3ebfdaac)
