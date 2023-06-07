@@ -48,3 +48,7 @@ die Grundversion wurde erweitert durch:
 ![grafik](https://github.com/Zille9/ESP32-Basic/assets/78110942/069ef439-d76f-4b80-9b46-ac23f4fdddf0)
 -Programmlisting
 
+
+![grafik](https://github.com/Zille9/ESP32-Basic/assets/78110942/86d8d629-1a02-479d-8408-bb93a8eed3ce)
+Screenshot als BMP-Datei exportiert
+
