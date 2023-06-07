@@ -64,5 +64,5 @@ Komponenten:
 
 -RTC-Modul https://www.reichelt.de/entwicklerboards-praezisions-echtzeituhr-ds3231-debo-rtc-uhr2-p235506.html?PROVID=2788&gclid=EAIaIQobChMImaDrzNqx_wIVQs7VCh1VowhwEAQYBCABEgLQoPD_BwE
 
--siehe auch BOOM-List im Ordner Schematic
+-siehe auch BOOM-List im Ordner Schematic ->folgt bald
 
