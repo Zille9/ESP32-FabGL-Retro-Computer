@@ -1,4 +1,4 @@
-# ESP32-Basic FabGl
+# ESP32-Basic with FabGL VGA library + PS2-Keyboard
 ESP-Basic+
 Basic32+ with FabGL VGA library + PS2 PS2Controller 
 for VGA monitor output - May 2019       
