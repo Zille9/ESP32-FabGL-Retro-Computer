@@ -65,8 +65,6 @@ die Grundversion wurde erweitert durch:
 
 -Soundfunktionen (noch in der Entwicklung)
 ```
- Author:Reinhard Zielinski <zille09@gmail.com>
- April 2021
 
 ![grafik](https://github.com/Zille9/ESP32-Basic/assets/78110942/ecedcc85-2db3-4dfa-919c-8043cce69693) 
 ```
@@ -104,3 +102,4 @@ Screenshot als BMP-Datei exportiert
 
 -siehe auch BOOM-List im Ordner Schematic ->folgt bald
 
+ ### Author:Reinhard Zielinski <zille09@gmail.com> April 2021
