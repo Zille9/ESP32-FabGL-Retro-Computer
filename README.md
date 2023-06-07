@@ -13,7 +13,7 @@ erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>
 
 -56472 Basic Bytes free
 
--VGA-Display 320x240 Pixel 64 Farben oder 400x300 Pixel 64 Farben oder AV (Pin25)
+-VGA-Display 320x240 Pixel 64 Farben oder 400x300 Pixel 64 Farben oder AV (IO26)
 
 -IO-Erweiterung mit MCP23017 (2x8 IO-Ports) + EEPROM 512kB 
 
