@@ -1,0 +1,5 @@
+10 DEFN A(A,B)=[SIN(A)*COS(B)]
+20 X=80:Y=20
+30 Z=FN A(X,Y)
+40 PRINT Z
+

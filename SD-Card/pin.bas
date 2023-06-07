@@ -1,0 +1,8 @@
+5 PIN(S,2,0)
+6 A=1
+10 FOR I=1 TO 200
+15 A=!A
+20 PIN(W,2,A)
+25 PAUSE 500
+30 NEXT I
+
