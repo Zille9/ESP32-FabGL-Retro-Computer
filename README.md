@@ -6,7 +6,11 @@ Ursprungsversion von: Rob Cai <rocaj74@gmail.com>
 erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>                                                                   
 
 Hardware:
-ESP32 / 240MHz / VGA-Display 320x240 Pixel 64 Farben oder 400x300 Pixel 64 Farben oder AV / IO-Erweiterung mit MCP23017 (2x8 IO-Ports) + EEPROM 512kB / FRAM 512kB /PS2-Keyboard /RTC DS3231 
+
+ESP32 / 240MHz / VGA-Display 320x240 Pixel 64 Farben oder 400x300 Pixel 64 Farben oder AV 
+
+IO-Erweiterung mit MCP23017 (2x8 IO-Ports) + EEPROM 512kB / FRAM 512kB /PS2-Keyboard /RTC DS3231 
+
 
 Software:
 
