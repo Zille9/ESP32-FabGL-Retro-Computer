@@ -1,0 +1,9 @@
+5 CLEAR
+6 T=TIMER
+10 DIM A$(1000)
+20 FOR I=0 TO 1000
+30 A$(I)="Das ist der Wert:"+STR$(I,0)
+45 PRINT A$(I)
+50 NEXT I
+60 PRINT TIMER-T; "msek."
+

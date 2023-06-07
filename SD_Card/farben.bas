@@ -1,0 +1,9 @@
+3 CLS
+5 A=0:POS 5,1
+10 FOR I=0 TO 63
+20 COL 0,I
+22 A=A+1
+23 IF A=10 THEN POS 5,GET(1)+1:A=1
+30 PRINT" ";I;" ";
+40 NEXT I
+
