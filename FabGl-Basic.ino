@@ -43,15 +43,203 @@
 // April 2021
 //
 //
-#define BasicVersion "1.67b"
-#define BuiltTime "Built:01.06.2023"
+#define BasicVersion "1.68b"
+#define BuiltTime "Built:09.06.2023"
 #pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
-// v1.67b:01.06.2023          -Funktion GPIC(n) eingefügt PRINT GPIC(0)->Breite GPIC(1)->Höhe der letzten geladenen BMP-Datei
-//                            -
-//                            -18153 Zeilen/sek.
+// v1.68b:09.06.2023          -Fehler in Print-Routine behoben, bei Printausgaben, welche in der gleichen Zeile durch : getrennte Befehle enthielt, wurde das Semikolon wirkungslos
+//                            -jetzt werden alle Ausgaben nach einem Semikolon in der gleichen Zeile ausgeführt, erst ein NL (new Line) (oder ein Print ohne ;) führt zu einer neuen Zeile
+//                            -am einfachsten ist ein Print einzufügen, um die Ausgabe in einer neuen Zeile beginnen zu lassen.
+//                            -Unterprogramm get_value() geändert ->Fehlerausgabe entfernt, das führte zum Bsp. bei Input zum Programmabbruch, das ist ungewollt
+//                            -ausserdem wurde damit das Problem der doppelten Fehlerausgabe behoben
 //
-
+// v1.67b:01.06.2023          -Funktion GPIC(n) eingefügt PRINT GPIC(0)->Breite GPIC(1)->Höhe der letzten geladenen BMP-Datei
+//                            -Versuch einen SD-Loader zu integrieren, CP/M kann geladen werden und funktioniert, nur komm ich nicht mehr zum Basic zurück :-(
+//                            -in dieser Beziehung ist die Arduinowelt doof, alles muss geflasht werden :-(
+//                            -mal sehen, ob ich eine Lösung finde, wäre cool, andere Programme zu laden und wieder zum Basic zurückzukehren.
+//                            -18033 Zeilen/sek.
+//
+// v1.66b:25.05.2023          -Skalierung funktioniert jetzt besser
+//                            -Routine verbessert, jetzt dauern auch sehr grosse Bilder nicht mehr ewig
+//                            -krumme Formate führen allerdings zu Verzerrungen, Bilder sollten im Verhältnis dem Bildschirmformat entsprechen
+//                            -Fehler in der Darstellungsroutine behoben, war das Bild kleiner als die Bildschirmauflösung, wurde das Bild nicht dargestellt
+//                            -Bildschirmauflösung wird jetzt berücksichtigt damit ist die Darstellung auch bei 400x300 korrekt
+//                            -18200 Zeilen/sek.
+//
+// v1.65b:23.05.2023          -Export des Bildschirminhaltes (oder eines Ausschnittes) im BMP-Format funktioniert
+//                            -Import BMP-Datei funktioniert ebenfalls, Laden eines Bildes dauert ca.6.5sek.
+//                            -Skalierung von größeren Bildern (>320x240) nicht perfekt aber funktionstüchtig
+//                            -18099 Zeilen/sek.
+//
+// v1.64b:19.05.2023          -Laden (PIC_L(Adr,Filename)) und Speichern (PIC_S(Adr,Filename)) funktioniert
+//                            -Datei-Sicherheitsabfragen für PIC_L und PIC_S hinzugefügt, Puffer auf 1024 Bytes erhöht ->Laden und Speichern erfolgt schneller
+//                            -nächster Schritt: Daten von und ins BMP-Format wandeln und speichern/laden
+//                            -18102 Zeilen/sek.
+//
+// v1.63b:12.05.2023          -erneut begonnen den PIC-Befehl zu integrieren, für erste Tests kann mit PIC_P(Adr) ein Grafikbildschirm
+//                            -im FRAM abgelegt werden mit PIC_D(Adr) kann der gesicherte Bildinhalt wieder auf dem Bildschirm dargestellt werden
+//                            -PIC_P(Adr<,x,y,xx,yy>) speichert den Bildausschnitt x,y,xx,yy PIC_P(Adr) speichert den gesamten Bildschirm
+//                            -PIC_D(Adr,<x,y><,mode>) lädt die Bilddaten an Position x,y,mode=1 ->Hintergrund erhält die aktuelle Hintergrundfarbe
+//                            -nächster Schritt: Laden und Speichern der Bilddaten auf SD-Karte
+//                            -Unterprogramm FilenameWord eingespart - Umstellung der Dateioperationen auf die Stringfunktionen
+//                            -damit ist die Übergabe des Dateinamens als Stringvariable möglich
+//                            -17727 Zeilen/sek.
+//
+// v1.62b:07.05.2023          -COM-Befehl modifiziert ->COM_S(RX,TX,Baud) bzw. COM_S(0), COM_P(Zeichenkette,...), COM_W(Zeichenkette,...),
+//                            -COM_T -> sendet das Programm im Speicher an die ser. Schnittstelle
+//                            -Theme jetzt mit OPT THEME=x speicherbar, werden Farben oder Font über OPT gespeichert, wird beim Start das Theme ignoriert
+//                            -Startbildschirm etwas angepasst ->Font_offset eingespart, wird jetzt berechnet
+//                            -ein Farbbalken zeigt jetzt zusätzlich die Akku-Kapazität an ->mal sehen, ob das so bleibt
+//                            -16575 Zeile/sek.
+//
+// v1.61b:04.05.2023          -begonnen serielle Funktionen zu integrieren, noch ist das Konzept nicht ganz klar
+//                            -RX-Puffer der seriellen Schnittstelle auf 1024 Bytes erhöht, so können ganze Basic-Programme über die Com-Schnittstelle vom PC eingelesen werden,
+//                            -ohne verlorene Zeichen (gibt ja keine Flusskontrolle)
+//                            -bisherige Funktionen P=print W=write T=transfer (List)
+//                            -COM P und COM W können jetzt verkettete Ausgaben (wie Print) durchführen (P mit, W ohne Zeilenumbruch)
+//                            -17847 Zeilen/sek.
+//
+// v1.60b:29.04.2023          -DURCHBRUCH: es ist gelungen, den SPI-Port mit SD-Karte "und" FRAM zu betreiben ->FRAM_CS=Pin 0 (Sharing mit Flash-Taste);
+//                            -diverse Aktivierungen und Deaktivierungen der einzelnen Treiber machte es möglich :D
+//                            -somit können die vorherigen Einschränkungen zurückgenommen werden
+//                            -mein BASIC-LAPTOP ist fertig :-) ->Befehl Akku erweitert Print Akku(0) zeigt die Spannung und Akku(1) die Akkukapazität in Prozent an
+//                            -Akku-Interrupt-Routine ist jetzt aktiv und zeigt bei leerem Akku eine Warnung auf dem Bildschirm an
+//                            -Funktion GPIX(x,y) zum ermitteln des Farbwertes eine Pixel an Position x,y hinzugefügt.
+//                            -etwas schneller geworden 17379 Zeilen/sek. Mandel4.bas 14.71 Min
+//
+// v1.59b:29.04.2023          -bisher endgültige FRAM-PIN'S-> FRAM_CS  = 13, FRAM_MISO= 27 , FRAM_MOSI= 12 und FRAM_CLK = 0
+//                            -damit wird Pin26 wieder frei für DAC,Video-Out
+//                            -Port-Befehle auf die wenigen übrigen Pins reduziert (AREAD,DWRITE,PWM,PULSE)
+//                            -17019 Zeilen/sek. Mandel4.bas 14.32 Min
+//
+// v1.58b:28.04.2023          -SPI_FRAM-Board von Adafruit eingetroffen, leider funktioniert das Board nur mit eigenen SPI-Pin's
+//                            -an den Pin's für die SD-Karte (wie geplant) und eigenen CS-Pin funktioniert der Ram nicht
+//                            -ärgerlich, das SPI nicht so funktioniert wie er sollte
+//                            -mit eigenen Pin's (FRAM_CS  = 27, FRAM_MISO= 26 , FRAM_MOSI= 2 und FRAM_CLK = 12 funktioniert der Chip zwar aber verbraucht damit auch
+//                            -alle IO-Pins für Ausgabe ,so ist z.Bsp.der LED-Strip nicht mehr nutzbar, nur I2C ist noch verwendbar
+//                            -einzig 3 Analog Eingangs-Pins's sind noch verfügbar :-(
+//                            -DOUT, PWM, DIN, PULSE, DAC ,TEMP, DHT usw.sind damit sinnlos, weil keine Pins mehr vorhanden sind.
+//                            -nach mehrfachen Tests hat sich folgende Pin-Konfiguration als offensichtliches Optimum gezeigt
+//                            -FRAM_CS=13 (SD-Card CS-Pin dauerhaft auf GND), FRAM_MISO=26 ,FRAM_MOSI=27, FRAM_CLK=0
+//                            -so sind zumindest Pin 2 und 12 als IO frei für Anwendungen sowie 34, 35 und 36 als Analog-Eingänge, besser als nix
+//                            -die FRAM-Geschwindigkeit ist mehr als 3mal so hoch gegenüber der I2C-Variante :D
+//                            -16353 Zeilen/sek. ->Julia.bas 13.13Min, Mandel4.bas 14.62 Min
+//
+// v1.57b:25.04.2023          -Startbildschirm etwas farbig aufgepeppt, Anzeige der Bildschirmauflösung entfernt ->es gibt ja nur noch 320x240
+//                            -Geschwindigkeit wieder eingebrochen ->15240 Zeilen/sek.!?
+//                            -FPOKE und FPEEK hinzugefügt, ermöglicht das schreiben und lesen von float-Werten im Ram, FRam oder EEProm
+//                            -FPOKE Ort,Adresse,Wert , A=FPEEK(Ort,Adresse) -> Ort 0=RAM, 1=FRAM, 2=EEPROM
+//                            -Optimierungsoption jetzt im Programmkopf (siehe #pragma GCC optimize)
+//                            -morgen kommt ein FRAM-Chip mit 512kb als SPI-Variante, mal sehen, ob der eingebunden werden kann, das wäre cool :-)
+//                            -damit wäre eine umfangreiche Datenspeicherung usw.möglich, und das mit bis zu 20MHz (statt 400kHz mit I2C)
+//                            -Pins sollen die gleichen, wie SD-Card sein, nur CS-Pin wird ein anderer ->mal sehen, obs klappt.
+//                            -15165 Zeilen/sek.
+//
+// v1.56b:22.04.2023          -BEFEHL OPT geschaffen, damit können Pin-Konfigurationen, Farbeinstellungen usw. im Flash gespeichert werden
+//                            -diese werden dann beim Start gelesen und entsprechend gesetzt (SD-CARD-Pins, I2C-Pins, Font, Vorder-und Hintergrundfarben)
+//                            -THEME und FONT speichern jetzt nicht mehr dauerhaft, das macht OPT
+//                            -Startbildschirm etwas geändert
+//                            -OPT kann jetzt die SD-Karten- und die I2C-Konfiguration speichern und lesen ->muss noch getestet werden
+//                            -18210 Zeilen/sek.
+//
+// v1.55b:20.04.2023          -Fehler der Print-Ausgabe gefunden, nicht der String-Marker sondern der Char-Marker wurde nicht rechtzeitig zurückgesetzt
+//                            -dies wurde korrigiert, jetzt stimmt wieder alles (expr4()) :-)
+//                            -Befehl Pic entfernt, stattdessen Befehl DRAW x,y,mode kreiert DRAW x,y,0 springt zur Position x,y
+//                            -DRAW x,y,1 zeichnet eine Linie von der letzten Position (DRAW x,y,0) nach x,y, damit sind Vielecke o.ä. Strukturen zeichenbar
+//                            -nach dem Turtle-Zeichnungs-Prinzip (von pos nach pos -> nach pos -> nach pos)
+//                            -MODE-Befehl deaktiviert, ob man das braucht? 320x240 Pixel in 64 Farben ist für einen Retro-Computer ausreichend
+//                            -außerdem ist der Basic-Interpreter besser für LCD-Displays portierbar
+//                            -String-Fehldarstellungs-Ursache gefunden ->tempstring wurde nicht korrekt abgeschlossen (Nullterminator zu spät gesetzt)
+//                            -STR$-Funktion umgebaut, ->STR$(12.34,n) wandelt einen numerischen Wert in einen String mit n - Nachkommastellen um
+//                            -1.Array-Dimension auf Word-Größe erweitert, jetzt sind Arrays in der ersten Dimension über 255 möglich (DIM A(1000))
+//                            -18255 Zeilen/sek. ->Font 25 Julia.bas 12.6Min, Mandel4.bas 13.9Min (Debug_lvl=Fehler)
+//
+// v1.54b:18.04.2023          -DOKE Befehl mit writeBuffer realisiert, ist schneller als 2 x writeEEPROM - 32kb dauern nur noch 5 statt 15 sek.
+//                            -NEW-Befehl geändert, nur return führte dazu, dass neue Befehle/Programme den ESP aufhingen!?
+//                            -etwas Code-Optimierung -> clear_var() und cmd_new() kombiniert - spart wieder einige Code-Zeilen
+//                            -Core Debug-Level auf Info gesetzt ->18228 Zeilen/sek. ->Font 25, zur Zeit die beste Einstellung
+//                            -MNT-Befehl funktioniert nicht, wie gewünscht, aus irgend welchen Gründen verliert der ESP die SD-Karte?
+//                            -eine neue SD-Initialisierung funktioniert nicht, was ist das nun wieder?
+//                            -sollte das der Editor sein?,nach dem Editieren von Code passiert diese Problematik am häufigsten, nur Reset hilft dann
+//                            -überprüfe nochmal den Editor-Code
+//                            -Fehler lag in sd_pfad-Variable ->in static char umgewandelt, jetzt scheint es richtig zu funktionieren
+//                            -Addition von Strings und CHR$ erweitert -> jetzt verkettet möglich
+//                            -allerdings wird für Print der String_marker nicht rechtzeitig zurückgesetzt, bis zur Lösung muss mit Print ein numerischer Wert ausgegeben werden
+//                            -dann ist die Darstellung wieder korrekt -> muss noch die richtige Stelle zum zurücksetzen von string_marker finden
+//                            -Mandel4.bas ->13.96 Min
+//                            -17838 Zeilen/sek.
+//
+// v1.53b:16.04.2023          -String- und numerische Arrays bis zu 3 Dimensionen scheint zu funktionieren, ein großer Schritt für mich, bedeutungslos für die Menschheit :-)
+//                            -weitere Test's werden zeigen, ob das wirklich so ist
+//                            -die Verarbeitungsgeschwindigkeit ist natürlich erheblich langsamer, da die Arrays im FRAM gespeichert bzw. gelesen werden
+//                            -Code muss noch optimert werden aber ein großer Schritt ist getan :-D !!!
+//                            -CLEAR funtionierte nicht im Programm ,durch warmstart() und nachfolgendes continue in der Hauptschleife wurde das Programm unterbrochen
+//                            -warmstart in clear_var() entfernt, continue in der Hauptschleife durch break ersetzt, jetzt funtioniert CLEAR auch im Programm korrekt!
+//                            -write_array_value und read_array zu rw_array zusammengefasst, die beiden Programmteile waren fast identisch
+//                            -VAR_TBL und STR_TBL könnten noch als RAM-Array realisiert werden, sollte etwas schneller sein
+//                            -nach etwas Codeoptimierung ist die Geschwindigkeit von 14560 auf 17064 Zeilen/sek. gestiegen :-)
+//                            -diverse Bit-shift Operationen durch highByte und lowByte ersetzt, das ist offensichtlich schneller
+//                            -Ausführungszeit Julia.bas ->12.69 Min. Mandel4.bas ->14.29 Min.
+//                            -aktuell 17418 Zeilen/sek. ->Font25 ->Core Debug Level=Debug
+//
+// v1.52b:12.04.2023          -etwas Code-Optimierung betrieben
+//                            -Unterfunktion Test_char(char) zur Überprüfung auf erforderliche Zeichen erschaffen, dadurch etliche Zeilen, sich ständig wiederholenden
+//                            -Abfrage-Codes eingespart (ca.100 Zeilen)
+//                            -Befehl STOP entfernt, ohne Continue macht Stop keinen Sinn-> End macht das Gleiche
+//                            -Unterprogramme Circ,Rect und Lines auf ein Unterprogramm reduziert (line_rec_circ(art,parameterzahl)), dadurch wieder ca.65 Zeilen Code
+//                            -eingespart
+//                            -Fehler im Sprite(D... Befehl behoben, der Funktionsstring musste mit trim() gekürzt werden sonst Fehlausgabe
+//                            -Soundbefehl gefällt mir nicht, vielleicht wirds doch ne externe Soundkarte (Propeller mit SID-Sound!?)
+//                            -18306 Zeilen/sek.
+//
+// v1.51b:10.04.2023          -Stringlänge auf 30 Zeichen gekürzt (Vorbereitung für Arrays)
+//                            -dabei ist aufgefallen,das es keine Sicherheitsfunktion für das Schreiben zu langer Strings gegeben hat
+//                            -bei sehr langen Strings wurde der Nachbarstring überschrieben, dies wurde behoben
+//                            -Addition von Strings geändert, ist noch nicht perfekt ->am Ende einer Addition taucht ein '/' auf!?
+//                            -die Übernahme des Gesamtstring nach Tempstring ist noch buggy
+//                            -MNT Befehl zum Mounten der SD-Karte hinzugefügt, wenn die Karte entnommen wurde, konnte nicht mehr gelesen werden
+//                            -Array-Dimensionierung begonnen - numerische und Stringvariablen
+//                            -ist noch ein ganzes Stück Arbeit aber die Dimensionierung scheint zu funktionieren
+//                            -es werden bis zu 3 Dimensionen möglich sein, warscheinlich geht der ganze FRAM dabei drauf
+//                            -Verarbeitungsgeschwindigkeit ist eingebrochen ->
+//                            -18225 Zeilen/sek. , es bleibt seltsam!
+//
+// v1.50b:07.04.2023          -PEEK und POKE wieder in ursprüngliche Form gebracht POKE Ort,Adresse,Wert
+//                            -A=PEEK(Ort,Adresse) für Word Werte wurde DEEK und DOKE eingefügt ->DOKE Ort,Adresse,Wert, A=DEEK(Ort,Adresse)
+//                            -das ist übersichtlicher - Long Werte können mit 2 Word Werten zusammengesetzt werden - siehe POKE.BAS
+//                            -so konnte wieder auf float zurückgegangen werden - (Geschwindigkeit höher! siehe v1.49)
+//                            -Beginn der Testphase für den Sound Befehl
+//                            -Error-Sound hinzugefügt ->ertönt bei Fehlern
+//                            -neuer Befehl BEEP(Note,Länge) geschaffen als mini-Soundmodul
+//                            -20154 Zeilen/sek. Font25
+//
+// v1.49b:04.04.2023          -PEEK und POKE erweitert POKE Ort,Adresse,Wert<,2Word o. 4Long> ansonsten Byte
+//                            -A=PEEK(Ort,Adresse<,2Word o.4Long> ansonsten Byte, dafür musste wieder auf die Verarbeitung der Zahlen im float-Format
+//                            -umgestellt werden, da sonst der Wertebereich von float für die Darstellung von unsigned Long nicht ausreichte
+//                            -kleiner Fehler in list_out-Routine behoben, es konnte vorkommen, das die letzte Zeilennumer nicht korrekt angezeigt wurde
+//                            -Funktion SQR erweitert ->SQR(x <,n> )= n'te Wurzel aus x - n ist optional
+//                            -17058 Zeilen/sek. Font1
+//
+// v1.48b:03.04.2023          -DMP-Befehl erweitert, jetzt sind alle drei verfügbaren Speichermedien anzeigbar
+//                            -DMP 0<,Adresse> = interner RAM
+//                            -DMP 1<,Adresse> = FRAM-Chip
+//                            -DMP 2<,Adresse> = EEPROM-Chip
+//                            -dabei ist die Angabe der Adresse optional, ohne Angabe der Adresse wird bei Adresse 0 begonnen
+//                            -PEEK und POKE ebenfalls angepasst ->A=PEEK(0..2,ADRESSE) POKE(0..2,ADRESSE,VALUE)
+//                            -Funktionstasten für DIR und LIST (CTRL+D, CTRL+L) hinzugefügt.
+//                            -Befehl NEW mit memset-Funktion ergänzt, jetzt wird der gesamte Speicher gelöscht inklusive der Variablen, vorher waren die Variablen noch vorhanden
+//                            -und im Speicher befanden sich Fragmente des alten Programms
+//                            -20568 Zeilen/sek. Font25
+//
+// v1.47b:02.04.2023          -Input-Eingaben jetzt mit mehreren Variablen (auch gemischt) möglich, es erfolgt aber keine Typprüfung
+//                            -d.h. das man auf die richtige (Zahl oder Zeichenkette) Variablentype bei der Eingabe achtet
+//                            -das bedeutet, das eine Zahl auch als String akzeptiert wird, da keine Anführungszeichen abgefragt werden
+//                            -mittels Lineeditor-Funktion von FabGl endlich einen funktionierenden Zeileneditor geschaffen
+//                            -wird eine Zeile eingegeben, die nicht existiert, wird die nächst verfügbare Zeile in den Bearbeitungsspeicher geladen
+//                            -und mit der falsch eingegebenen Zeilennummer gespeichert
+//                            -ob das als Bug oder als Feature angesehen wird, muss sich noch zeigen - so könnte man Zeilen kopieren!?
+//                            -19611 Zeilen/sek. Font25
+//
 //
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -105,6 +293,8 @@ unsigned int noteTable []  PROGMEM = {16350, 17320, 18350, 19450, 20600, 21830, 
 #include "FS.h"
 #include <SD.h>
 #include <SPI.h>
+#include <Update.h>
+
 //SPI CLASS FOR REDEFINED SPI PINS !
 SPIClass spiSD(HSPI);
 //Konfiguration der SD-Karte unter FabGl - kann mit OPT geändert werden
@@ -112,7 +302,7 @@ byte kSD_CS   = 13;
 byte kSD_MISO = 16;
 byte kSD_MOSI = 17;
 byte kSD_CLK  = 14;
-byte SD_SET   = 44;      // -steht 44 im EEprom-Platz 10, dann sind die Werte im EEprom gültig 
+byte SD_SET   = 44;      // -steht 44 im EEprom-Platz 10, dann sind die Werte im EEprom gültig
 
 #define kSD_Fail  0      //Fehler-Marker
 #define kSD_OK    1      //OK-Marker
@@ -1637,7 +1827,7 @@ static float expr4(void)
     {
       case  FUNC_PEEK:                          //Peek Byte
       case  FUNC_DEEK:                          //Deek Word
-      case  FUNC_FPEEK:                         //FPEEK Float
+      case  FUNC_FPEEK:                         //FPEEK float
       case  FUNC_GPIX:                          //GPIX(x,y)
       case  FUNC_MIN:
       case  FUNC_MAX:
@@ -1816,7 +2006,7 @@ static float expr4(void)
         break;
 
       case FUNC_FPEEK:
-        if (a == 0) {                                     //RAM Float
+        if (a == 0) {                                     //RAM float
           buf[0] = program[int(b)];
           buf[1] = program[int(b) + 1];
           buf[2] = program[int(b) + 2];
@@ -1825,13 +2015,13 @@ static float expr4(void)
           return reslt;
         }
         else if (a == 1) {
-          spi_fram.read(FRAM_OFFSET + b, buf, 4);         //FRAM Float
+          spi_fram.read(FRAM_OFFSET + b, buf, 4);         //FRAM float
           //readBuffer(FRam_ADDR, b, 4, buf);
 
           float reslt = *(float*)buf;
           return reslt;
         }
-        else if (a == 2) {                                //EEPROM Float
+        else if (a == 2) {                                //EEPROM float
           readBuffer(EEprom_ADDR, b, 4, buf);
           float reslt = *(float*)buf;
           return reslt;
@@ -2157,6 +2347,7 @@ static float expr4(void)
         break;
 
       case FUNC_PIC:
+
         if (a == 0) return bmp_width;
         else return bmp_height;
         break;
@@ -2263,7 +2454,6 @@ static float expr2(void)
         cbuf += bbuf;
         cbuf.trim();
         cbuf.toCharArray(tempstring, cbuf.length() + 1);
-
       }
       else
 
@@ -2569,6 +2759,7 @@ static int input(void)
 
 inputagain:
   tmptxtpos = txtpos;
+  expression_error = 0;
   getln( '?' );
   toUppercaseBuffer();
   txtpos = program_end + sizeof(unsigned short);
@@ -2602,9 +2793,14 @@ inputagain:
     }
     else
     {
+
       value = get_value();
-      if (expression_error)
+      if (expression_error) {
+        Beep(0, 0);
+        txtpos = tmptxtpos;
         goto inputagain;
+      }
+
       ((float *)variables_begin)[tmp[f] + tmo[f]] = value;
     }
     if (f < nr) {
@@ -3085,7 +3281,16 @@ interpreteAtTxtpos:
 
 
       case KW_LOAD:                                       // LOAD filename
-        load_file();
+        if (*txtpos == '_') {
+          txtpos++;
+          if (*txtpos == 'B') {
+            txtpos++;
+            if (load_binary())
+              continue;
+          }
+        }
+        else load_file();
+        string_marker = false;
         continue;
         break;
 
@@ -3103,6 +3308,7 @@ interpreteAtTxtpos:
 
       case KW_SAVE:                                       // SAVE filename (/filename.bas)
         save_file();
+        string_marker = false;
         continue;
         break;
 
@@ -3847,7 +4053,7 @@ gosub_return:
 //--------------------------------------------- PRINT - Befehl ------------------------------------------------------------------------------------
 static int command_Print(void)
 {
-  int k = 0, at = 0;
+  int k = 0, at = 0, sm = 0;
   int xp, yp, tx, ty;
   while (!k)
   { char c = spaces();
@@ -3859,6 +4065,7 @@ static int command_Print(void)
         if (skip_spaces() == NL)
         {
           k = 1;
+
         }
         break;
 
@@ -3867,7 +4074,7 @@ static int command_Print(void)
         break;
 
       case ':':
-        Terminal.println();
+        //Terminal.println();
         //if(ser_marker) Serial1.println();
         txtpos++;
         k = 1;
@@ -4170,11 +4377,13 @@ static float get_value()
   // Work out where to put it
   expression_error = 0;
   value = expression();
-  if (expression_error)
-  {
-    syntaxerror(syntaxmsg);
+  /*
+    if (expression_error)
+    {
+    //syntaxerror(syntaxmsg);
     return value;
-  }
+    }
+  */
   return value;
 }
 
@@ -4375,7 +4584,7 @@ static int poke(int fn)             //POKE WAS,ADRESSE,WERT
 
   // Wert eingeben
   if (fn == KW_FPOKE) {
-    w_ert = get_value();                                        //Floatwert poken
+    w_ert = get_value();                                        //floatwert poken
     goto next;
   }
 
@@ -4419,7 +4628,7 @@ next:
     }
     else if (fn == KW_FPOKE) {
       byte* bytes = (byte*)&w_ert;
-      SPI_RAM_write(FRAM_OFFSET + address, bytes, 4);                       //FRAM Float
+      SPI_RAM_write(FRAM_OFFSET + address, bytes, 4);                       //FRAM float
     }
     return 0;
   }
@@ -4434,7 +4643,7 @@ next:
     }
     else if (fn == KW_FPOKE){
       byte* bytes = (byte*)&w_ert;
-      WriteBuffer(FRam_ADDR, address, 4, bytes);                       //FRAM Float
+      WriteBuffer(FRam_ADDR, address, 4, bytes);                       //FRAM float
     }
     return 0;
     }
@@ -4447,7 +4656,7 @@ next:
     p_data[1] = lowByte(wert);
     WriteBuffer(EEprom_ADDR, address, 2, p_data);                       //EEPROM Word
   }
-  else if (fn == KW_FPOKE) {                                              //EEPROM Float
+  else if (fn == KW_FPOKE) {                                              //EEPROM float
     byte* bytes = (byte*)&w_ert;
     WriteBuffer(EEprom_ADDR, address, 4, bytes);
   }
@@ -5466,33 +5675,37 @@ GFX.setBrushColor((bitRead(bc, 5) * 2 + bitRead(bc, 4)) * 64, (bitRead(bc, 3) * 
   //--------------------------------------------- Unterprogramm - Startbildchirm  -------------------------------------------------------------------
 
   void print_info()
-  { int y_pos = y_char[fontsatz] / 2;
+  { int c, d, e, f;
+    int y_pos = y_char[fontsatz] / 2;
     int x_pos = VGAController.getScreenWidth() / x_char[fontsatz];
 
-    float b = 3.3 / 4095 * analogRead(Batt_Pin);
-    b = b / 0.753865;                           //(Umess/(R2/(R1+R2)) R1=3.327kohm R2=10.19kohm
-    int   c = 100 - ((4.2 - b) * 100);                //Akkuwert in Prozent
-    if (c > 100) c = 100;
+    float g = 3.3 / 4095 * analogRead(Batt_Pin);
+    g = g / 0.753865;                           //(Umess/(R2/(R1+R2)) R1=3.327kohm R2=10.19kohm
+    int   h = 100 - ((4.2 - g) * 100);                //Akkuwert in Prozent
+    if (h > 100) h = 100;
 
 
     fbcolor(Vordergrund, Hintergrund);
     Terminal.enableCursor(false);
     GFX.clear();
-
-    fcolor(48);  //48,60,3,28
-    GFX.drawLine(100 - c, 1 + (2 * y_char[fontsatz]), 219 + c, 1 + (2 * y_char[fontsatz]));
-    fcolor(60);
-    GFX.drawLine(100 - c, 2 + (2 * y_char[fontsatz]), 219 + c, 2 + (2 * y_char[fontsatz]));
-    fcolor(3);
-    GFX.drawLine(100 - c, 3 + (2 * y_char[fontsatz]), 219 + c, 3 + (2 * y_char[fontsatz]));
-    fcolor(28);
-    GFX.drawLine(100 - c, 4 + (2 * y_char[fontsatz]), 219 + c, 4 + (2 * y_char[fontsatz]));
-    fcolor(3);
-    GFX.drawLine(100 - c, 5 + (2 * y_char[fontsatz]), 219 + c, 5 + (2 * y_char[fontsatz]));
-    fcolor(60);
-    GFX.drawLine(100 - c, 6 + (2 * y_char[fontsatz]), 219 + c, 6 + (2 * y_char[fontsatz]));
-    fcolor(48);
-    GFX.drawLine(100 - c, 7 + (2 * y_char[fontsatz]), 219 + c, 7 + (2 * y_char[fontsatz]));
+    c = random(64);
+    d = random(64);
+    e = random(64);
+    f = random(64);
+    fcolor(c);  //48,60,3,28
+    GFX.drawLine(100 - h, 1 + (2 * y_char[fontsatz]), 219 + h, 1 + (2 * y_char[fontsatz]));
+    fcolor(d);
+    GFX.drawLine(100 - h, 2 + (2 * y_char[fontsatz]), 219 + h, 2 + (2 * y_char[fontsatz]));
+    fcolor(e);
+    GFX.drawLine(100 - h, 3 + (2 * y_char[fontsatz]), 219 + h, 3 + (2 * y_char[fontsatz]));
+    fcolor(f);
+    GFX.drawLine(100 - h, 4 + (2 * y_char[fontsatz]), 219 + h, 4 + (2 * y_char[fontsatz]));
+    fcolor(e);
+    GFX.drawLine(100 - h, 5 + (2 * y_char[fontsatz]), 219 + h, 5 + (2 * y_char[fontsatz]));
+    fcolor(d);
+    GFX.drawLine(100 - h, 6 + (2 * y_char[fontsatz]), 219 + h, 6 + (2 * y_char[fontsatz]));
+    fcolor(c);
+    GFX.drawLine(100 - h, 7 + (2 * y_char[fontsatz]), 219 + h, 7 + (2 * y_char[fontsatz]));
 
     fcolor(Vordergrund);
 
@@ -5668,6 +5881,7 @@ inchar_loadfinish:
   void sd_ende(void) {
     spiSD.end();                                              //SD-Card unmount
     spi_fram.begin(3);                                        //FRAM aktivieren
+
   }
   //--------------------------------------------- LOAD - Befehl -------------------------------------------------------------------------------------
 
@@ -5697,6 +5911,7 @@ inchar_loadfinish:
     if ( !SD.exists(String(sd_pfad) + String(tempstring)))
     {
       syntaxerror(sdfilemsg);
+      sd_ende();
     }
     else {
       fp = SD.open(String(sd_pfad) + String(tempstring));
@@ -7265,9 +7480,10 @@ nochmal:
       return 0;
     }
 
+    //********************************************************** PIC-Befehl ****************************************************
     int show_Pic(void) {
       long ad, n_bytes;
-      int x, y, iv,pn;
+      int x, y, iv, pn;
       int dx, dy, ddx, ddy, px, py, vv, vh;
       float scal;
       byte w, a, buf[4];
@@ -7283,16 +7499,17 @@ nochmal:
       vh = GFX.getWidth();
       px = vv;
       py = vh;
-      pn = 490000/(vv*vh);                                //Anzahl der im Speicher ablegbaren Bilder berechnen
+      pn = 490000 / (vv * vh);                            //Anzahl der im Speicher ablegbaren Bilder berechnen
       if (Test_char('_')) return 1;                       //Unterstrich für folgenden Befehlsbuchstaben
       c = spaces();                                       //Befehlsbuchstabe lesen
       txtpos++;
       switch (c) {
 
+        //****************************************************** PIC_D(PIC_Nr<,swap Backcolor><,X,Y>) ******************************************
         case 'D':                                         //Grafik im FRAM auf dem Bildschirm ausgeben
           if (Test_char('(')) return 1;
           ad = get_value();
-          if (ad > pn-1) ad = pn-1;
+          if (ad > pn - 1) ad = pn - 1;
           ad = ad * FRAM_PIC_OFFSET;                      //0..5 Bildspeicherplatz (320x240) bzw.0..2 (400x300)
           if (*txtpos == ',') {                           //Modus
             txtpos++;
@@ -7316,9 +7533,10 @@ nochmal:
               if (x < vh && y < vv) GFX.setPixel(x, y);
             }
           }
-          if(iv>0) GFX.swapRectangle(dx, dy + 1, dx + px - 1, dy + py); //swap Backcolor
+          if (iv > 0) GFX.swapRectangle(dx, dy , dx + px - 1, dy + py - 1); //swap Backcolor
           break;
 
+        //****************************************************** PIC_E(X,Y,XX,YY,Filename.bmp) ******************************************
         case 'E':                                       //Export -> BMP
           if (Test_char('(')) return 1;
           dx = get_value();                             //x
@@ -7334,6 +7552,7 @@ nochmal:
           export_pic(dx, dy, px, py, tempstring);
           break;
 
+        //****************************************************** PIC_I(X,Y,Filename.bmp) ******************************************
         case 'I':                                         //Import <- BMP
           if (Test_char('(')) return 1;
           dx = get_value();                               //x
@@ -7351,6 +7570,7 @@ nochmal:
           import_pic(dx, dy, tempstring, scal);
           break;
 
+        //****************************************************** PIC_L(PIC_Nr,Filename) ******************************************
         case 'L':                                         //Load PIC_RAW-Data
           if (Test_char('(')) return 1;
           ad = get_value();                               //Adresse im Speicher
@@ -7362,6 +7582,7 @@ nochmal:
           load_pic(FRAM_OFFSET + ad, tempstring);
           break;
 
+        //****************************************************** PIC_S(PIC_Nr,Filename) ******************************************
         case 'S':                                         //Save PIC_RAW-Data
           if (Test_char('(')) return 1;
           ad = get_value();                               //Adresse im Speicher
@@ -7377,6 +7598,7 @@ nochmal:
           save_pic(FRAM_OFFSET + ad, n_bytes, tempstring);
           break;
 
+        //****************************************************** PIC_P(PIC_Nr,X,Y,XX,YY) ******************************************
         case 'P':                                         //Grafikbildschirm in FRAM speichern
           if (Test_char('(')) return 1;
           ad = get_value();
@@ -7426,66 +7648,68 @@ nochmal:
       string_marker = false;
       return 0;
     }
-/*
-    void diashow_pic(long ad, int dx, int dy, int iv) {
-      byte buf[4], w;
-      int x, y, px, py, vv, vh;
-      vv = GFX.getHeight();
-      vh = GFX.getWidth();
+    /*
+        void diashow_pic(long ad, int dx, int dy, int iv) {
+          byte buf[4], w;
+          int x, y, px, py, vv, vh;
+          vv = GFX.getHeight();
+          vh = GFX.getWidth();
 
-      SPI_RAM_read(FRAM_OFFSET + ad, buf, 4);         //Dimension lesen
-      px = buf[0] + (buf[1] << 8);
-      py = buf[2] + (buf[3] << 8);
+          SPI_RAM_read(FRAM_OFFSET + ad, buf, 4);         //Dimension lesen
+          px = buf[0] + (buf[1] << 8);
+          py = buf[2] + (buf[3] << 8);
 
-      ad += 4;
-      switch (iv) {
-        case 0:                                           //von unten nach oben
-          for (y = dy + py - 1 ; y > dy - 1; y--) {
-            for (x = dx; x < (dx + px); x++) {
-              w = SPI_RAM_read8(FRAM_OFFSET + ad++);
-              fcolor(w);
-              if (x < vh && y < vv) GFX.setPixel(x, y);
-            }
+          ad += 4;
+          switch (iv) {
+            case 0:                                           //von unten nach oben
+              for (y = dy + py - 1 ; y > dy - 1; y--) {
+                for (x = dx; x < (dx + px); x++) {
+                  w = SPI_RAM_read8(FRAM_OFFSET + ad++);
+                  fcolor(w);
+                  if (x < vh && y < vv) GFX.setPixel(x, y);
+                }
+              }
+              break;
+
+            case 1:                                           //von unten nach oben + swap Backcolor
+              for (y = dy + py - 1 ; y > dy - 1; y--) {
+                for (x = dx; x < (dx + px); x++) {
+                  w = SPI_RAM_read8(FRAM_OFFSET + ad++);
+                  fcolor(w);
+                  if (x < vh && y < vv) GFX.setPixel(x, y);
+                }
+              }
+              GFX.swapRectangle(dx, dy + 1, dx + px - 1, dy + py); //swap Backcolor
+              break;
+
+            case 2:                                           //von oben nach unten + swap Backcolor
+              for (y = dy; y < (dy + py); y++) {
+                for (x = dx + px - 1 ; x > dx-1 ; x--) {
+                  w = SPI_RAM_read8(FRAM_OFFSET + FRAM_PIC_OFFSET - ad++);
+                  fcolor(w);
+                  if (x < vh && y < vv) GFX.setPixel(x, y);
+                }
+
+              }
+              GFX.swapRectangle(dx, dy, dx + px, dy + py); //swap Backcolor
+
+              break;
+
+            default:                                          //von oben nach unten
+              for (y = dy; y < (dy + py); y++) {
+                for (x = dx + px - 1 ; x > dx-1 ; x--) {
+                  w = SPI_RAM_read8(FRAM_OFFSET + FRAM_PIC_OFFSET - ad++);
+                  fcolor(w);
+                  if (x < vh && y < vv) GFX.setPixel(x, y);
+                }
+              }
+              break;
           }
-          break;
+        }
 
-        case 1:                                           //von unten nach oben + swap Backcolor
-          for (y = dy + py - 1 ; y > dy - 1; y--) {
-            for (x = dx; x < (dx + px); x++) {
-              w = SPI_RAM_read8(FRAM_OFFSET + ad++);
-              fcolor(w);
-              if (x < vh && y < vv) GFX.setPixel(x, y);
-            }
-          }
-          GFX.swapRectangle(dx, dy + 1, dx + px - 1, dy + py); //swap Backcolor
-          break;
+    */
+    //****************************************************** PIC_E(X,Y,XX,YY,Filename.bmp) ******************************************
 
-        case 2:                                           //von oben nach unten + swap Backcolor
-          for (y = dy; y < (dy + py); y++) {
-            for (x = dx + px - 1 ; x > dx-1 ; x--) {
-              w = SPI_RAM_read8(FRAM_OFFSET + FRAM_PIC_OFFSET - ad++);
-              fcolor(w);
-              if (x < vh && y < vv) GFX.setPixel(x, y);
-            }
-            
-          }
-          GFX.swapRectangle(dx, dy, dx + px, dy + py); //swap Backcolor
-          
-          break;
-
-        default:                                          //von oben nach unten
-          for (y = dy; y < (dy + py); y++) {
-            for (x = dx + px - 1 ; x > dx-1 ; x--) {
-              w = SPI_RAM_read8(FRAM_OFFSET + FRAM_PIC_OFFSET - ad++);
-              fcolor(w);
-              if (x < vh && y < vv) GFX.setPixel(x, y);
-            }
-          }
-          break;
-      }
-    }
-
-*/
     int export_pic(long x, long y, long xx, long yy, char *file) {
       byte i, r, g, b, cl;
       uint32_t pic_size, pic, weite, hoehe;
@@ -7566,7 +7790,7 @@ nochmal:
 
       return 0;
     }
-
+    //****************************************************** PIC_I(X,Y,Filename.bmp) ******************************************
     int import_pic(int x, int y, char *file, float sc) {
       byte r, g, b, cl, buf[3];
       float xtmp, ytmp, dy, dx, rx;
@@ -7657,7 +7881,7 @@ nochmal:
       sd_ende();                                               //SD-Card unmount
       return 0;
     }
-
+    //******************************************************* PIC_S(PIC_NR,Filename) *************************************
     int save_pic(long adr, long n, char *file) {
       byte c[1024];
       char k;
@@ -7718,6 +7942,7 @@ nochmal:
       return 0;
     }
 
+    //******************************************* PIC_L(PIC_NR,Filename) ******************************************
     int load_pic(long adr, char *file) {
       byte c[1024];
       int rest, rx, ry;
@@ -7770,4 +7995,84 @@ nochmal:
         SPI_RAM_write(adr, c, rest);         //Dimension lesen
       }
       return 0;
+    }
+
+
+
+    //------------------------------------- Testbereich SD-Update -----------------------------------------------------------------------------
+    int load_binary(void) {
+
+      expression_error = 0;
+      get_value();
+
+      if (expression_error)
+      {
+        syntaxerror(syntaxmsg);
+        return 1;
+      }
+
+      spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+
+      if ( !SD.exists(String(sd_pfad) + String(tempstring)))
+      {
+        syntaxerror(sdfilemsg);
+        sd_ende();
+        return 1;
+      }
+
+      File updateBin = SD.open(String(sd_pfad) + String(tempstring));
+
+      if (updateBin) {
+        if (updateBin.isDirectory()) {
+          Terminal.println("Error, " + String(tempstring) + " is not a file");
+          updateBin.close();
+          return 1;
+        }
+
+        size_t updateSize = updateBin.size();
+
+        if (updateSize > 0) {
+          Terminal.println("load " + String(tempstring));
+          performUpdate(updateBin, updateSize);
+        }
+        else {
+          Terminal.println("Error, file is empty");
+        }
+        updateBin.close();
+      }
+      else {
+        Terminal.println("Could not load Binary from sd");
+      }
+    }
+
+    // perform the actual update from a given stream
+    void performUpdate(Stream &updateSource, size_t updateSize) {
+      if (Update.begin(updateSize)) {
+        size_t written = Update.writeStream(updateSource);
+        if (written == updateSize) {
+          Terminal.println("Written : " + String(written) + " successfully");
+        }
+        else {
+          Terminal.println("Written only : " + String(written) + "/" + String(updateSize) + ". Retry?");
+        }
+        if (Update.end()) {
+          Terminal.println("OTA done!");
+          if (Update.isFinished()) {
+            Terminal.println("successfully completed. Now Rebooting.");
+            delay(1000);
+            ESP.restart();
+          }
+          else {
+            Terminal.println("not finished? Something went wrong!");
+          }
+        }
+        else {
+          Terminal.println("Error Occurred. Error #: " + String(Update.getError()));
+        }
+
+      }
+      else
+      {
+        Terminal.println("Not enough space to begin OTA");
+      }
     }
