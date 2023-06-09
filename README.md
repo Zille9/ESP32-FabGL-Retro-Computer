@@ -22,6 +22,8 @@ erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>
 -PS2-Keyboard 
 
 -RTC DS3231 
+
+-SD-Card
 ```
 
 
