@@ -5,6 +5,31 @@ for VGA monitor output - May 2019
 Ursprungsversion von: Rob Cai <rocaj74@gmail.com>
 erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>                                                                   
 
+
+
+## Hardware:
+```
+-ESP32 / 240MHz 
+
+-56472 Basic Bytes free
+
+-VGA-Display 320x240 Pixel 64 Farben oder 400x300 Pixel 64 Farben oder AV (IO26)
+
+-IO-Erweiterung mit MCP23017 (2x8 IO-Ports) + EEPROM 512kB 
+
+-FRAM 512kB 
+
+-PS2-Keyboard 
+
+-RTC DS3231 
+
+-SD-Card
+```
+
+
+
+## Software:
+```
 Die Version meiner Vor-Authoren wird die Grundlage für einen erweiterten Basic-Interpreter
 die Grundversion wurde erweitert durch:   
 
@@ -22,7 +47,7 @@ die Grundversion wurde erweitert durch:
 
 -erweiterte logische Operatoren (AND, OR) 	
 
--BIT-Manipulation &,|,%,SL,SR usw. 	
+-BIT-Manipulation &,|,%,<<,>> usw. 	
 
 -Klammerrechnung 	
 
@@ -36,24 +61,37 @@ die Grundversion wurde erweitert durch:
 
 -Zeileneditor 
 
- Author:Reinhard Zielinski <zille09@gmail.com>
- April 2021
+-BMP-Bilddatei-Import / Export
+
+-Spritefunktionen (noch in der Entwicklung)
+
+-Soundfunktionen (noch in der Entwicklung)
+```
 
 ![grafik](https://github.com/Zille9/ESP32-Basic/assets/78110942/ecedcc85-2db3-4dfa-919c-8043cce69693) 
+```
 -Startbildschirm
+```
 ![grafik](https://github.com/Zille9/ESP32-Basic/assets/78110942/f0f2f713-669e-4dde-8419-2a1ff2b8c28f)
+```
 -Programm Globus.Bas
+```
 ![grafik](https://github.com/Zille9/ESP32-Basic/assets/78110942/02f6e209-0e88-42c6-a383-09b5c21b75d0)
+```
 -Darstellung einer BMP-Datei
+```
 ![grafik](https://github.com/Zille9/ESP32-Basic/assets/78110942/069ef439-d76f-4b80-9b46-ac23f4fdddf0)
+```
 -Programmlisting
-
+```
 
 ![grafik](https://github.com/Zille9/ESP32-Basic/assets/78110942/86d8d629-1a02-479d-8408-bb93a8eed3ce)
+```
 Screenshot als BMP-Datei exportiert
+```
 
+## Komponenten:
 
-Komponenten:
 -ESP32 NodeMCU https://www.berrybase.de/esp32-nodemcu-development-board?sPartner=g_shopping&gclid=EAIaIQobChMI-fTJwNmx_wIVkupRCh1mTAgZEAQYBSABEgKjwvD_BwE
 
 -MCP23017 https://www.reichelt.de/i-o-erweiterung-16bit-1-8-5v-seriell-i2c-dip-28-mcp-23017-e-sp-p140074.html?&trstct=pos_0&nbc=1
@@ -66,3 +104,4 @@ Komponenten:
 
 -siehe auch BOOM-List im Ordner Schematic ->folgt bald
 
+ ### Author:Reinhard Zielinski <zille09@gmail.com> April 2021
