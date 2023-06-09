@@ -1,5 +1,5 @@
 10 CLS
-20 PRINT"Calculating Pi as Basic Becnhmark."
+20 PRINT"Calculating Pi as Basic Benchmark."
 150 INPUT"Enter number of digits";N
 170 IF N<1 THEN PRINT"Nothing done.":END
 200 L=INT(10*N/3)+16
