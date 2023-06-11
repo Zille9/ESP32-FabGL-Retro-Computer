@@ -10,7 +10,7 @@
 //      PS2Controller IRQ (clock) to ESP32 pin 33;                                                                                                //
 //      VGA RGB to ESP32 pin 21,22, 18,19 and 4,5                                                                                                 //
 //      VGA Hsync and Vsync to ESP32 pins 23 and 15                                                                                               //
-//      SD-Card 14, 16, 17, 13 (SCK, MISO, MOSI, CS)    ESP32-Eigenboard   ->CS dauerhaft auf GND                                                 //
+//      SD-Card 14, 16, 17, 13 (SCK, MISO, MOSI, CS)    ESP32-Eigenboard                                                                          //
 //      SD-Card 14, 2, 12, 13 (SCK, MISO, MOSI, CS)     TTGO                                                                                      //
 //      FRAM-Board 14, 16, 17, 0 (SCK, MISO, MOSI, CS)  512kB FRAM am SD-SPI-BUS                                                                  //
 //                                                                                                                                                //
@@ -48,10 +48,13 @@
 #pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
 // v1.68b:09.06.2023          -Fehler in Print-Routine behoben, bei Printausgaben, welche in der gleichen Zeile durch : getrennte Befehle enthielt, wurde das Semikolon wirkungslos
-//                            -jetzt werden alle Ausgaben nach einem Semikolon in der gleichen Zeile ausgeführt, erst ein NL (new Line) (oder ein Print ohne ;) führt zu einer neuen Zeile
+//                            -jetzt werden alle Ausgaben nach einem Semikolon in der gleichen Zeile ausgeführt, erst ein NL (new Line) oder ein Print ohne ; führt zu einer neuen Zeile
 //                            -am einfachsten ist ein Print einzufügen, um die Ausgabe in einer neuen Zeile beginnen zu lassen.
 //                            -Unterprogramm get_value() geändert ->Fehlerausgabe entfernt, das führte zum Bsp. bei Input zum Programmabbruch, das ist ungewollt
 //                            -ausserdem wurde damit das Problem der doppelten Fehlerausgabe behoben
+//                            -Aussehen des Cursors geändert in Underline (m_emuState.cursorStyle= 3; in terminal.cpp)
+//                            -Fehler in den Auswertungen von AND u. OR entdeckt, es wird nur eine Bedingung ausgewertet
+//                            -18105 Zeilen/sek.
 //
 // v1.67b:01.06.2023          -Funktion GPIC(n) eingefügt PRINT GPIC(0)->Breite GPIC(1)->Höhe der letzten geladenen BMP-Datei
 //                            -Versuch einen SD-Loader zu integrieren, CP/M kann geladen werden und funktioniert, nur komm ich nicht mehr zum Basic zurück :-(
@@ -457,7 +460,10 @@ short int user_font = fontsatz;         //User-Fontsatz
 short int Prezision = 6;                //Standardfestlegung der Nachkommastellen
 static bool chr = false;                //marker für CHR$ für Print
 static bool string_marker = false;      //marker für Strings (Print)
+static bool func_string_marker = false; //marker für String$-Funktion (Print)
 static bool tab_marker = false;         //marker für TAB (Print)
+static bool semicolon = false;          //marker für semikolon (Print)
+static byte fstring = 0;                //Übergabewert für STRING$(n,"string")
 short int Theme_state = 0;              //aktuelle Theme Nummer (im EEPROM gespeichert)
 static bool Theme_marker = false;       //Theme-Marker, falls Farben geändert
 short int Mode_state = 0;               //aktuelle Auflösung (im EEProm gespeichert)
@@ -487,7 +493,7 @@ int Fnoperator[27 * 5];                   //DEFN A(a,b,c,d,e,f,g,h)-> Name 0-26,
 bool fn_marker = false;
 
 //------------------------------------ TRON ----------------------------------------------------------------------------------------------------
-byte tron = 0;                           //TRON Aus
+static byte tron_marker = 0;                           //TRON Aus
 //------------------------------------ Editor --------------------------------------------------------------------------------------------------
 char const * Edit_line = nullptr;        //Editor-Zeile
 
@@ -603,6 +609,8 @@ const static char keywords[] PROGMEM = {
   'M', 'N', 'T' + 0x80,
   'C', 'O', 'M' + 0x80,
   'P', 'I', 'C' + 0x80,
+  'P', 'A', 'P', 'E', 'R' + 0x80,
+  'I', 'N', 'K' + 0x80,
   0
 };
 
@@ -679,9 +687,11 @@ enum {
   KW_OPTION,
   KW_FPOKE,
   KW_MOUNT,
-  KW_COM,
+  KW_COM,     //70
   KW_PIC,
-  KW_DEFAULT    //71/* hier ist das Ende */
+  KW_PAPER,
+  KW_INK,
+  KW_DEFAULT  //74/* hier ist das Ende */
 };
 
 
@@ -763,6 +773,9 @@ const static char func_tab[] PROGMEM = {
   'F', 'P', 'E', 'E', 'K' + 0x80,
   'G', 'P', 'X' + 0x80,
   'G', 'P', 'I', 'C' + 0x80,
+  'M', 'A', 'P' + 0x80,
+  'C', 'O', 'N', 'S' + 0x80,
+  'S', 'T', 'R', 'I', 'N', 'G', '$' + 0x80,
   0
 };
 
@@ -822,7 +835,10 @@ enum {
   FUNC_FPEEK,
   FUNC_GPIX,
   FUNC_PIC,
-  FUNC_UNKNOWN   //54
+  FUNC_MAP,
+  FUNC_CONSTRAIN,
+  FUNC_STRING,
+  FUNC_UNKNOWN   //56
 };
 
 //------------------------------- OPTION-Tabelle - alle Optionen, die dauerhaft gespeichert werden sollen ------------------------------
@@ -1498,6 +1514,7 @@ static float expr4(void)
   float b = 0;
   float c = 0;
   float d = 0;
+  float map_var[4]={0,0,0,0};
   int fnv;
   uint8_t puf[3];
   unsigned long t = 0;
@@ -1907,22 +1924,24 @@ static float expr4(void)
         dbuf.toCharArray(tempstring, dbuf.length() + 1);
         string_marker = true;
         break;
-
+        
+      case FUNC_STRING:
+        if(Test_char(',')) goto expr4_error;
+        b=expression();                             //Zeichenkette in tempstring
+        string_marker = true;
+        func_string_marker = true;
+        fstring = a;
+        break;
+          
       case FUNC_TEMP:
-        if (*txtpos != ',')
-          goto expr4_error;
-        txtpos++;
+        if(Test_char(',')) goto expr4_error;
         b = expression();                           //2.Parameter Temperaturkanal
         break;
 
       case FUNC_DHT:                                // DHT-Sensor DHT(Port,Typ,temp/humi)
-        if (*txtpos != ',')
-          goto expr4_error;
-        txtpos++;
+        if(Test_char(',')) goto expr4_error;
         b = expression();                           //2.Parameter Typ
-        if (*txtpos != ',')
-          goto expr4_error;
-        txtpos++;
+        if(Test_char(',')) goto expr4_error;
         c = expression();                           //3.Parameter Messwert 0=Temp, 1=Humi
         break;
 
@@ -1936,10 +1955,11 @@ static float expr4(void)
 
       case FUNC_COMPARE:                            //COMP$(a$,b$)(0=beide Strings gleich, 1=a$>b$, -1=a$<b$)
       case FUNC_INSTR:                              //INSTR(Suchstring,Zeichenkette)
-        if (*txtpos != ',')
-          goto expr4_error;
+        if(Test_char(',')) goto expr4_error;
+        //if (*txtpos != ',')
+        //  goto expr4_error;
         quota = false;
-        txtpos++;
+        //txtpos++;
         if (!quota) cbuf = String(tempstring);     //ersten String sichern
         if (*txtpos == '"')                         //Zeichenkette in Anführungszeichen?
         {
@@ -1953,7 +1973,24 @@ static float expr4(void)
         }
         break;
 
+      case FUNC_MAP:                                //x=map(value,fromLow, fromHigh, toLow, toHigh)
+        if(Test_char(',')) goto expr4_error;
+        map_var[0]=expression();                    
+        if(Test_char(',')) goto expr4_error;
+        map_var[1]=expression();
+        if(Test_char(',')) goto expr4_error;
+        map_var[2]=expression();
+        if(Test_char(',')) goto expr4_error;
+        map_var[3]=expression();                        
+        break;
 
+      case FUNC_CONSTRAIN:
+        if(Test_char(',')) goto expr4_error;
+        b=expression();
+        if(Test_char(',')) goto expr4_error;
+        c=expression();
+        break;
+                        
       default:
         break;
 
@@ -2196,7 +2233,11 @@ static float expr4(void)
       case FUNC_MID:                  // MID$(String,Start,Anzahl)
         return a;                     //Rückgabe Dummywert
         break;
-
+      
+      case FUNC_STRING:               //STRINGS$(n,"string")
+        return a;                     //Rückgabe Dummywert
+        break;
+        
       case FUNC_TAB:                  //TAB-Funktion
         b = tc.getCursorRow();
         tc.setCursorPos(a, b);
@@ -2335,7 +2376,6 @@ static float expr4(void)
         a = expression();                                 //Formel ausführen
         txtpos = tmptxtpos;                               //txtpos zurückschreiben
         return a;
-
         break;
 
       case FUNC_PORT:
@@ -2347,11 +2387,18 @@ static float expr4(void)
         break;
 
       case FUNC_PIC:
-
         if (a == 0) return bmp_width;
         else return bmp_height;
         break;
 
+      case FUNC_MAP:
+        return map(a,map_var[0],map_var[1],map_var[2],map_var[3]);
+        break;
+      
+      case FUNC_CONSTRAIN:
+        return constrain(a,b,c);
+        break;
+          
       default:
 
         break;
@@ -3201,7 +3248,7 @@ void Basic_Interpreter()
   spi_fram.begin(3);                                     //Fram select
   cmd_new();                                             //alles löschen
   int a, e;
-  tron = 0;
+  tron_marker = 0;
 
   //################################################# Hauptprogrammschleife ######################################################
   while (1)
@@ -3328,20 +3375,19 @@ interpreteAtTxtpos:
         logica = 0;
         else_marker = false;
         then_marker = true;                               //THEN marker muss noch abgefragt werden (missing_then)
+        memset (logic_ergebnis, 0, sizeof (logic_ergebnis));//Logik-Puffer leeren
         expression_error = 0;
-        val = get_value();//
-
-        if (val != 0) {                                   //Bedingung erfüllt logicmarker hochzählen
-          logic_ergebnis[logic_counter++] = int(val);
+        val = get_value();
+        logic_ergebnis[logic_counter++] = int(val);       //Ergebnis in Puffer speichern und logicmarker hochzählen
+        if (val != 0) {                                   
           val = 0;                                        //für den Fall, das kein AND,OR vorkommt
           break;
         }
         else
         {
-          logic_ergebnis[logic_counter++] = int(val);     //Bedingung nicht erfüllt logicmarker hochzählen
           else_marker = true;
           val = 1;                                        //Für den Fall, das es kein AND OR gibt (einfaches IF)
-          goto execnextline;                              //die ELSE Bedingung muss in der nächsten Zeile stehen
+          goto run_next_statement;                        //die ELSE Bedingung muss in der nächsten Zeile stehen
         }
 
       case KW_ON:                                         //ON (GOTO/GOSUB)
@@ -3584,7 +3630,7 @@ interpreteAtTxtpos:
         expression_error = 0;
         val = get_value();
         logic_ergebnis[logic_counter++] = int(val);       //alle Ergebnisse einlesen und auswerten
-        for (int i = 0; i < logic_counter; i++)
+        for (int i = 0; i < logic_counter+1; i++)
         {
           logica += logic_ergebnis[i];
         }
@@ -3594,12 +3640,15 @@ interpreteAtTxtpos:
       case KW_OR:
         expression_error = 0;
         val = get_value();
+        
         logic_ergebnis[logic_counter++] = int(val);
-        for (int i = 0; i < logic_counter; i++)         //alle Ergebnisse einlesen und auswerten
+        for (int i = 0; i < logic_counter+1; i++)         //alle Ergebnisse einlesen und auswerten
         {
+          //Terminal.print(logic_ergebnis[i]);
           logica += logic_ergebnis[i];
         }
         val = logica;                                   //ist mindestens eine Bedingung erfüllt lautet das Ergebnis 0 ->war
+        
         if (val == 0)                                   //sind alle Bedingungen falsch wird val auf 1 (falsch gesetzt)
           val = 1;
         else val = 0;                                   //mindestens eine Bedingung ist erfüllt, also -> war
@@ -3770,7 +3819,7 @@ interpreteAtTxtpos:
       case KW_TRON:                                   //TRON(delay)
         if (Test_char('(')) continue;
         expression_error = 0;
-        tron = byte(get_value());
+        tron_marker = byte(get_value());
         if (Test_char(')')) continue;
         break;
 
@@ -3822,10 +3871,22 @@ interpreteAtTxtpos:
         if (cmd_serial())
           continue;
         break;
+        
       case KW_PIC:
         if (show_Pic())
           continue;
         break;
+
+      case KW_PAPER:
+        Hintergrund=get_value();
+        bcolor(Hintergrund);
+        break;
+
+      case KW_INK:
+        Vordergrund=get_value();
+        fcolor(Vordergrund);
+        break;
+        
       case KW_DEFAULT:
         if (var_get())
           continue;
@@ -3854,10 +3915,9 @@ execline:
     }
 
     //----------------------- TRON-Funktion --------------------------------------
-    if (tron) {
+    if (tron_marker>0) {
       Terminal.print('<' + String(*((LINENUM *)(current_line))) + '>');
-      //if(ser_marker) Serial1.print('<' + String(*((LINENUM *)(current_line))) + '>');
-      delay(tron);                                                  //Verzögerung
+      delay(tron_marker);                                                  //Verzögerung
     }
     //----------------------------------------------------------------------------
 
@@ -4064,6 +4124,7 @@ static int command_Print(void)
       case ';':
         if (skip_spaces() == NL)
         {
+          semicolon = true;
           k = 1;
 
         }
@@ -4074,7 +4135,7 @@ static int command_Print(void)
         break;
 
       case ':':
-        //Terminal.println();
+        if(!semicolon) Terminal.println();
         //if(ser_marker) Serial1.println();
         txtpos++;
         k = 1;
@@ -4082,6 +4143,7 @@ static int command_Print(void)
 
       case NL:
         Terminal.println();
+        semicolon=false;
         //if(ser_marker) Serial1.println();
         k = 1;
         break;
@@ -4137,12 +4199,22 @@ static int command_Print(void)
         e = get_value();                    //Zahl oder Variable lesen
 
         if (expression_error) k = 2;
-        if (string_marker)                  //String?
+        if(func_string_marker == true){
+            for(int i=0; i< fstring;i++){
+               printstring(tempstring);
+            }
+            //Terminal.print(tempstring);
+            func_string_marker=false;
+            string_marker = false;
+            chr = false;
+        }
+        else if (string_marker == true)                  //String?
         {
           printstring(tempstring);
+          func_string_marker=false;
           string_marker = false;
           chr = false;
-        }
+          }
         else if (chr == true)
         {
           Terminal.write(int(e));            //CHR$
