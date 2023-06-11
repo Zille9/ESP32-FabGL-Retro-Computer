@@ -54,6 +54,7 @@
 //                            -ausserdem wurde damit das Problem der doppelten Fehlerausgabe behoben
 //                            -Aussehen des Cursors geändert in Underline (m_emuState.cursorStyle= 3; in terminal.cpp)
 //                            -Fehler in den Auswertungen von AND u. OR entdeckt, es wird nur eine Bedingung ausgewertet
+//                            -mathematische Funktionen MAP und CONS (constrain) hinzugefügt
 //                            -18105 Zeilen/sek.
 //
 // v1.67b:01.06.2023          -Funktion GPIC(n) eingefügt PRINT GPIC(0)->Breite GPIC(1)->Höhe der letzten geladenen BMP-Datei
@@ -609,8 +610,6 @@ const static char keywords[] PROGMEM = {
   'M', 'N', 'T' + 0x80,
   'C', 'O', 'M' + 0x80,
   'P', 'I', 'C' + 0x80,
-  'P', 'A', 'P', 'E', 'R' + 0x80,
-  'I', 'N', 'K' + 0x80,
   0
 };
 
@@ -689,8 +688,6 @@ enum {
   KW_MOUNT,
   KW_COM,     //70
   KW_PIC,
-  KW_PAPER,
-  KW_INK,
   KW_DEFAULT  //74/* hier ist das Ende */
 };
 
@@ -3875,16 +3872,6 @@ interpreteAtTxtpos:
       case KW_PIC:
         if (show_Pic())
           continue;
-        break;
-
-      case KW_PAPER:
-        Hintergrund=get_value();
-        bcolor(Hintergrund);
-        break;
-
-      case KW_INK:
-        Vordergrund=get_value();
-        fcolor(Vordergrund);
         break;
         
       case KW_DEFAULT:
