@@ -43,10 +43,15 @@
 // April 2021
 //
 //
-#define BasicVersion "1.68b"
-#define BuiltTime "Built:09.06.2023"
+#define BasicVersion "1.69b"
+#define BuiltTime "Built:12.06.2023"
 #pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v1.69b:12.06.2023          -Font_8x8.h etwas geändert ->einige Grafiksymbole vom KC87 übernommen
+//                            -Logik-Auswertung AND und OR überarbeitet, scheint jetzt zu funktionieren
+//                            -tron-marker aktiviert sich ständig von selbst nach Fehlern oder Neustart von Programmen
+//                            -werde auf bool ändern, mal sehen, ob das hilft
+//
 // v1.68b:09.06.2023          -Fehler in Print-Routine behoben, bei Printausgaben, welche in der gleichen Zeile durch : getrennte Befehle enthielt, wurde das Semikolon wirkungslos
 //                            -jetzt werden alle Ausgaben nach einem Semikolon in der gleichen Zeile ausgeführt, erst ein NL (new Line) oder ein Print ohne ; führt zu einer neuen Zeile
 //                            -am einfachsten ist ein Print einzufügen, um die Ausgabe in einer neuen Zeile beginnen zu lassen.
@@ -110,139 +115,6 @@
 //                            -Akku-Interrupt-Routine ist jetzt aktiv und zeigt bei leerem Akku eine Warnung auf dem Bildschirm an
 //                            -Funktion GPIX(x,y) zum ermitteln des Farbwertes eine Pixel an Position x,y hinzugefügt.
 //                            -etwas schneller geworden 17379 Zeilen/sek. Mandel4.bas 14.71 Min
-//
-// v1.59b:29.04.2023          -bisher endgültige FRAM-PIN'S-> FRAM_CS  = 13, FRAM_MISO= 27 , FRAM_MOSI= 12 und FRAM_CLK = 0
-//                            -damit wird Pin26 wieder frei für DAC,Video-Out
-//                            -Port-Befehle auf die wenigen übrigen Pins reduziert (AREAD,DWRITE,PWM,PULSE)
-//                            -17019 Zeilen/sek. Mandel4.bas 14.32 Min
-//
-// v1.58b:28.04.2023          -SPI_FRAM-Board von Adafruit eingetroffen, leider funktioniert das Board nur mit eigenen SPI-Pin's
-//                            -an den Pin's für die SD-Karte (wie geplant) und eigenen CS-Pin funktioniert der Ram nicht
-//                            -ärgerlich, das SPI nicht so funktioniert wie er sollte
-//                            -mit eigenen Pin's (FRAM_CS  = 27, FRAM_MISO= 26 , FRAM_MOSI= 2 und FRAM_CLK = 12 funktioniert der Chip zwar aber verbraucht damit auch
-//                            -alle IO-Pins für Ausgabe ,so ist z.Bsp.der LED-Strip nicht mehr nutzbar, nur I2C ist noch verwendbar
-//                            -einzig 3 Analog Eingangs-Pins's sind noch verfügbar :-(
-//                            -DOUT, PWM, DIN, PULSE, DAC ,TEMP, DHT usw.sind damit sinnlos, weil keine Pins mehr vorhanden sind.
-//                            -nach mehrfachen Tests hat sich folgende Pin-Konfiguration als offensichtliches Optimum gezeigt
-//                            -FRAM_CS=13 (SD-Card CS-Pin dauerhaft auf GND), FRAM_MISO=26 ,FRAM_MOSI=27, FRAM_CLK=0
-//                            -so sind zumindest Pin 2 und 12 als IO frei für Anwendungen sowie 34, 35 und 36 als Analog-Eingänge, besser als nix
-//                            -die FRAM-Geschwindigkeit ist mehr als 3mal so hoch gegenüber der I2C-Variante :D
-//                            -16353 Zeilen/sek. ->Julia.bas 13.13Min, Mandel4.bas 14.62 Min
-//
-// v1.57b:25.04.2023          -Startbildschirm etwas farbig aufgepeppt, Anzeige der Bildschirmauflösung entfernt ->es gibt ja nur noch 320x240
-//                            -Geschwindigkeit wieder eingebrochen ->15240 Zeilen/sek.!?
-//                            -FPOKE und FPEEK hinzugefügt, ermöglicht das schreiben und lesen von float-Werten im Ram, FRam oder EEProm
-//                            -FPOKE Ort,Adresse,Wert , A=FPEEK(Ort,Adresse) -> Ort 0=RAM, 1=FRAM, 2=EEPROM
-//                            -Optimierungsoption jetzt im Programmkopf (siehe #pragma GCC optimize)
-//                            -morgen kommt ein FRAM-Chip mit 512kb als SPI-Variante, mal sehen, ob der eingebunden werden kann, das wäre cool :-)
-//                            -damit wäre eine umfangreiche Datenspeicherung usw.möglich, und das mit bis zu 20MHz (statt 400kHz mit I2C)
-//                            -Pins sollen die gleichen, wie SD-Card sein, nur CS-Pin wird ein anderer ->mal sehen, obs klappt.
-//                            -15165 Zeilen/sek.
-//
-// v1.56b:22.04.2023          -BEFEHL OPT geschaffen, damit können Pin-Konfigurationen, Farbeinstellungen usw. im Flash gespeichert werden
-//                            -diese werden dann beim Start gelesen und entsprechend gesetzt (SD-CARD-Pins, I2C-Pins, Font, Vorder-und Hintergrundfarben)
-//                            -THEME und FONT speichern jetzt nicht mehr dauerhaft, das macht OPT
-//                            -Startbildschirm etwas geändert
-//                            -OPT kann jetzt die SD-Karten- und die I2C-Konfiguration speichern und lesen ->muss noch getestet werden
-//                            -18210 Zeilen/sek.
-//
-// v1.55b:20.04.2023          -Fehler der Print-Ausgabe gefunden, nicht der String-Marker sondern der Char-Marker wurde nicht rechtzeitig zurückgesetzt
-//                            -dies wurde korrigiert, jetzt stimmt wieder alles (expr4()) :-)
-//                            -Befehl Pic entfernt, stattdessen Befehl DRAW x,y,mode kreiert DRAW x,y,0 springt zur Position x,y
-//                            -DRAW x,y,1 zeichnet eine Linie von der letzten Position (DRAW x,y,0) nach x,y, damit sind Vielecke o.ä. Strukturen zeichenbar
-//                            -nach dem Turtle-Zeichnungs-Prinzip (von pos nach pos -> nach pos -> nach pos)
-//                            -MODE-Befehl deaktiviert, ob man das braucht? 320x240 Pixel in 64 Farben ist für einen Retro-Computer ausreichend
-//                            -außerdem ist der Basic-Interpreter besser für LCD-Displays portierbar
-//                            -String-Fehldarstellungs-Ursache gefunden ->tempstring wurde nicht korrekt abgeschlossen (Nullterminator zu spät gesetzt)
-//                            -STR$-Funktion umgebaut, ->STR$(12.34,n) wandelt einen numerischen Wert in einen String mit n - Nachkommastellen um
-//                            -1.Array-Dimension auf Word-Größe erweitert, jetzt sind Arrays in der ersten Dimension über 255 möglich (DIM A(1000))
-//                            -18255 Zeilen/sek. ->Font 25 Julia.bas 12.6Min, Mandel4.bas 13.9Min (Debug_lvl=Fehler)
-//
-// v1.54b:18.04.2023          -DOKE Befehl mit writeBuffer realisiert, ist schneller als 2 x writeEEPROM - 32kb dauern nur noch 5 statt 15 sek.
-//                            -NEW-Befehl geändert, nur return führte dazu, dass neue Befehle/Programme den ESP aufhingen!?
-//                            -etwas Code-Optimierung -> clear_var() und cmd_new() kombiniert - spart wieder einige Code-Zeilen
-//                            -Core Debug-Level auf Info gesetzt ->18228 Zeilen/sek. ->Font 25, zur Zeit die beste Einstellung
-//                            -MNT-Befehl funktioniert nicht, wie gewünscht, aus irgend welchen Gründen verliert der ESP die SD-Karte?
-//                            -eine neue SD-Initialisierung funktioniert nicht, was ist das nun wieder?
-//                            -sollte das der Editor sein?,nach dem Editieren von Code passiert diese Problematik am häufigsten, nur Reset hilft dann
-//                            -überprüfe nochmal den Editor-Code
-//                            -Fehler lag in sd_pfad-Variable ->in static char umgewandelt, jetzt scheint es richtig zu funktionieren
-//                            -Addition von Strings und CHR$ erweitert -> jetzt verkettet möglich
-//                            -allerdings wird für Print der String_marker nicht rechtzeitig zurückgesetzt, bis zur Lösung muss mit Print ein numerischer Wert ausgegeben werden
-//                            -dann ist die Darstellung wieder korrekt -> muss noch die richtige Stelle zum zurücksetzen von string_marker finden
-//                            -Mandel4.bas ->13.96 Min
-//                            -17838 Zeilen/sek.
-//
-// v1.53b:16.04.2023          -String- und numerische Arrays bis zu 3 Dimensionen scheint zu funktionieren, ein großer Schritt für mich, bedeutungslos für die Menschheit :-)
-//                            -weitere Test's werden zeigen, ob das wirklich so ist
-//                            -die Verarbeitungsgeschwindigkeit ist natürlich erheblich langsamer, da die Arrays im FRAM gespeichert bzw. gelesen werden
-//                            -Code muss noch optimert werden aber ein großer Schritt ist getan :-D !!!
-//                            -CLEAR funtionierte nicht im Programm ,durch warmstart() und nachfolgendes continue in der Hauptschleife wurde das Programm unterbrochen
-//                            -warmstart in clear_var() entfernt, continue in der Hauptschleife durch break ersetzt, jetzt funtioniert CLEAR auch im Programm korrekt!
-//                            -write_array_value und read_array zu rw_array zusammengefasst, die beiden Programmteile waren fast identisch
-//                            -VAR_TBL und STR_TBL könnten noch als RAM-Array realisiert werden, sollte etwas schneller sein
-//                            -nach etwas Codeoptimierung ist die Geschwindigkeit von 14560 auf 17064 Zeilen/sek. gestiegen :-)
-//                            -diverse Bit-shift Operationen durch highByte und lowByte ersetzt, das ist offensichtlich schneller
-//                            -Ausführungszeit Julia.bas ->12.69 Min. Mandel4.bas ->14.29 Min.
-//                            -aktuell 17418 Zeilen/sek. ->Font25 ->Core Debug Level=Debug
-//
-// v1.52b:12.04.2023          -etwas Code-Optimierung betrieben
-//                            -Unterfunktion Test_char(char) zur Überprüfung auf erforderliche Zeichen erschaffen, dadurch etliche Zeilen, sich ständig wiederholenden
-//                            -Abfrage-Codes eingespart (ca.100 Zeilen)
-//                            -Befehl STOP entfernt, ohne Continue macht Stop keinen Sinn-> End macht das Gleiche
-//                            -Unterprogramme Circ,Rect und Lines auf ein Unterprogramm reduziert (line_rec_circ(art,parameterzahl)), dadurch wieder ca.65 Zeilen Code
-//                            -eingespart
-//                            -Fehler im Sprite(D... Befehl behoben, der Funktionsstring musste mit trim() gekürzt werden sonst Fehlausgabe
-//                            -Soundbefehl gefällt mir nicht, vielleicht wirds doch ne externe Soundkarte (Propeller mit SID-Sound!?)
-//                            -18306 Zeilen/sek.
-//
-// v1.51b:10.04.2023          -Stringlänge auf 30 Zeichen gekürzt (Vorbereitung für Arrays)
-//                            -dabei ist aufgefallen,das es keine Sicherheitsfunktion für das Schreiben zu langer Strings gegeben hat
-//                            -bei sehr langen Strings wurde der Nachbarstring überschrieben, dies wurde behoben
-//                            -Addition von Strings geändert, ist noch nicht perfekt ->am Ende einer Addition taucht ein '/' auf!?
-//                            -die Übernahme des Gesamtstring nach Tempstring ist noch buggy
-//                            -MNT Befehl zum Mounten der SD-Karte hinzugefügt, wenn die Karte entnommen wurde, konnte nicht mehr gelesen werden
-//                            -Array-Dimensionierung begonnen - numerische und Stringvariablen
-//                            -ist noch ein ganzes Stück Arbeit aber die Dimensionierung scheint zu funktionieren
-//                            -es werden bis zu 3 Dimensionen möglich sein, warscheinlich geht der ganze FRAM dabei drauf
-//                            -Verarbeitungsgeschwindigkeit ist eingebrochen ->
-//                            -18225 Zeilen/sek. , es bleibt seltsam!
-//
-// v1.50b:07.04.2023          -PEEK und POKE wieder in ursprüngliche Form gebracht POKE Ort,Adresse,Wert
-//                            -A=PEEK(Ort,Adresse) für Word Werte wurde DEEK und DOKE eingefügt ->DOKE Ort,Adresse,Wert, A=DEEK(Ort,Adresse)
-//                            -das ist übersichtlicher - Long Werte können mit 2 Word Werten zusammengesetzt werden - siehe POKE.BAS
-//                            -so konnte wieder auf float zurückgegangen werden - (Geschwindigkeit höher! siehe v1.49)
-//                            -Beginn der Testphase für den Sound Befehl
-//                            -Error-Sound hinzugefügt ->ertönt bei Fehlern
-//                            -neuer Befehl BEEP(Note,Länge) geschaffen als mini-Soundmodul
-//                            -20154 Zeilen/sek. Font25
-//
-// v1.49b:04.04.2023          -PEEK und POKE erweitert POKE Ort,Adresse,Wert<,2Word o. 4Long> ansonsten Byte
-//                            -A=PEEK(Ort,Adresse<,2Word o.4Long> ansonsten Byte, dafür musste wieder auf die Verarbeitung der Zahlen im float-Format
-//                            -umgestellt werden, da sonst der Wertebereich von float für die Darstellung von unsigned Long nicht ausreichte
-//                            -kleiner Fehler in list_out-Routine behoben, es konnte vorkommen, das die letzte Zeilennumer nicht korrekt angezeigt wurde
-//                            -Funktion SQR erweitert ->SQR(x <,n> )= n'te Wurzel aus x - n ist optional
-//                            -17058 Zeilen/sek. Font1
-//
-// v1.48b:03.04.2023          -DMP-Befehl erweitert, jetzt sind alle drei verfügbaren Speichermedien anzeigbar
-//                            -DMP 0<,Adresse> = interner RAM
-//                            -DMP 1<,Adresse> = FRAM-Chip
-//                            -DMP 2<,Adresse> = EEPROM-Chip
-//                            -dabei ist die Angabe der Adresse optional, ohne Angabe der Adresse wird bei Adresse 0 begonnen
-//                            -PEEK und POKE ebenfalls angepasst ->A=PEEK(0..2,ADRESSE) POKE(0..2,ADRESSE,VALUE)
-//                            -Funktionstasten für DIR und LIST (CTRL+D, CTRL+L) hinzugefügt.
-//                            -Befehl NEW mit memset-Funktion ergänzt, jetzt wird der gesamte Speicher gelöscht inklusive der Variablen, vorher waren die Variablen noch vorhanden
-//                            -und im Speicher befanden sich Fragmente des alten Programms
-//                            -20568 Zeilen/sek. Font25
-//
-// v1.47b:02.04.2023          -Input-Eingaben jetzt mit mehreren Variablen (auch gemischt) möglich, es erfolgt aber keine Typprüfung
-//                            -d.h. das man auf die richtige (Zahl oder Zeichenkette) Variablentype bei der Eingabe achtet
-//                            -das bedeutet, das eine Zahl auch als String akzeptiert wird, da keine Anführungszeichen abgefragt werden
-//                            -mittels Lineeditor-Funktion von FabGl endlich einen funktionierenden Zeileneditor geschaffen
-//                            -wird eine Zeile eingegeben, die nicht existiert, wird die nächst verfügbare Zeile in den Bearbeitungsspeicher geladen
-//                            -und mit der falsch eingegebenen Zeilennummer gespeichert
-//                            -ob das als Bug oder als Feature angesehen wird, muss sich noch zeigen - so könnte man Zeilen kopieren!?
-//                            -19611 Zeilen/sek. Font25
 //
 //
 //
@@ -494,7 +366,7 @@ int Fnoperator[27 * 5];                   //DEFN A(a,b,c,d,e,f,g,h)-> Name 0-26,
 bool fn_marker = false;
 
 //------------------------------------ TRON ----------------------------------------------------------------------------------------------------
-static byte tron_marker = 0;                           //TRON Aus
+static bool tron_marker = false;                           //TRON Aus
 //------------------------------------ Editor --------------------------------------------------------------------------------------------------
 char const * Edit_line = nullptr;        //Editor-Zeile
 
@@ -1876,7 +1748,6 @@ static float expr4(void)
           }
           ((float *)variables_begin)[Fnoperator[charb + Fnvar]] = expression();
         }
-
         break;
 
       case FUNC_LEFT:
@@ -1898,7 +1769,6 @@ static float expr4(void)
         dbuf.toCharArray(tempstring, dbuf.length() + 1);
         string_marker = true;
         break;
-
 
       case FUNC_STR:                                //str$(12.34,n) ->Umwandlung Zahl nach String - n=Nachkommastellen
         if (*txtpos != ',')
@@ -3245,7 +3115,7 @@ void Basic_Interpreter()
   spi_fram.begin(3);                                     //Fram select
   cmd_new();                                             //alles löschen
   int a, e;
-  tron_marker = 0;
+  tron_marker = false;
 
   //################################################# Hauptprogrammschleife ######################################################
   while (1)
@@ -3816,7 +3686,7 @@ interpreteAtTxtpos:
       case KW_TRON:                                   //TRON(delay)
         if (Test_char('(')) continue;
         expression_error = 0;
-        tron_marker = byte(get_value());
+        tron_marker = bool(get_value());
         if (Test_char(')')) continue;
         break;
 
@@ -3902,9 +3772,8 @@ execline:
     }
 
     //----------------------- TRON-Funktion --------------------------------------
-    if (tron_marker>0) {
+    if (tron_marker) {
       Terminal.print('<' + String(*((LINENUM *)(current_line))) + '>');
-      delay(tron_marker);                                                  //Verzögerung
     }
     //----------------------------------------------------------------------------
 

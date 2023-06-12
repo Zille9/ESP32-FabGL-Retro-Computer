@@ -1,51 +1,3 @@
-// v1.66b:25.05.2023          -Skalierung funktioniert jetzt besser
-//                            -Routine verbessert, jetzt dauern auch sehr grosse Bilder nicht mehr ewig
-//                            -krumme Formate führen allerdings zu Verzerrungen, Bilder sollten im Verhältnis dem Bildschirmformat entsprechen
-//                            -Fehler in der Darstellungsroutine behoben, war das Bild kleiner als die Bildschirmauflösung, wurde das Bild nicht dargestellt
-//                            -Bildschirmauflösung wird jetzt berücksichtigt damit ist die Darstellung auch bei 400x300 korrekt
-//                            -18200 Zeilen/sek.
-//
-// v1.65b:23.05.2023          -Export des Bildschirminhaltes (oder eines Ausschnittes) im BMP-Format funktioniert
-//                            -Import BMP-Datei funktioniert ebenfalls, Laden eines Bildes dauert ca.6.5sek.
-//                            -Skalierung von größeren Bildern (>320x240) nicht perfekt aber funktionstüchtig
-//                            -18099 Zeilen/sek.
-//
-// v1.64b:19.05.2023          -Laden (PIC_L(Adr,Filename)) und Speichern (PIC_S(Adr,Filename)) funktioniert
-//                            -Datei-Sicherheitsabfragen für PIC_L und PIC_S hinzugefügt, Puffer auf 1024 Bytes erhöht ->Laden und Speichern erfolgt schneller
-//                            -nächster Schritt: Daten von und ins BMP-Format wandeln und speichern/laden
-//                            -18102 Zeilen/sek.
-//
-// v1.63b:12.05.2023          -erneut begonnen den PIC-Befehl zu integrieren, für erste Tests kann mit PIC_P(Adr) ein Grafikbildschirm
-//                            -im FRAM abgelegt werden mit PIC_D(Adr) kann der gesicherte Bildinhalt wieder auf dem Bildschirm dargestellt werden
-//                            -PIC_P(Adr<,x,y,xx,yy>) speichert den Bildausschnitt x,y,xx,yy PIC_P(Adr) speichert den gesamten Bildschirm
-//                            -PIC_D(Adr,<x,y><,mode>) lädt die Bilddaten an Position x,y,mode=1 ->Hintergrund erhält die aktuelle Hintergrundfarbe
-//                            -nächster Schritt: Laden und Speichern der Bilddaten auf SD-Karte
-//                            -Unterprogramm FilenameWord eingespart - Umstellung der Dateioperationen auf die Stringfunktionen
-//                            -damit ist die Übergabe des Dateinamens als Stringvariable möglich
-//                            -17727 Zeilen/sek.
-//
-// v1.62b:07.05.2023          -COM-Befehl modifiziert ->COM_S(RX,TX,Baud) bzw. COM_S(0), COM_P(Zeichenkette,...), COM_W(Zeichenkette,...),
-//                            -COM_T -> sendet das Programm im Speicher an die ser. Schnittstelle
-//                            -Theme jetzt mit OPT THEME=x speicherbar, werden Farben oder Font über OPT gespeichert, wird beim Start das Theme ignoriert
-//                            -Startbildschirm etwas angepasst ->Font_offset eingespart, wird jetzt berechnet
-//                            -ein Farbbalken zeigt jetzt zusätzlich die Akku-Kapazität an ->mal sehen, ob das so bleibt
-//                            -16575 Zeile/sek.
-//
-// v1.61b:04.05.2023          -begonnen serielle Funktionen zu integrieren, noch ist das Konzept nicht ganz klar
-//                            -RX-Puffer der seriellen Schnittstelle auf 1024 Bytes erhöht, so können ganze Basic-Programme über die Com-Schnittstelle vom PC eingelesen werden,
-//                            -ohne verlorene Zeichen (gibt ja keine Flusskontrolle)
-//                            -bisherige Funktionen P=print W=write T=transfer (List)
-//                            -COM P und COM W können jetzt verkettete Ausgaben (wie Print) durchführen (P mit, W ohne Zeilenumbruch)
-//                            -17847 Zeilen/sek.
-//
-// v1.60b:29.04.2023          -DURCHBRUCH: es ist gelungen, den SPI-Port mit SD-Karte "und" FRAM zu betreiben ->FRAM_CS=Pin 0 (Sharing mit Flash-Taste);
-//                            -diverse Aktivierungen und Deaktivierungen der einzelnen Treiber machte es möglich :D
-//                            -somit können die vorherigen Einschränkungen zurückgenommen werden
-//                            -mein BASIC-LAPTOP ist fertig :-) ->Befehl Akku erweitert Print Akku(0) zeigt die Spannung und Akku(1) die Akkukapazität in Prozent an
-//                            -Akku-Interrupt-Routine ist jetzt aktiv und zeigt bei leerem Akku eine Warnung auf dem Bildschirm an
-//                            -Funktion GPIX(x,y) zum ermitteln des Farbwertes eine Pixel an Position x,y hinzugefügt.
-//                            -etwas schneller geworden 17379 Zeilen/sek. Mandel4.bas 14.71 Min
-//
 // v1.59b:29.04.2023          -bisher endgültige FRAM-PIN'S-> FRAM_CS  = 13, FRAM_MISO= 27 , FRAM_MOSI= 12 und FRAM_CLK = 0
 //                            -damit wird Pin26 wieder frei für DAC,Video-Out
 //                            -Port-Befehle auf die wenigen übrigen Pins reduziert (AREAD,DWRITE,PWM,PULSE)
@@ -66,7 +18,7 @@
 //
 // v1.57b:25.04.2023          -Startbildschirm etwas farbig aufgepeppt, Anzeige der Bildschirmauflösung entfernt ->es gibt ja nur noch 320x240
 //                            -Geschwindigkeit wieder eingebrochen ->15240 Zeilen/sek.!?
-//                            -FPOKE und FPEEK hinzugefügt, ermöglicht das schreiben und lesen von Float-Werten im Ram, FRam oder EEProm
+//                            -FPOKE und FPEEK hinzugefügt, ermöglicht das schreiben und lesen von float-Werten im Ram, FRam oder EEProm
 //                            -FPOKE Ort,Adresse,Wert , A=FPEEK(Ort,Adresse) -> Ort 0=RAM, 1=FRAM, 2=EEPROM
 //                            -Optimierungsoption jetzt im Programmkopf (siehe #pragma GCC optimize)
 //                            -morgen kommt ein FRAM-Chip mit 512kb als SPI-Variante, mal sehen, ob der eingebunden werden kann, das wäre cool :-)
