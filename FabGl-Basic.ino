@@ -43,10 +43,16 @@
 // April 2021
 //
 //
-#define BasicVersion "1.69b"
-#define BuiltTime "Built:12.06.2023"
+#define BasicVersion "1.70b"
+#define BuiltTime "Built:16.06.2023"
 #pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v1.70b:12.06.2023          -Befehle Load,Save und Start modifiziert, Save ohne Parameter speichert das im Ram befindliche Programm im FRAM
+//                            -Load ohne Parameter lädt das im FRAM befindliche Programm in den Arbeitsspeicher 
+//                            -Start ohne Parameter lädt und startet ein im FRAM abgelegtes Programm
+//                            -Cursor wieder in blinkendes Viereck zurück geändert, der Unterstrich war in manchen Situationen schlecht zu erkennen
+//                            -15834 Zeilen/sek.
+//
 // v1.69b:12.06.2023          -Font_8x8.h etwas geändert ->einige Grafiksymbole vom KC87 übernommen
 //                            -Logik-Auswertung AND und OR überarbeitet, scheint jetzt zu funktionieren
 //                            -tron-marker aktiviert sich ständig von selbst nach Fehlern oder Neustart von Programmen
@@ -113,7 +119,7 @@
 //                            -somit können die vorherigen Einschränkungen zurückgenommen werden
 //                            -mein BASIC-LAPTOP ist fertig :-) ->Befehl Akku erweitert Print Akku(0) zeigt die Spannung und Akku(1) die Akkukapazität in Prozent an
 //                            -Akku-Interrupt-Routine ist jetzt aktiv und zeigt bei leerem Akku eine Warnung auf dem Bildschirm an
-//                            -Funktion GPIX(x,y) zum ermitteln des Farbwertes eine Pixel an Position x,y hinzugefügt.
+//                            -Funktion GPIX(x,y) zum ermitteln des Farbwertes eines Pixel an Position x,y hinzugefügt.
 //                            -etwas schneller geworden 17379 Zeilen/sek. Mandel4.bas 14.71 Min
 //
 //
@@ -169,7 +175,7 @@ unsigned int noteTable []  PROGMEM = {16350, 17320, 18350, 19450, 20600, 21830, 
 #include "FS.h"
 #include <SD.h>
 #include <SPI.h>
-#include <Update.h>
+//#include <Update.h>
 
 //SPI CLASS FOR REDEFINED SPI PINS !
 SPIClass spiSD(HSPI);
@@ -188,6 +194,10 @@ byte SD_SET   = 44;      // -steht 44 im EEprom-Platz 10, dann sind die Werte im
 byte FRAM_CS  = 0;//13;       //SPI_FRAM 512kB CS-Pin
 word FRAM_OFFSET = 0x8000;    //Offset für Poke-Anweisungen, um zu verhindern, das in den Array-Bereich gepoked wird
 word FRAM_PIC_OFFSET = 0x12C04; //Platz pro Bildschirm im Speicher
+word Free_Bytes = 0;          //freie Bytes wird beim Start gesetzt
+//-------- Parameter für FRAM-Load ------------------------
+word load_n_bytes, read_n_bytes = 0;
+long load_adress = 0x70000;
 
 Adafruit_FRAM_SPI spi_fram = Adafruit_FRAM_SPI(kSD_CLK, kSD_MISO, kSD_MOSI, FRAM_CS);
 
@@ -239,9 +249,9 @@ short int MCP23017_ADDR = 0x20 ; //Adresse 32 (0x20) für eingebauten MCP23017
 bool mcp_start_marker = false;
 
 
-//------------- EEPROM o.FRAM-Chip --------------------
+//------------- EEPROM o.FRAM-Chip I2C-Adressen --------------------
 short int EEprom_ADDR = 0x50;
-short int FRam_ADDR = 0x57;
+//short int FRam_ADDR = 0x57;
 
 File fp;
 
@@ -325,6 +335,7 @@ static bool triggerRun = false;
 
 short int Vordergrund = 43;             //Standard-Vordergrundfarbe (wenn noch nichts im EEprom steht)
 short int Hintergrund = 18;             //Standard-Hintergrundfarbe (wenn noch nichts im EEprom steht)
+short int Pencolor = 0;                //Standard-Stiftfarbe
 short int fontsatz = 0;                 //Nummer des ausgewählten Fontsatzes
 short int user_vcolor = Vordergrund;    //User-Vordergrundfarbe
 short int user_bcolor = Hintergrund;    //User-Hintergrundfarbe
@@ -351,7 +362,8 @@ static word STR_TBL = 0x7f00;           //String-Array-Tabelle im FRAM
 enum {
   kStreamTerminal = 0,
   kStreamFile,
-  kStreamSerial
+  kStreamSerial,
+  kStreamFram
 };
 static char inStream = kStreamTerminal;
 static char outStream = kStreamTerminal;
@@ -560,7 +572,7 @@ enum {
   KW_MOUNT,
   KW_COM,     //70
   KW_PIC,
-  KW_DEFAULT  //74/* hier ist das Ende */
+  KW_DEFAULT  //73/* hier ist das Ende */
 };
 
 
@@ -707,12 +719,13 @@ enum {
   FUNC_MAP,
   FUNC_CONSTRAIN,
   FUNC_STRING,
-  FUNC_UNKNOWN   //56
+  FUNC_UNKNOWN   //58
 };
 
 //------------------------------- OPTION-Tabelle - alle Optionen, die dauerhaft gespeichert werden sollen ------------------------------
 const static char options[] PROGMEM = {
   'S', 'D', 'C', 'A', 'R', 'D' + 0x80,      //Pin-Festlegung SD-Karte
+  'F', 'R', 'A', 'M' + 0x80,                //CS-Pin FRAM
   'I', 'I', 'C' + 0x80,                     //Pin-Festlegung I2C-Port
   'F', 'O', 'N', 'T' + 0x80,                //Font dauerhaft speichern
   'C', 'O', 'L' , 'O', 'R' + 0x80,          //Vordergrund- und Hintergrundfarbe dauerhaft speichern
@@ -723,6 +736,7 @@ const static char options[] PROGMEM = {
 
 enum {
   OPT_SDCARD = 0,
+  OPT_FRAM,
   OPT_IIC,
   OPT_FONT,
   OPT_COLOR,
@@ -823,7 +837,7 @@ static const char dimmsg[]           PROGMEM = "Array-Dimension Error!";        
 static const char commsg[]           PROGMEM = "No COM-Port defined!";          //20
 static const char comsetmsg[]        PROGMEM = "Wrong COM-Port Definition!";    //21
 static const char bmpfilemsg[]       PROGMEM = "No BMP-File!";                  //22
-
+static const char no_prg_msg[]       PROGMEM = "No Program in Memory !";        //23
 /***************************************************************************/
 
 /******************** Interpreter-Variablen ********************************/
@@ -1383,7 +1397,7 @@ static float expr4(void)
   float b = 0;
   float c = 0;
   float d = 0;
-  float map_var[4]={0,0,0,0};
+  float map_var[4] = {0, 0, 0, 0};
   int fnv;
   uint8_t puf[3];
   unsigned long t = 0;
@@ -1408,9 +1422,10 @@ static float expr4(void)
   else if (*txtpos == '(') {
     txtpos++;
     a = expression();
-    if (*txtpos != ')')
-      goto expr4_error;
-    txtpos++;
+    if (Test_char(')')) goto expr4_error;
+    //if (*txtpos != ')')
+    //  goto expr4_error;
+    //txtpos++;
     return a;
   }
   //******************************************** Zahleneingabe mit Exponentialschreibweise ************************************
@@ -1590,7 +1605,6 @@ static float expr4(void)
         v_adr = rw_array(v_name, VAR_TBL);
         if (expression_error) goto expr4_error;
         SPI_RAM_read(v_adr, buf, 4);
-        //readBuffer(FRam_ADDR, v_adr, 4, buf);
 
         a = *((float *)buf);                                            //byte-array des Wertes nach float konvertieren
 
@@ -1655,11 +1669,7 @@ static float expr4(void)
         break;
     }
     //------------------------------------------------ komplexe Funktionen mit Klammer ----------------------------------------------------------------
-    //Terminal.print(*txtpos);
-    if (*txtpos != '(')                         //Klammer auf
-      goto expr4_error;
-
-    txtpos++;
+    if (Test_char('(')) goto expr4_error;       //Klammer auf
 
     if (*txtpos == '"') {
       a = String_quoted_read();                 // erstes Zeichen in a sichern für ASC
@@ -1674,7 +1684,6 @@ static float expr4(void)
 
     else if (fu == FUNC_IIC) {                   //*********** I2C-Befehle ***********
       iic = *txtpos;
-      //Terminal.print(*txtpos);
       txtpos++;
       switch (iic) {
         case 'R':
@@ -1717,9 +1726,7 @@ static float expr4(void)
       case  FUNC_GPIX:                          //GPIX(x,y)
       case  FUNC_MIN:
       case  FUNC_MAX:
-        if (*txtpos != ',')
-          goto expr4_error;
-        txtpos++;
+        if (Test_char(',')) goto expr4_error;
         b = expression();                       //2.Zahl
         break;
 
@@ -1737,11 +1744,9 @@ static float expr4(void)
         ((float *)variables_begin)[Fnoperator[charb]] = a;
         Fnvar = 0;
         b = Fnoperator[charb + 4];
-        //Terminal.println(b);
         while (*txtpos == ',') {
           txtpos++;
           Fnvar += 1;
-          //Terminal.println(Fnvar);
           if (Fnvar == b) {                                      //mehr Parameter als mit DEFN dimensioniert?
             syntaxerror(illegalmsg);
             goto expr4_error;
@@ -1751,18 +1756,14 @@ static float expr4(void)
         break;
 
       case FUNC_LEFT:
-        if (*txtpos != ',')
-          goto expr4_error;
-        txtpos++;
+        if (Test_char(',')) goto expr4_error;
         b = expression();                           //2.Parameter eine Zahl
         tempstring[int(b)] = 0;
         string_marker = true;
         break;
 
       case FUNC_RIGHT:
-        if (*txtpos != ',')
-          goto expr4_error;
-        txtpos++;
+        if (Test_char(',')) goto expr4_error;
         b = expression();                           //2.Parameter eine Zahl
         cbuf = String(tempstring);
         dbuf = cbuf.substring(cbuf.length() - b, cbuf.length());
@@ -1771,44 +1772,38 @@ static float expr4(void)
         break;
 
       case FUNC_STR:                                //str$(12.34,n) ->Umwandlung Zahl nach String - n=Nachkommastellen
-        if (*txtpos != ',')
-          goto expr4_error;
-        txtpos++;
+        if (Test_char(',')) goto expr4_error;
         b = expression();                           //2.Parameter eine Zahl
         break;
 
       case FUNC_MID:
-        if (*txtpos != ',')
-          goto expr4_error;
-        txtpos++;
+        if (Test_char(',')) goto expr4_error;
         b = expression();                           //2.Parameter eine Zahl
-        if (*txtpos != ',')
-          goto expr4_error;
-        txtpos++;
+        if (Test_char(',')) goto expr4_error;
         c = expression();
         cbuf = String(tempstring);
         dbuf = cbuf.substring(b - 1, b - 1 + c);
         dbuf.toCharArray(tempstring, dbuf.length() + 1);
         string_marker = true;
         break;
-        
+
       case FUNC_STRING:
-        if(Test_char(',')) goto expr4_error;
-        b=expression();                             //Zeichenkette in tempstring
+        if (Test_char(',')) goto expr4_error;
+        b = expression();                           //Zeichenkette in tempstring
         string_marker = true;
         func_string_marker = true;
         fstring = a;
         break;
-          
+
       case FUNC_TEMP:
-        if(Test_char(',')) goto expr4_error;
+        if (Test_char(',')) goto expr4_error;
         b = expression();                           //2.Parameter Temperaturkanal
         break;
 
       case FUNC_DHT:                                // DHT-Sensor DHT(Port,Typ,temp/humi)
-        if(Test_char(',')) goto expr4_error;
+        if (Test_char(',')) goto expr4_error;
         b = expression();                           //2.Parameter Typ
-        if(Test_char(',')) goto expr4_error;
+        if (Test_char(',')) goto expr4_error;
         c = expression();                           //3.Parameter Messwert 0=Temp, 1=Humi
         break;
 
@@ -1822,11 +1817,8 @@ static float expr4(void)
 
       case FUNC_COMPARE:                            //COMP$(a$,b$)(0=beide Strings gleich, 1=a$>b$, -1=a$<b$)
       case FUNC_INSTR:                              //INSTR(Suchstring,Zeichenkette)
-        if(Test_char(',')) goto expr4_error;
-        //if (*txtpos != ',')
-        //  goto expr4_error;
+        if (Test_char(',')) goto expr4_error;
         quota = false;
-        //txtpos++;
         if (!quota) cbuf = String(tempstring);     //ersten String sichern
         if (*txtpos == '"')                         //Zeichenkette in Anführungszeichen?
         {
@@ -1841,23 +1833,23 @@ static float expr4(void)
         break;
 
       case FUNC_MAP:                                //x=map(value,fromLow, fromHigh, toLow, toHigh)
-        if(Test_char(',')) goto expr4_error;
-        map_var[0]=expression();                    
-        if(Test_char(',')) goto expr4_error;
-        map_var[1]=expression();
-        if(Test_char(',')) goto expr4_error;
-        map_var[2]=expression();
-        if(Test_char(',')) goto expr4_error;
-        map_var[3]=expression();                        
+        if (Test_char(',')) goto expr4_error;
+        map_var[0] = expression();
+        if (Test_char(',')) goto expr4_error;
+        map_var[1] = expression();
+        if (Test_char(',')) goto expr4_error;
+        map_var[2] = expression();
+        if (Test_char(',')) goto expr4_error;
+        map_var[3] = expression();
         break;
 
       case FUNC_CONSTRAIN:
-        if(Test_char(',')) goto expr4_error;
-        b=expression();
-        if(Test_char(',')) goto expr4_error;
-        c=expression();
+        if (Test_char(',')) goto expr4_error;
+        b = expression();
+        if (Test_char(',')) goto expr4_error;
+        c = expression();
         break;
-                        
+
       default:
         break;
 
@@ -1933,13 +1925,7 @@ static float expr4(void)
         break;
 
       case FUNC_GPIX:
-        //GFX.waitCompletion();                                            //warte bis eventuelle Draw-Anweisungen beendet sind
-        buf[0] = GFX.getPixel(a, b).R;
-        buf[1] = GFX.getPixel(a, b).G;
-        buf[2] = GFX.getPixel(a, b).B;
-        //    B                  G                     R
-        a = (buf[2] / 85) + ((buf[1] / 85) << 2) + ((buf[0] / 85) << 4); //einzelne Farbanteile in 64-Farbwert zurückwandeln
-        return a;
+        return Test_pixel(a, b, 1);
         break;
 
       case FUNC_GET:
@@ -2100,11 +2086,11 @@ static float expr4(void)
       case FUNC_MID:                  // MID$(String,Start,Anzahl)
         return a;                     //Rückgabe Dummywert
         break;
-      
+
       case FUNC_STRING:               //STRINGS$(n,"string")
         return a;                     //Rückgabe Dummywert
         break;
-        
+
       case FUNC_TAB:                  //TAB-Funktion
         b = tc.getCursorRow();
         tc.setCursorPos(a, b);
@@ -2259,13 +2245,13 @@ static float expr4(void)
         break;
 
       case FUNC_MAP:
-        return map(a,map_var[0],map_var[1],map_var[2],map_var[3]);
+        return map(a, map_var[0], map_var[1], map_var[2], map_var[3]);
         break;
-      
+
       case FUNC_CONSTRAIN:
-        return constrain(a,b,c);
+        return constrain(a, b, c);
         break;
-          
+
       default:
 
         break;
@@ -3195,15 +3181,12 @@ interpreteAtTxtpos:
 
 
       case KW_LOAD:                                       // LOAD filename
-        if (*txtpos == '_') {
-          txtpos++;
-          if (*txtpos == 'B') {
-            txtpos++;
-            if (load_binary())
-              continue;
-          }
+        if (*txtpos == NL) {
+          load_ram();
+          continue;
         }
-        else load_file();
+
+        load_file();
         string_marker = false;
         continue;
         break;
@@ -3221,6 +3204,10 @@ interpreteAtTxtpos:
         break;
 
       case KW_SAVE:                                       // SAVE filename (/filename.bas)
+        if (*txtpos == NL) {
+          save_ram();
+          continue;
+        }
         save_file();
         string_marker = false;
         continue;
@@ -3246,7 +3233,7 @@ interpreteAtTxtpos:
         expression_error = 0;
         val = get_value();
         logic_ergebnis[logic_counter++] = int(val);       //Ergebnis in Puffer speichern und logicmarker hochzählen
-        if (val != 0) {                                   
+        if (val != 0) {
           val = 0;                                        //für den Fall, das kein AND,OR vorkommt
           break;
         }
@@ -3433,6 +3420,15 @@ interpreteAtTxtpos:
 
       case KW_START:                                      // START filename
         autorun = true;
+        if (*txtpos == NL) {
+          load_ram();
+          clear_var();
+          find_data_line();                                 //Data-Zeilen finden
+          current_line = program_start;                     //beginn mit erster Zeile
+          sp = program + sizeof(program);
+          goto execline;
+          break;
+        }
         load_file();
         continue;
         break;
@@ -3497,7 +3493,7 @@ interpreteAtTxtpos:
         expression_error = 0;
         val = get_value();
         logic_ergebnis[logic_counter++] = int(val);       //alle Ergebnisse einlesen und auswerten
-        for (int i = 0; i < logic_counter+1; i++)
+        for (int i = 0; i < logic_counter + 1; i++)
         {
           logica += logic_ergebnis[i];
         }
@@ -3507,15 +3503,15 @@ interpreteAtTxtpos:
       case KW_OR:
         expression_error = 0;
         val = get_value();
-        
+
         logic_ergebnis[logic_counter++] = int(val);
-        for (int i = 0; i < logic_counter+1; i++)         //alle Ergebnisse einlesen und auswerten
+        for (int i = 0; i < logic_counter + 1; i++)       //alle Ergebnisse einlesen und auswerten
         {
           //Terminal.print(logic_ergebnis[i]);
           logica += logic_ergebnis[i];
         }
         val = logica;                                   //ist mindestens eine Bedingung erfüllt lautet das Ergebnis 0 ->war
-        
+
         if (val == 0)                                   //sind alle Bedingungen falsch wird val auf 1 (falsch gesetzt)
           val = 1;
         else val = 0;                                   //mindestens eine Bedingung ist erfüllt, also -> war
@@ -3738,12 +3734,17 @@ interpreteAtTxtpos:
         if (cmd_serial())
           continue;
         break;
-        
+
       case KW_PIC:
         if (show_Pic())
           continue;
         break;
-        
+
+      // case KW_FILL:
+      //   if (fill_area())
+      //     continue;
+      //   break;
+
       case KW_DEFAULT:
         if (var_get())
           continue;
@@ -3991,7 +3992,7 @@ static int command_Print(void)
         break;
 
       case ':':
-        if(!semicolon) Terminal.println();
+        if (!semicolon) Terminal.println();
         //if(ser_marker) Serial1.println();
         txtpos++;
         k = 1;
@@ -3999,7 +4000,7 @@ static int command_Print(void)
 
       case NL:
         Terminal.println();
-        semicolon=false;
+        semicolon = false;
         //if(ser_marker) Serial1.println();
         k = 1;
         break;
@@ -4055,22 +4056,22 @@ static int command_Print(void)
         e = get_value();                    //Zahl oder Variable lesen
 
         if (expression_error) k = 2;
-        if(func_string_marker == true){
-            for(int i=0; i< fstring;i++){
-               printstring(tempstring);
-            }
-            //Terminal.print(tempstring);
-            func_string_marker=false;
-            string_marker = false;
-            chr = false;
+        if (func_string_marker == true) {
+          for (int i = 0; i < fstring; i++) {
+            printstring(tempstring);
+          }
+          //Terminal.print(tempstring);
+          func_string_marker = false;
+          string_marker = false;
+          chr = false;
         }
         else if (string_marker == true)                  //String?
         {
           printstring(tempstring);
-          func_string_marker=false;
+          func_string_marker = false;
           string_marker = false;
           chr = false;
-          }
+        }
         else if (chr == true)
         {
           Terminal.write(int(e));            //CHR$
@@ -4710,16 +4711,23 @@ static int line_rec_circ(int circ_or_rect, int param)
   switch (circ_or_rect) {
     case 1:
       if (par[4] == 0) GFX.drawEllipse(par[0], par[1], par[2], par[3]);       //Circle circ x,y,xx,yy,fill=0
-      else GFX.fillEllipse(par[0], par[1], par[2], par[3]);                   //Circle circ x,y,xx,yy,fill=1
+      else {
+        bcolor(Pencolor);
+        GFX.fillEllipse(par[0], par[1], par[2], par[3]);                   //Circle circ x,y,xx,yy,fill=1
+      }
       break;
     case 2:
       if (par[4] == 0) GFX.drawRectangle(par[0], par[1], par[2], par[3]);     //Rectangle rect x,y,xx,yy,fill=0
-      else GFX.fillRectangle(par[0], par[1], par[2], par[3]);                 //Rectangle rect x,y,xx,yy,fill=1
+      else {
+        bcolor(Pencolor);
+        GFX.fillRectangle(par[0], par[1], par[2], par[3]);                 //Rectangle rect x,y,xx,yy,fill=1
+      }
       break;
     default:
       GFX.drawLine(par[0], par[1], par[2], par[3]);                           //Line line x,y,xx,yy
       break;
   }
+  bcolor(Hintergrund);
   return 0;
 }
 
@@ -5034,7 +5042,6 @@ GFX.setPenColor((bitRead(fc, 5) * 2 + bitRead(fc, 4)) * 64, (bitRead(fc, 3) * 2 
 }
 
   void bcolor(int bc) {
-
 #ifdef VGA16
 
     bc = bc & 0xF;
@@ -5109,7 +5116,7 @@ GFX.setBrushColor((bitRead(bc, 5) * 2 + bitRead(bc, 4)) * 64, (bitRead(bc, 3) * 
       syntaxerror(syntaxmsg);
       return 1;
     }
-
+    Pencolor = pc;
     if (*txtpos == ',')                             //wurde die PEN-Weite angegeben?
     {
       txtpos++;
@@ -5365,20 +5372,12 @@ GFX.setBrushColor((bitRead(bc, 5) * 2 + bitRead(bc, 4)) * 64, (bitRead(bc, 3) * 
   static int set_pwm(void)
   {
     int p, x, chan;
-
-    if (*txtpos != '(') {
-      syntaxerror(syntaxmsg);
-      return 1;
-    }
-    txtpos++;
+    if (Test_char('(')) return 1;
 
     expression_error = 0;
     p = expression();
-    if (expression_error)
-    {
-      syntaxerror(syntaxmsg);
-      return 1;
-    }
+    if (expression_error) return 1;
+
     if ((p == 2) || (p == 12) || (p == 26) || (p == 27)) //nur gültige Pins setzen
     {
       switch (p) {
@@ -5522,8 +5521,6 @@ GFX.setBrushColor((bitRead(bc, 5) * 2 + bitRead(bc, 4)) * 64, (bitRead(bc, 3) * 
     tempstring[i] = '\0';       //tempstring abschliessen
 
     txtpos++;                   //Anführungszeichen überspringen
-    //string_marker=true;
-    //Terminal.println(String(*txtpos));
     return c;
   }
 
@@ -5638,20 +5635,13 @@ GFX.setBrushColor((bitRead(bc, 5) * 2 + bitRead(bc, 4)) * 64, (bitRead(bc, 3) * 
     fcolor(Vordergrund);
 
     tc.setCursorPos((x_pos - 26) / 2, 1);
-    Terminal.write("Basic32+ V ");
+    Terminal.write("Basic32+ V");
     Terminal.write(BasicVersion);
     Terminal.write(" Zille-Soft\r\n");
     tc.setCursorPos((x_pos - 16) / 2 , 2);
     // memory free
     Terminal.print(int(variables_begin - program_end), DEC);
     printmsg(memorymsg, 1);
-    /*
-      tc.setCursorPos(1, 5);
-      Terminal.write("Screen-Size  :");
-      Terminal.print(VGAController.getScreenWidth());
-      Terminal.write("x");
-      Terminal.print(VGAController.getScreenHeight());
-    */
     tc.setCursorPos(1, 4);
     Terminal.write("Terminal-Size:");
     Terminal.print(VGAController.getScreenWidth() / x_char[fontsatz]);
@@ -5663,7 +5653,6 @@ GFX.setBrushColor((bitRead(bc, 5) * 2 + bitRead(bc, 4)) * 64, (bitRead(bc, 3) * 
     Terminal.print(ESP.getFreeHeap());
 
     tc.setCursorPos(1, 6);
-    //Terminal.print("Fontset      :");
     Terminal.print("Fontset      :");
     Terminal.print(fontsatz);
 
@@ -5708,6 +5697,7 @@ GFX.setBrushColor((bitRead(bc, 5) * 2 + bitRead(bc, 4)) * 64, (bitRead(bc, 3) * 
   {
     int v;
     char c;
+
     switch ( inStream ) {
       case ( kStreamFile ):
 
@@ -5719,6 +5709,10 @@ GFX.setBrushColor((bitRead(bc, 5) * 2 + bitRead(bc, 4)) * 64, (bitRead(bc, 3) * 
 
         }
         return v;
+
+        break;
+
+      case ( kStreamFram ):
 
         break;
 
@@ -5847,7 +5841,7 @@ inchar_loadfinish:
       inhibitOutput = true;
     }
 
-
+    
     warmstart();
     return 0;
   }
@@ -5919,7 +5913,59 @@ inchar_loadfinish:
 
   }
 
+  //----------------------------------------------- Save ohne Parameter speichert das Programm ab 0x7000 im FRAM ---------------------------------------
+  static int save_ram(void) {
+    word n_bytes;
+    long adress = load_adress;
 
+    n_bytes = 56472 - int(variables_begin - program_end);
+
+    if (n_bytes < 10) {
+      syntaxerror(no_prg_msg);
+      return 0;
+    }
+    //------ Kennung f. Programm im FRAM ------
+    SPI_RAM_write8(adress++, 'B');
+    SPI_RAM_write8(adress++, 'S');
+
+    SPI_RAM_write8(adress++, lowByte(n_bytes));           //Anzahl zu speichernde Programm-Bytes schreiben
+    SPI_RAM_write8(adress++, highByte(n_bytes));
+    for (int i = 0; i < n_bytes; i++) {                   //Arbeitsspeicher in FRAM ablegen
+      SPI_RAM_write8(adress++, program[i]);
+    }
+    return 0;
+  }
+  
+  //----------------------------------------------- Load ohne Parameter lädt das Programm aus dem FRAM ab 0x7000 ---------------------------------------
+  static int load_ram(void) {
+    word n_bytes, i;
+    long adress = load_adress;
+    byte a, b;
+    program_start = program;                                             //programmstart zurücksetzen
+    program_end = program_start;
+    memset(program, 0, 0x8000);                                          //die ersten 32kb des Arbeitsspeichers löschen
+
+    a = SPI_RAM_read8(adress++);
+    b = SPI_RAM_read8(adress++);
+    //------ Kennung f. Programm im FRAM ------
+    if (a == 'B' && b == 'S') {
+      
+      n_bytes = SPI_RAM_read8(adress++);                                //Anzahl der zu lesenden Bytes 
+      n_bytes = n_bytes + (SPI_RAM_read8(adress++) << 8);
+      for (i = 0; i < n_bytes; i++) {                                   //Programm in Arbeitsspeicher schreiben
+        program[i] = SPI_RAM_read8(adress++);
+        program_end++;
+      }
+
+      warmstart();
+      return 0;
+      
+    }
+    else {
+      syntaxerror(no_prg_msg);                                          //kein Programm im FRAM
+      return 0;
+    }
+  }
   //--------------------------------------------- DEL - Befehl --------------------------------------------------------------------------------------
 
   static int cmd_delFiles(void)
@@ -6163,39 +6209,7 @@ inchar_loadfinish:
       path2[i++] = *ret++;
     path2[i] = 0;
   }
-  //--------------------------------------------- Unterprogramm - Dateiname extrahieren -------------------------------------------------------------
-  /*
-    char * filenameWord(void)
-    {
-      // SDL - I wasn't sure if this functionality existed above, so I figured i'd put it here
-      char * ret = txtpos;
-      expression_error = 0;
 
-      // make sure there are no quotes or spaces, search for valid characters
-      if (*txtpos != '"')   //Anführungszeichen ist Pflicht
-      {
-        expression_error = 1;
-      }
-
-      while ( !isValidFnChar( *txtpos )) txtpos++;
-      ret = txtpos;
-      // now, find the next nonfnchar
-      txtpos++;
-      while ( isValidFnChar( *txtpos )) txtpos++;
-      if ( txtpos != ret ) *txtpos = '\0';
-      if(*txtpos=='"') {
-         txtpos = '\0';
-        ret=txtpos;
-        return ret;
-      }
-      // set the error code if we've got no string
-      if ( *ret == '\0' ) {
-        expression_error = 1;
-      }
-
-      return ret;
-    }
-  */
   //--------------------------------------------- Timer-Interrupt für Akku-Überwachung --------------------------------------------------------------
   void IRAM_ATTR onTimer()
   {
@@ -6239,6 +6253,7 @@ inchar_loadfinish:
     //################ Farbschema aus dem EEPROM lesen ############################
     Vordergrund = EEPROM.read(0) ;   //512 Byte Werte im EEPROM speicherbar
     Hintergrund = EEPROM.read(1);
+    Pencolor = Vordergrund;
     user_vcolor = Vordergrund;    //User-Vordergrundfarbe merken
     user_bcolor = Hintergrund;    //User-Hintergrundfarbe merken
     //#############################################################################
@@ -6256,7 +6271,7 @@ inchar_loadfinish:
       kSD_CLK  = EEPROM.read(6);
       kSD_MISO = EEPROM.read(7);
       kSD_MOSI = EEPROM.read(8);
-      kSD_CS   = EEPROM.read(9);    //CS-Pin der SD-Karte ist fest auf GND
+      kSD_CS   = EEPROM.read(9);
     }
 
     //--- ist der IIC_Marker (55) auf Platz 13 gesetzt, dann sind die folgenden Werte zu verwenden
@@ -7278,7 +7293,6 @@ nochmal:
           }
           while (*txtpos != NL && *txtpos != ':') txtpos++;
           syntaxerror(commsg);
-          return 0;
           break;
 
         case 'T':                     //Transfer Programm zum PC
@@ -7289,7 +7303,6 @@ nochmal:
             return 0;
           }
           syntaxerror(commsg);
-          //return 0;
           break;
 
         default:
@@ -7530,8 +7543,8 @@ nochmal:
         case 'P':                                         //Grafikbildschirm in FRAM speichern
           if (Test_char('(')) return 1;
           ad = get_value();
-          if (ad > 5) ad = 5;
-          ad = ad * FRAM_PIC_OFFSET;                      //0..5 Bildspeicherplatz
+          if (ad > 4) ad = 4;
+          ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz
           if (*txtpos == ',') {                           //Komma?, dann x,y-Position eingeben
             txtpos++;
             dx = get_value();                             //x
@@ -7576,66 +7589,7 @@ nochmal:
       string_marker = false;
       return 0;
     }
-    /*
-        void diashow_pic(long ad, int dx, int dy, int iv) {
-          byte buf[4], w;
-          int x, y, px, py, vv, vh;
-          vv = GFX.getHeight();
-          vh = GFX.getWidth();
 
-          SPI_RAM_read(FRAM_OFFSET + ad, buf, 4);         //Dimension lesen
-          px = buf[0] + (buf[1] << 8);
-          py = buf[2] + (buf[3] << 8);
-
-          ad += 4;
-          switch (iv) {
-            case 0:                                           //von unten nach oben
-              for (y = dy + py - 1 ; y > dy - 1; y--) {
-                for (x = dx; x < (dx + px); x++) {
-                  w = SPI_RAM_read8(FRAM_OFFSET + ad++);
-                  fcolor(w);
-                  if (x < vh && y < vv) GFX.setPixel(x, y);
-                }
-              }
-              break;
-
-            case 1:                                           //von unten nach oben + swap Backcolor
-              for (y = dy + py - 1 ; y > dy - 1; y--) {
-                for (x = dx; x < (dx + px); x++) {
-                  w = SPI_RAM_read8(FRAM_OFFSET + ad++);
-                  fcolor(w);
-                  if (x < vh && y < vv) GFX.setPixel(x, y);
-                }
-              }
-              GFX.swapRectangle(dx, dy + 1, dx + px - 1, dy + py); //swap Backcolor
-              break;
-
-            case 2:                                           //von oben nach unten + swap Backcolor
-              for (y = dy; y < (dy + py); y++) {
-                for (x = dx + px - 1 ; x > dx-1 ; x--) {
-                  w = SPI_RAM_read8(FRAM_OFFSET + FRAM_PIC_OFFSET - ad++);
-                  fcolor(w);
-                  if (x < vh && y < vv) GFX.setPixel(x, y);
-                }
-
-              }
-              GFX.swapRectangle(dx, dy, dx + px, dy + py); //swap Backcolor
-
-              break;
-
-            default:                                          //von oben nach unten
-              for (y = dy; y < (dy + py); y++) {
-                for (x = dx + px - 1 ; x > dx-1 ; x--) {
-                  w = SPI_RAM_read8(FRAM_OFFSET + FRAM_PIC_OFFSET - ad++);
-                  fcolor(w);
-                  if (x < vh && y < vv) GFX.setPixel(x, y);
-                }
-              }
-              break;
-          }
-        }
-
-    */
     //****************************************************** PIC_E(X,Y,XX,YY,Filename.bmp) ******************************************
 
     int export_pic(long x, long y, long xx, long yy, char *file) {
@@ -7925,82 +7879,203 @@ nochmal:
       return 0;
     }
 
+    /*
+        //------------------------------------------ Befehl Fill --------------------------------------------------------------------------------------
+        int fill_area(void) {
+          int xx, yy, xl, xr, yo, yu, x, y, c, lbuf[3], rbuf[3], cl, cr;
+          bool d, l, r, o, u, xl_m, xr_m = false;
 
+          x = get_value();
+          if (Test_char(',')) return 1;
+          y = get_value();
+          if (Test_char(',')) return 1;
+          c = get_value();
+          fcolor(c);
+          xl = xr = x;
+          yy = y;
+          d = false;
 
-    //------------------------------------- Testbereich SD-Update -----------------------------------------------------------------------------
-    int load_binary(void) {
+          while (!d) {
+            if (!Test_pixel(xl, yy, 0)) {
+              if (xl > -1 && xl < GFX.getWidth() && y > -1) {
+                GFX.setPixel(xl, yy);
+                xl--;
+              }
+              else xl_m = true;
+            }
+            else {                        //rand links detektiert
+              xl_m = true;
+            }
 
-      expression_error = 0;
-      get_value();
+            if (!Test_pixel(xr, yy, 0)) {
+              if (xr > -1 && xr < GFX.getWidth() && y > -1) {
+                GFX.setPixel(xr, yy);
+                xr++;
+              }
+              else xr_m = true;
 
-      if (expression_error)
-      {
-        syntaxerror(syntaxmsg);
-        return 1;
-      }
+            }
+            else {                        //rand rechts detektiert
+              xr_m = true;
+            }
 
-      spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+            if (xr_m && xl_m)
+            { //rand links und rechts erreicht dann eine Zeile höher
+              if (!Test_pixel(x, yy - 1, 0))
+              {
+                yy--;
+                xr_m = false;
+                xl_m = false;
+                xr = xl = x;
+              }
+              else {
+                d = true;
+              }
+            }
 
-      if ( !SD.exists(String(sd_pfad) + String(tempstring)))
-      {
-        syntaxerror(sdfilemsg);
-        sd_ende();
-        return 1;
-      }
+          }
+          xl = xr = x;
+          yy = y;
+          d = false;
 
-      File updateBin = SD.open(String(sd_pfad) + String(tempstring));
+          while (!d) {
+            if (!Test_pixel(xl, yy, 0)) {
+              if (xl > -1 && xl < GFX.getWidth() && yy < GFX.getHeight()) {
+                GFX.setPixel(xl, yy);
+                xl--;
+              }
+              else xl_m = true;
 
-      if (updateBin) {
-        if (updateBin.isDirectory()) {
-          Terminal.println("Error, " + String(tempstring) + " is not a file");
-          updateBin.close();
-          return 1;
+            }
+            else {                        //rand links detektiert
+              xl_m = true;
+            }
+
+            if (!Test_pixel(xr, yy, 0)) {
+              if (xr > -1 && xr < GFX.getWidth() && yy < GFX.getHeight()){
+                GFX.setPixel(xr, yy);
+                xr++;
+              }
+              else xr_m = true;
+
+            }
+            else {                        //rand rechts detektiert
+              xr_m = true;
+            }
+
+            if (xr_m && xl_m)
+            { //rand links und rechts erreicht dann eine Zeile höher
+              if (!Test_pixel(x, yy + 1, 0))
+              {
+                yy++;
+                xr_m = false;
+                xl_m = false;
+                xr = xl = x;
+              }
+              else {
+                d = true;
+              }
+            }
+
+          }
+          fcolor(Vordergrund);
+          return 0;
         }
-
-        size_t updateSize = updateBin.size();
-
-        if (updateSize > 0) {
-          Terminal.println("load " + String(tempstring));
-          performUpdate(updateBin, updateSize);
-        }
-        else {
-          Terminal.println("Error, file is empty");
-        }
-        updateBin.close();
+    */
+    int Test_pixel(int x, int y, bool modes) {
+      int buf[3], c;
+      if (x > -1 && x < GFX.getWidth() && y > -1 && y < GFX.getHeight()) {
+        buf[0] = GFX.getPixel(x, y).R;
+        buf[1] = GFX.getPixel(x, y).G;
+        buf[2] = GFX.getPixel(x, y).B;
       }
-      else {
-        Terminal.println("Could not load Binary from sd");
+      c = (buf[2] / 85) + ((buf[1] / 85) << 2) + ((buf[0] / 85) << 4);
+      if (!modes) {
+        if (c == Hintergrund) //einzelne Farbanteile in 64-Farbwert zurückwandeln
+          return 0;           //Pixel nicht gesetzt
+        else
+          return 1;           //Pixel gesetzt
       }
+      else return c;          //Farbe des Pixels
     }
 
-    // perform the actual update from a given stream
-    void performUpdate(Stream &updateSource, size_t updateSize) {
-      if (Update.begin(updateSize)) {
-        size_t written = Update.writeStream(updateSource);
-        if (written == updateSize) {
-          Terminal.println("Written : " + String(written) + " successfully");
-        }
-        else {
-          Terminal.println("Written only : " + String(written) + "/" + String(updateSize) + ". Retry?");
-        }
-        if (Update.end()) {
-          Terminal.println("OTA done!");
-          if (Update.isFinished()) {
-            Terminal.println("successfully completed. Now Rebooting.");
-            delay(1000);
-            ESP.restart();
+
+    /*
+        //------------------------------------- Testbereich SD-Update -----------------------------------------------------------------------------
+        int load_binary(void) {
+
+          expression_error = 0;
+          get_value();
+
+          if (expression_error)
+          {
+            syntaxerror(syntaxmsg);
+            return 1;
+          }
+
+          spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+
+          if ( !SD.exists(String(sd_pfad) + String(tempstring)))
+          {
+            syntaxerror(sdfilemsg);
+            sd_ende();
+            return 1;
+          }
+
+          File updateBin = SD.open(String(sd_pfad) + String(tempstring));
+
+          if (updateBin) {
+            if (updateBin.isDirectory()) {
+              Terminal.println("Error, " + String(tempstring) + " is not a file");
+              updateBin.close();
+              return 1;
+            }
+
+            size_t updateSize = updateBin.size();
+
+            if (updateSize > 0) {
+              Terminal.println("load " + String(tempstring));
+              performUpdate(updateBin, updateSize);
+            }
+            else {
+              Terminal.println("Error, file is empty");
+            }
+            updateBin.close();
           }
           else {
-            Terminal.println("not finished? Something went wrong!");
+            Terminal.println("Could not load Binary from sd");
           }
         }
-        else {
-          Terminal.println("Error Occurred. Error #: " + String(Update.getError()));
-        }
 
-      }
-      else
-      {
-        Terminal.println("Not enough space to begin OTA");
-      }
-    }
+        // perform the actual update from a given stream
+        void performUpdate(Stream & updateSource, size_t updateSize) {
+          if (Update.begin(updateSize)) {
+            size_t written = Update.writeStream(updateSource);
+            if (written == updateSize) {
+              Terminal.println("Written : " + String(written) + " successfully");
+            }
+            else {
+              Terminal.println("Written only : " + String(written) + "/" + String(updateSize) + ". Retry?");
+            }
+            if (Update.end()) {
+              Terminal.println("OTA done!");
+              if (Update.isFinished()) {
+                Terminal.println("successfully completed. Now Rebooting.");
+                delay(1000);
+                ESP.restart();
+              }
+              else {
+                Terminal.println("not finished? Something went wrong!");
+              }
+            }
+            else {
+              Terminal.println("Error Occurred. Error #: " + String(Update.getError()));
+            }
+
+          }
+          else
+          {
+            Terminal.println("Not enough space to begin OTA");
+          }
+        }
+    */
