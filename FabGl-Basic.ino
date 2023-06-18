@@ -48,10 +48,13 @@
 #pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
 // v1.70b:12.06.2023          -Befehle Load,Save und Start modifiziert, Save ohne Parameter speichert das im Ram befindliche Programm im FRAM
-//                            -Load ohne Parameter lädt das im FRAM befindliche Programm in den Arbeitsspeicher 
+//                            -Load ohne Parameter lädt das im FRAM befindliche Programm in den Arbeitsspeicher
 //                            -Start ohne Parameter lädt und startet ein im FRAM abgelegtes Programm
 //                            -Cursor wieder in blinkendes Viereck zurück geändert, der Unterstrich war in manchen Situationen schlecht zu erkennen
-//                            -15834 Zeilen/sek.
+//                            -Datei-Lese- und Schreibfunktionen fehlen noch, um zBsp.Sensordaten zu schreiben bzw. zu lesen
+//                            -OPEN ,FREAD, FWRITE, CLOSE wären mögliche Befehle, Serial-Funktionen müssen noch komplettiert werden
+//                            -begonnen, eine kurzhilfe für alle Befehle und Funktionen zu integrieren,.... soviele Baustellen :-|
+//                            -16161 Zeilen/sek.
 //
 // v1.69b:12.06.2023          -Font_8x8.h etwas geändert ->einige Grafiksymbole vom KC87 übernommen
 //                            -Logik-Auswertung AND und OR überarbeitet, scheint jetzt zu funktionieren
@@ -152,6 +155,8 @@ fabgl::VGA16Controller  VGAController;      //VGA-Variante
 #ifdef VGA64
 fabgl::VGAController    VGAController;      //VGA-Variante
 #endif
+
+
 
 //------------------------------------------ Tastatur,GFX-Treiber- und Terminaltreiber -------------------------------------------------------------
 fabgl::PS2Controller    PS2Controller;
@@ -384,6 +389,13 @@ char const * Edit_line = nullptr;        //Editor-Zeile
 
 //------------------------------------ Interpreter ---------------------------------------------------------------------------------------------
 char tempstring[STR_LEN];                //String Zwischenspeicher
+
+//------------------------------------ Dateifunktionen FREAD,FWRITE ----------------------------------------------------------------------------
+char filestring[STR_LEN];                //Namensstring für Dateioperationen Fread,Fwrite
+static bool Datei_open = false;          //FREAD, FWRITE Open-marker
+char File_function;                      //R,W,A für Datei-Funktionen (read,write,append)
+long File_pos = 0;                       //Dateipositions-merker
+
 static char *txtpos, *list_line, *tmptxtpos, *dataline;
 static char expression_error;
 static char *tempsp;
@@ -401,7 +413,7 @@ unsigned int num_of_datalines = 0;  //Anzahl DATA-Zeilen
 unsigned int current_dataline = 0;  //aktuelle DATA-Zeile
 unsigned int data_numbers[300];     //Array zur speicherung von 300 DATA Zeilennummern
 
-
+#include "help_sys.h"
 ////////////////////////////////////////////////////////////////////////////////
 // ASCII Characters
 #define CR	'\r'
@@ -494,6 +506,10 @@ const static char keywords[] PROGMEM = {
   'M', 'N', 'T' + 0x80,
   'C', 'O', 'M' + 0x80,
   'P', 'I', 'C' + 0x80,
+  'O', 'P', 'E', 'N' + 0x80,
+  'C', 'L', 'O', 'S', 'E' + 0x80,
+  'F', 'W', 'R', 'I', 'T', 'E' + 0x80,
+  'H', 'E', 'L', 'P' + 0x80,
   0
 };
 
@@ -572,7 +588,11 @@ enum {
   KW_MOUNT,
   KW_COM,     //70
   KW_PIC,
-  KW_DEFAULT  //73/* hier ist das Ende */
+  KW_OPEN,
+  KW_CLOSE,
+  KW_FWRITE,
+  KW_HELP,
+  KW_DEFAULT  //75/* hier ist das Ende */
 };
 
 
@@ -657,6 +677,7 @@ const static char func_tab[] PROGMEM = {
   'M', 'A', 'P' + 0x80,
   'C', 'O', 'N', 'S' + 0x80,
   'S', 'T', 'R', 'I', 'N', 'G', '$' + 0x80,
+  'F', 'R', 'E', 'A', 'D' + 0x80,
   0
 };
 
@@ -719,7 +740,8 @@ enum {
   FUNC_MAP,
   FUNC_CONSTRAIN,
   FUNC_STRING,
-  FUNC_UNKNOWN   //58
+  FUNC_FREAD,
+  FUNC_UNKNOWN   //59
 };
 
 //------------------------------- OPTION-Tabelle - alle Optionen, die dauerhaft gespeichert werden sollen ------------------------------
@@ -838,6 +860,7 @@ static const char commsg[]           PROGMEM = "No COM-Port defined!";          
 static const char comsetmsg[]        PROGMEM = "Wrong COM-Port Definition!";    //21
 static const char bmpfilemsg[]       PROGMEM = "No BMP-File!";                  //22
 static const char no_prg_msg[]       PROGMEM = "No Program in Memory !";        //23
+static const char no_command_msg[]   PROGMEM = "Keyword not found !";           //24
 /***************************************************************************/
 
 /******************** Interpreter-Variablen ********************************/
@@ -3218,8 +3241,12 @@ interpreteAtTxtpos:
         break;
 
       case KW_REN:                                        // RENAME
-        renameWord();
-        renameFile(SD, path1, path2);
+        expression_error = 0;
+        get_value();
+        strcpy(filestring, tempstring);       //Tempstring nach filestring kopieren
+        if(Test_char(',')) continue;
+        get_value();
+        renameFile(SD, filestring, tempstring);
         continue;
         break;
 
@@ -3740,10 +3767,28 @@ interpreteAtTxtpos:
           continue;
         break;
 
-      // case KW_FILL:
-      //   if (fill_area())
-      //     continue;
-      //   break;
+      case KW_OPEN:
+        if (file_rw_open())
+          continue;
+        break;
+
+      case KW_CLOSE:
+        break;
+
+      case KW_FWRITE:
+        break;
+
+      case KW_HELP:
+        if(*txtpos==NL) 
+        {
+          if (show_help())
+          continue;
+        }
+        else {
+          if(show_help_name())
+            continue; 
+        }
+        break;
 
       case KW_DEFAULT:
         if (var_get())
@@ -5414,19 +5459,14 @@ GFX.setBrushColor((bitRead(bc, 5) * 2 + bitRead(bc, 4)) * 64, (bitRead(bc, 3) * 
       return 1;
     }
 
-    if (*txtpos != ')') {
-      syntaxerror(syntaxmsg);
-      return 1;
-    }
-    txtpos++;
+    if (Test_char(')')) return 1;
+
     if (*txtpos != NL && *txtpos != ':')
     {
       syntaxerror(syntaxmsg);
       return 1;
     }
-
     ledcWrite(chan, x);                //PWM-Wert setzen (pwm-channel,wert)
-
     return 0;
   }
   //--------------------------------------------- CUR - Befehl --------------------------------------------------------------------------------------
@@ -5841,7 +5881,7 @@ inchar_loadfinish:
       inhibitOutput = true;
     }
 
-    
+
     warmstart();
     return 0;
   }
@@ -5863,7 +5903,9 @@ inchar_loadfinish:
       syntaxerror(syntaxmsg);
       return 1;
     }
+
     spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+
 
     // remove the old file if it exists
     if ( SD.exists( String(sd_pfad) + String(tempstring))) {
@@ -5889,7 +5931,6 @@ inchar_loadfinish:
 
     }
 
-
     // open the file, switch over to file output
     fp = SD.open( String(sd_pfad) + String(tempstring), FILE_WRITE);
     if (!fp) {
@@ -5913,6 +5954,7 @@ inchar_loadfinish:
 
   }
 
+
   //----------------------------------------------- Save ohne Parameter speichert das Programm ab 0x7000 im FRAM ---------------------------------------
   static int save_ram(void) {
     word n_bytes;
@@ -5935,7 +5977,7 @@ inchar_loadfinish:
     }
     return 0;
   }
-  
+
   //----------------------------------------------- Load ohne Parameter lädt das Programm aus dem FRAM ab 0x7000 ---------------------------------------
   static int load_ram(void) {
     word n_bytes, i;
@@ -5949,8 +5991,8 @@ inchar_loadfinish:
     b = SPI_RAM_read8(adress++);
     //------ Kennung f. Programm im FRAM ------
     if (a == 'B' && b == 'S') {
-      
-      n_bytes = SPI_RAM_read8(adress++);                                //Anzahl der zu lesenden Bytes 
+
+      n_bytes = SPI_RAM_read8(adress++);                                //Anzahl der zu lesenden Bytes
       n_bytes = n_bytes + (SPI_RAM_read8(adress++) << 8);
       for (i = 0; i < n_bytes; i++) {                                   //Programm in Arbeitsspeicher schreiben
         program[i] = SPI_RAM_read8(adress++);
@@ -5959,7 +6001,7 @@ inchar_loadfinish:
 
       warmstart();
       return 0;
-      
+
     }
     else {
       syntaxerror(no_prg_msg);                                          //kein Programm im FRAM
@@ -6185,29 +6227,6 @@ inchar_loadfinish:
     if ( c == '.' ) return 1;
     if ( c == '~' ) return 1; // Window~1.txt
     return 0;
-  }
-  //--------------------------------------------- Unterprogramm - Dateinamen extrahieren für RENAME - Befehl ---------------------------------------
-  char * renameWord(void)
-  {
-    // SDL - I wasn't sure if this functionality existed above, so I figured i'd put it here
-    char * ret = txtpos;
-    int i = 0;
-    expression_error = 0;
-
-    if ( *ret == '\0' ) {                 //Leerstring
-      expression_error = 1;
-      return ret;
-    }
-
-    while (*ret != ',')                   //alter Dateiname
-      path1[i++] = *ret++;
-    path1[i] = 0;
-    *ret++;
-    i = 0;
-
-    while (*ret != NL)                    //neuer Dateiname
-      path2[i++] = *ret++;
-    path2[i] = 0;
   }
 
   //--------------------------------------------- Timer-Interrupt für Akku-Überwachung --------------------------------------------------------------
@@ -8000,6 +8019,57 @@ nochmal:
     }
 
 
+    //--------------------------------------------- Befehl OPEN ---------------------------------------------------------------------------------------
+    int file_rw_open(void) {
+      char c;
+
+      get_value();                    //Dateiname in tempstring
+
+      strcpy(filestring, tempstring); //Tempstring nach filestring kopieren
+
+      if (Test_char(',')) return 1;
+
+      File_function = *txtpos;        //Datei-Operation (r,w,a)
+
+      spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+
+      if ( SD.exists( String(sd_pfad) + String(filestring)) && (File_function == 'W')) { //Datei existiert, überschreiben?
+        Terminal.print("File exist, overwrite? (y/n)");
+        while (1)
+        {
+          c = wait_key();
+          if (c == 'y' || c == 'n')
+            break;
+        }
+        if (c == 'y') {
+          SD.remove( String(sd_pfad) + String(filestring));
+          Terminal.print(c);
+        }
+      }
+
+      if (File_function == 'W') {                                       //Dateien für Write-Operation immer im Appendmodus öffnen
+        fp = SD.open( String(sd_pfad) + String(filestring), FILE_APPEND);
+      }
+      else if (File_function == 'R') {                                  //Dateimodus Lesen
+        if ( !SD.exists(String(sd_pfad) + String(tempstring)))          //Datei nicht vorhanden
+        {
+          syntaxerror(sdfilemsg);
+          sd_ende();                                                    //SD-Card unmount
+          return 1;
+        }
+        fp = SD.open( String(sd_pfad) + String(filestring), FILE_READ); //Datei im Lesemodus öffnen
+      }
+      else {                                                            //falsche Funktion
+        syntaxerror(sdfilemsg);
+        sd_ende();                                                      //SD-Card unmount
+        return 1;
+      }
+
+      Datei_open = true;                                                //Datei-geöffnet marker
+      File_pos = 0;                                                     //Datei-Positionsmerker auf Null setzen
+      sd_ende();
+
+    }
     /*
         //------------------------------------- Testbereich SD-Update -----------------------------------------------------------------------------
         int load_binary(void) {
@@ -8079,3 +8149,299 @@ nochmal:
           }
         }
     */
+    int show_help(void) {
+      int n, e;
+      Terminal.println("BASIC-COMMANDS:");
+      n=0;
+      for (int i = 0; i < 75; i++)
+      { e = 0;
+        while (!e) {
+          if (keywords[n] > 0x80) {
+            Terminal.write(keywords[n++] - 0x80);
+            e = 1;
+          }
+          else  Terminal.write(keywords[n++]);
+
+        }
+        Terminal.print("  ");
+      }
+
+      n = 0;
+      Terminal.println();
+      Terminal.println();
+      Terminal.println("BASIC-FUNCTIONS:");
+      for (int i = 0; i < 58; i++)
+      { e = 0;
+        while (!e) {
+          if (func_tab[n] > 0x80) {
+            Terminal.write(func_tab[n++] - 0x80);
+            e = 1;
+          }
+          else  Terminal.write(func_tab[n++]);
+
+        }
+        Terminal.print("  ");
+      }
+      Terminal.println();
+      return 0;
+    }
+
+
+int show_help_name(void) {
+  int kw,fu;
+    tmptxtpos=txtpos;
+    scantable(keywords);                                                     //Befehlstabelle lesen
+    kw = table_index;
+    if(kw == KW_DEFAULT){                                                    //kein Befehl, dann Funktionen durchsuchen
+       txtpos = tmptxtpos;
+       scantable(func_tab);                                                  //Funktionstabelle lesen
+       fu = table_index;
+       if(fu == FUNC_UNKNOWN)                                                //am ende angekommen, Funktion nicht gefunden
+        {
+          syntaxerror(no_command_msg);
+          return 1;
+        }
+    }
+    if(kw!=KW_DEFAULT){
+      show_Command_Help(kw);                                                  //Hilfe zum Befehl anzeigen
+    }
+    else if(fu!=FUNC_UNKNOWN){
+      show_Function_Help(fu);                                                 //Hilfe zur Funktion anzeigen
+    }
+    return 0;
+}
+/*
+void show_Command_Help(int was){
+  switch (was){
+    case 0:
+     Terminal.println("LIST <Linenumber>");
+     Terminal.println("Linenumber is optional");
+     break;
+    case 1:
+     Terminal.println("LOAD Filename");
+     Terminal.println("Filename in qoute or as String");
+     Terminal.println("LOAD without Name,load a Program from FRAM");
+     break;
+    case 2:
+     Terminal.println("NEW");
+     Terminal.println("Delete Program and clears the Variables");
+     break;
+    case 3:
+     Terminal.println("RUN");
+     Terminal.println("Start the Programm");
+     break;
+    case 4:
+     Terminal.println("SAVE Filename");
+     Terminal.println("Filename in qoute or as String");
+     Terminal.println("SAVE without Name,save a Program in FRAM");
+     break;
+    case 5:
+     Terminal.println("NEXT Variable");
+     Terminal.println("End of FOR NEXT Loop");
+     break;
+    case 6:
+     Terminal.println("REN Filename_old, Filename_new");
+     Terminal.println("Filename in qoute or as String");
+     break;
+    case 7:
+     Terminal.println("IF condition THEN result");
+     Terminal.println("EXAMPLE: IF A>5 THEN PRINT A");
+     break;
+    case 8:
+     Terminal.println("GOTO Linenumber");
+     Terminal.println("EXAMPLE: GOTO 230");
+     break;
+    case 9:
+    case 10:
+     Terminal.println("GOSUB Linenumber");
+     Terminal.println("EXAMPLE :500 GOSUB 700");
+     Terminal.println("         600 END");
+     Terminal.println("         700 PRINT A");
+     Terminal.println("         710 RETURN");   
+     break;
+    case 11:
+     Terminal.println("REM comment");
+     Terminal.println("EXAMPLE: REM here starts the Program");
+     break;
+    case 12:
+     Terminal.println("FOR Var=Start to End-Condition");
+     Terminal.println("EXAMPLE: FOR I=0 TO 25 STEP 2:PRINT I:NEXT I");
+     break;
+    case 13:
+     Terminal.println("INPUT Inputtext;var,var$...");
+     Terminal.println("EXAMPLE: INPUT'NAME:';A$");
+     break;
+    case 14:
+     Terminal.println("PRINT Value, String...");
+     Terminal.println("EXAMPLE: PRINT SIN(34)+SQR(18)");
+     break;
+    case 15:
+     Terminal.println("POKE memtype, adress, value");
+     Terminal.println("EXAMPLE: POKE 1,10,123");
+     break;
+    case 16:
+    case 17:
+    case 18:
+    case 19:
+    case 20:
+    case 21:
+    case 22:
+    case 23:
+    case 24:
+    case 25:
+    case 26:
+    case 27:
+    case 28:
+    case 29:
+    case 30:
+    case 31:
+    case 32:
+    case 33:
+    case 34:
+    case 35:
+    case 36:
+    case 37:
+    case 38:
+    case 39:
+    case 40:
+    case 41:
+    case 42:
+    case 43:
+    case 44:
+    case 45:
+    case 46:
+    case 47:
+    case 48:
+    case 49:
+    case 50:
+    case 51:
+    case 52:
+    case 53:
+    case 54:
+    case 55:
+    case 56:
+    case 57:
+    case 58:
+    case 59:
+    case 60:
+    case 61:
+    case 62:
+    case 63:
+    case 64:
+    case 65:
+    case 66:
+    case 67:
+    case 68:
+    case 69:
+    case 70:
+    case 71:
+    case 72:
+    case 73:
+    case 74:
+     
+    default:
+     Terminal.println("coming soon");
+     break;      
+  }
+}
+void show_Function_Help(int was){
+  switch (was){
+    case 0:
+     Terminal.println("PEEK(Memtype,Adress)");
+     Terminal.println("EXAMPLE: A=PEEK(1,1200)");
+     break;
+    case 1:
+     Terminal.println("ABS(Value)");
+     Terminal.println("EXAMPLE: A=ABS(-4)");
+     break;
+    case 2:
+     Terminal.println("RND(Value)");
+     Terminal.println("EXAMPLE: A=RND(25)");
+     break;
+    case 3:
+     Terminal.println("SIN(Value)");
+     Terminal.println("EXAMPLE: A=SIN(23)");
+     break;
+    case 4:
+     Terminal.println("COS(Value)");
+     Terminal.println("EXAMPLE: A=COS(34)");
+     break;
+    case 5:
+     Terminal.println("TAN(Value)");
+     Terminal.println("EXAMPLE: A=TAN(45)");
+     break;
+    case 6:
+     Terminal.println("LOG(Value)");
+     Terminal.println("EXAMPLE: A=LOG(35)");
+     break;
+    case 7:
+     Terminal.println("SGN(Value)");
+     Terminal.println("EXAMPLE: A=SGN(-3)");
+     Terminal.println("Returns: SGN(x) x>0=1 x=0->0 x<0=-1");
+     break;
+    case 8:
+     Terminal.println("SQR(Value)");
+     Terminal.println("EXAMPLE: A=SQR(81)");
+     break;
+    case 9:
+    case 10:
+     break;
+    case 11:
+     break;
+    case 12:
+     break;
+    case 13:
+     break;
+    case 14:
+     break;
+    case 15:
+     break;
+    case 16:
+    case 17:
+    case 18:
+    case 19:
+    case 20:
+    case 21:
+    case 22:
+    case 23:
+    case 24:
+    case 25:
+    case 26:
+    case 27:
+    case 28:
+    case 29:
+    case 30:
+    case 31:
+    case 32:
+    case 33:
+    case 34:
+    case 35:
+    case 36:
+    case 37:
+    case 38:
+    case 39:
+    case 40:
+    case 41:
+    case 42:
+    case 43:
+    case 44:
+    case 45:
+    case 46:
+    case 47:
+    case 48:
+    case 49:
+    case 50:
+    case 51:
+    case 52:
+    case 53:
+    case 54:
+    case 55:
+    case 56:
+    case 57:
+    
+    default:
+     Terminal.println("coming soon");
+     break;      
+  }
+}
+*/
