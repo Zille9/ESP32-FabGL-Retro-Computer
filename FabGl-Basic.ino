@@ -38,15 +38,20 @@
 //                                          -Exponential-Ein/Ausgabe
 //                                          -Verschiedene Sensoren und Komponenten HC-S04, Dallas DS18S20, DHT, LCD, Neopixel-LED, BMP180
 //                                          -Zeileneditor
+//                                          -integrierte Kurzhilfe
 //
 // Author:Reinhard Zielinski <zille09@gmail.com>
 // April 2021
 //
 //
-#define BasicVersion "1.70b"
-#define BuiltTime "Built:16.06.2023"
+#define BasicVersion "1.71b"
+#define BuiltTime "Built:20.06.2023"
 #pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v1.71b:20.06.2023          -Kurzhilfe in help_sys.h ausgelagert und weiter bearbeitet
+//                            -
+//                            -
+//
 // v1.70b:12.06.2023          -Befehle Load,Save und Start modifiziert, Save ohne Parameter speichert das im Ram befindliche Programm im FRAM
 //                            -Load ohne Parameter lädt das im FRAM befindliche Programm in den Arbeitsspeicher
 //                            -Start ohne Parameter lädt und startet ein im FRAM abgelegtes Programm
@@ -54,7 +59,7 @@
 //                            -Datei-Lese- und Schreibfunktionen fehlen noch, um zBsp.Sensordaten zu schreiben bzw. zu lesen
 //                            -OPEN ,FREAD, FWRITE, CLOSE wären mögliche Befehle, Serial-Funktionen müssen noch komplettiert werden
 //                            -begonnen, eine kurzhilfe für alle Befehle und Funktionen zu integrieren,.... soviele Baustellen :-|
-//                            -16161 Zeilen/sek.
+//                            -16461 Zeilen/sek.
 //
 // v1.69b:12.06.2023          -Font_8x8.h etwas geändert ->einige Grafiksymbole vom KC87 übernommen
 //                            -Logik-Auswertung AND und OR überarbeitet, scheint jetzt zu funktionieren
@@ -592,9 +597,10 @@ enum {
   KW_CLOSE,
   KW_FWRITE,
   KW_HELP,
-  KW_DEFAULT  //75/* hier ist das Ende */
+  KW_DEFAULT  //76/* hier ist das Ende */
 };
 
+int KW_WORDS = KW_DEFAULT;
 
 // Variablen zur Zwischenspeicherung von logischen Operationen (AND OR)
 
@@ -744,6 +750,7 @@ enum {
   FUNC_UNKNOWN   //59
 };
 
+int FUNC_WORDS = FUNC_UNKNOWN;
 //------------------------------- OPTION-Tabelle - alle Optionen, die dauerhaft gespeichert werden sollen ------------------------------
 const static char options[] PROGMEM = {
   'S', 'D', 'C', 'A', 'R', 'D' + 0x80,      //Pin-Festlegung SD-Karte
@@ -6314,6 +6321,8 @@ inchar_loadfinish:
       Theme_marker = true;
     }
     else Theme_state = 11;
+
+    delay(2000);
     //************************************************************ welcher Bildschirmtreiber? *********************************************************
     // 64 colors
 #ifdef AVOUT                                                                          //AV-Variante
@@ -6470,15 +6479,15 @@ break;
           for (i = 0; i < 8; i++) mcp.pinMode(i, OUTPUT); //alle pins von Port A auf Ausgang
         }
         else if (dir == 1) {
-          for (i = 0; i < 8; i++) mcp.pinMode(i, INPUT_PULLUP); //alle pins von Port A auf Ausgang
+          for (i = 0; i < 8; i++) mcp.pinMode(i, INPUT_PULLUP); //alle pins von Port A auf Eingang
         }
       }
       if (Port == 'B' || Port == 'C') {
         if (dir == 0) {
-          for (i = 8; i < 16; i++) mcp.pinMode(i, OUTPUT); //alle pins von Port A auf Ausgang
+          for (i = 8; i < 16; i++) mcp.pinMode(i, OUTPUT); //alle pins von Port B auf Ausgang
         }
         else if (dir == 1) {
-          for (i = 8; i < 16; i++) mcp.pinMode(i, INPUT_PULLUP); //alle pins von Port A auf Ausgang
+          for (i = 8; i < 16; i++) mcp.pinMode(i, INPUT_PULLUP); //alle pins von Port B auf Eingang
         }
       }
     }
@@ -6852,7 +6861,6 @@ nochmal:
           //Terminal.print(md);
           if (Test_char(',')) return 1;
           cnt = get_value();                //2.Parameter
-          //Terminal.print(cnt);
           if (md == 1) rainbow(cnt);              //Rainbow
           else if (md == 2) theaterChaseRainbow(cnt); //Theatre Rainbow
 
@@ -7469,8 +7477,8 @@ nochmal:
         case 'D':                                         //Grafik im FRAM auf dem Bildschirm ausgeben
           if (Test_char('(')) return 1;
           ad = get_value();
-          if (ad > pn - 1) ad = pn - 1;
-          ad = ad * FRAM_PIC_OFFSET;                      //0..5 Bildspeicherplatz (320x240) bzw.0..2 (400x300)
+          if (ad > 4) ad = 4;
+          ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz (320x240) bzw.0..2 (400x300)
           if (*txtpos == ',') {                           //Modus
             txtpos++;
             iv = get_value();
@@ -7534,8 +7542,8 @@ nochmal:
         case 'L':                                         //Load PIC_RAW-Data
           if (Test_char('(')) return 1;
           ad = get_value();                               //Adresse im Speicher
-          if (ad > 5) ad = 5;
-          ad = ad * FRAM_PIC_OFFSET;                      //0..5 Bildspeicherplatz
+          if (ad > 4) ad = 4;
+          ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz
           if (Test_char(',')) return 1;                   //Komma überspringen
           get_value();                                    //Dateiname in tempstring
           if (Test_char(')')) return 1;
@@ -7546,8 +7554,8 @@ nochmal:
         case 'S':                                         //Save PIC_RAW-Data
           if (Test_char('(')) return 1;
           ad = get_value();                               //Adresse im Speicher
-          if (ad > 5) ad = 5;
-          ad = ad * FRAM_PIC_OFFSET;                      //0..5 Bildspeicherplatz
+          if (ad > 4) ad = 4;
+          ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz
           if (Test_char(',')) return 1;                   //Komma überspringen
           get_value();                                    //Dateiname in tempstring
           if (Test_char(')')) return 1;
@@ -8149,11 +8157,13 @@ nochmal:
           }
         }
     */
+
+//*************************************************** integrierte Kurzhilfe ***************************************************************************
     int show_help(void) {
       int n, e;
       Terminal.println("BASIC-COMMANDS:");
       n=0;
-      for (int i = 0; i < 75; i++)
+      for (int i = 0; i < KW_WORDS; i++)
       { e = 0;
         while (!e) {
           if (keywords[n] > 0x80) {
@@ -8170,7 +8180,7 @@ nochmal:
       Terminal.println();
       Terminal.println();
       Terminal.println("BASIC-FUNCTIONS:");
-      for (int i = 0; i < 58; i++)
+      for (int i = 0; i < FUNC_WORDS; i++)
       { e = 0;
         while (!e) {
           if (func_tab[n] > 0x80) {
@@ -8210,238 +8220,3 @@ int show_help_name(void) {
     }
     return 0;
 }
-/*
-void show_Command_Help(int was){
-  switch (was){
-    case 0:
-     Terminal.println("LIST <Linenumber>");
-     Terminal.println("Linenumber is optional");
-     break;
-    case 1:
-     Terminal.println("LOAD Filename");
-     Terminal.println("Filename in qoute or as String");
-     Terminal.println("LOAD without Name,load a Program from FRAM");
-     break;
-    case 2:
-     Terminal.println("NEW");
-     Terminal.println("Delete Program and clears the Variables");
-     break;
-    case 3:
-     Terminal.println("RUN");
-     Terminal.println("Start the Programm");
-     break;
-    case 4:
-     Terminal.println("SAVE Filename");
-     Terminal.println("Filename in qoute or as String");
-     Terminal.println("SAVE without Name,save a Program in FRAM");
-     break;
-    case 5:
-     Terminal.println("NEXT Variable");
-     Terminal.println("End of FOR NEXT Loop");
-     break;
-    case 6:
-     Terminal.println("REN Filename_old, Filename_new");
-     Terminal.println("Filename in qoute or as String");
-     break;
-    case 7:
-     Terminal.println("IF condition THEN result");
-     Terminal.println("EXAMPLE: IF A>5 THEN PRINT A");
-     break;
-    case 8:
-     Terminal.println("GOTO Linenumber");
-     Terminal.println("EXAMPLE: GOTO 230");
-     break;
-    case 9:
-    case 10:
-     Terminal.println("GOSUB Linenumber");
-     Terminal.println("EXAMPLE :500 GOSUB 700");
-     Terminal.println("         600 END");
-     Terminal.println("         700 PRINT A");
-     Terminal.println("         710 RETURN");   
-     break;
-    case 11:
-     Terminal.println("REM comment");
-     Terminal.println("EXAMPLE: REM here starts the Program");
-     break;
-    case 12:
-     Terminal.println("FOR Var=Start to End-Condition");
-     Terminal.println("EXAMPLE: FOR I=0 TO 25 STEP 2:PRINT I:NEXT I");
-     break;
-    case 13:
-     Terminal.println("INPUT Inputtext;var,var$...");
-     Terminal.println("EXAMPLE: INPUT'NAME:';A$");
-     break;
-    case 14:
-     Terminal.println("PRINT Value, String...");
-     Terminal.println("EXAMPLE: PRINT SIN(34)+SQR(18)");
-     break;
-    case 15:
-     Terminal.println("POKE memtype, adress, value");
-     Terminal.println("EXAMPLE: POKE 1,10,123");
-     break;
-    case 16:
-    case 17:
-    case 18:
-    case 19:
-    case 20:
-    case 21:
-    case 22:
-    case 23:
-    case 24:
-    case 25:
-    case 26:
-    case 27:
-    case 28:
-    case 29:
-    case 30:
-    case 31:
-    case 32:
-    case 33:
-    case 34:
-    case 35:
-    case 36:
-    case 37:
-    case 38:
-    case 39:
-    case 40:
-    case 41:
-    case 42:
-    case 43:
-    case 44:
-    case 45:
-    case 46:
-    case 47:
-    case 48:
-    case 49:
-    case 50:
-    case 51:
-    case 52:
-    case 53:
-    case 54:
-    case 55:
-    case 56:
-    case 57:
-    case 58:
-    case 59:
-    case 60:
-    case 61:
-    case 62:
-    case 63:
-    case 64:
-    case 65:
-    case 66:
-    case 67:
-    case 68:
-    case 69:
-    case 70:
-    case 71:
-    case 72:
-    case 73:
-    case 74:
-     
-    default:
-     Terminal.println("coming soon");
-     break;      
-  }
-}
-void show_Function_Help(int was){
-  switch (was){
-    case 0:
-     Terminal.println("PEEK(Memtype,Adress)");
-     Terminal.println("EXAMPLE: A=PEEK(1,1200)");
-     break;
-    case 1:
-     Terminal.println("ABS(Value)");
-     Terminal.println("EXAMPLE: A=ABS(-4)");
-     break;
-    case 2:
-     Terminal.println("RND(Value)");
-     Terminal.println("EXAMPLE: A=RND(25)");
-     break;
-    case 3:
-     Terminal.println("SIN(Value)");
-     Terminal.println("EXAMPLE: A=SIN(23)");
-     break;
-    case 4:
-     Terminal.println("COS(Value)");
-     Terminal.println("EXAMPLE: A=COS(34)");
-     break;
-    case 5:
-     Terminal.println("TAN(Value)");
-     Terminal.println("EXAMPLE: A=TAN(45)");
-     break;
-    case 6:
-     Terminal.println("LOG(Value)");
-     Terminal.println("EXAMPLE: A=LOG(35)");
-     break;
-    case 7:
-     Terminal.println("SGN(Value)");
-     Terminal.println("EXAMPLE: A=SGN(-3)");
-     Terminal.println("Returns: SGN(x) x>0=1 x=0->0 x<0=-1");
-     break;
-    case 8:
-     Terminal.println("SQR(Value)");
-     Terminal.println("EXAMPLE: A=SQR(81)");
-     break;
-    case 9:
-    case 10:
-     break;
-    case 11:
-     break;
-    case 12:
-     break;
-    case 13:
-     break;
-    case 14:
-     break;
-    case 15:
-     break;
-    case 16:
-    case 17:
-    case 18:
-    case 19:
-    case 20:
-    case 21:
-    case 22:
-    case 23:
-    case 24:
-    case 25:
-    case 26:
-    case 27:
-    case 28:
-    case 29:
-    case 30:
-    case 31:
-    case 32:
-    case 33:
-    case 34:
-    case 35:
-    case 36:
-    case 37:
-    case 38:
-    case 39:
-    case 40:
-    case 41:
-    case 42:
-    case 43:
-    case 44:
-    case 45:
-    case 46:
-    case 47:
-    case 48:
-    case 49:
-    case 50:
-    case 51:
-    case 52:
-    case 53:
-    case 54:
-    case 55:
-    case 56:
-    case 57:
-    
-    default:
-     Terminal.println("coming soon");
-     break;      
-  }
-}
-*/
