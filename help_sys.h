@@ -1,3 +1,4 @@
+//************************************************integrated Helpsystem***************************************************
 void show_Command_Help(int was) {
   switch (was) {
     case 0:
@@ -83,6 +84,10 @@ void show_Command_Help(int was) {
     case 19:
       Terminal.println("COL FG,BG");
       Terminal.println("Change the Foreground and Background Color");
+      Terminal.println("EXAMPLE: COL 0,60");
+      Terminal.println("set the Pencolor to black ,Background to yellow");
+      Terminal.println("EXAMPLE: PRINT COL(0)");
+      Terminal.println("Return 0=Pencolor, 1=Backgroundcolor");
       break;
     case 20:
       Terminal.println("PSET x,y,color");
@@ -212,9 +217,12 @@ void show_Command_Help(int was) {
       Terminal.println("DRAW(x,y,1) draw from old Position to x,y");
       break;
     case 49:
-      Terminal.println("SPRT(X,Y,Draw)");                                //noch überarbeiten
-      Terminal.println("SPRT(x,y,0) move the Pen on x,y");
-      Terminal.println("SPRT(x,y,1) draw from old Position to x,y");
+      Terminal.println("SPRT(C,nr)-> create nr Sprites");                                //noch überarbeiten
+      Terminal.println("SPRT(D,nr,xdim,ydim,color,A$) def Sprite ");
+      Terminal.println("A$ holds the Sprite-Data");
+      Terminal.println();      
+      Terminal.println("SPRT(S,nr,'H'/'V',x,y) Set Sprite on x,y");
+      Terminal.println("H=Hide, V=Visible");
       break;
     case 50:
       Terminal.println("PULSE(PIN,nPulse,Pause1 ms,Pause 2 ms)");
@@ -244,7 +252,6 @@ void show_Command_Help(int was) {
       Terminal.println("EXAMPLE: ON A GOTO 120,230,430");
       break;
     case 54:
-      Terminal.println("LCD");
       Terminal.println("LCD(I,0..3) init LCD");
       Terminal.println("LCD(C) clear LCD");
       Terminal.println("LCD(B,0..1) Backlight on/off");
@@ -257,14 +264,14 @@ void show_Command_Help(int was) {
       Terminal.println("LCD(S,colums,rows,I2C-Adress) set the LCD-Parameter");
       break;
     case 55:
-      Terminal.println("PORT(S/W,A/B/C");
+      Terminal.println("PORT(S/W,A/B/C)");
       Terminal.println("PORT(S,A/B/C,0..1) set Port A, B or AB");
       Terminal.println("PORT(W,A/B/C,Value) write Value on Port A,B or AB");
       break;
     case 56:
-      Terminal.println("PIN(S/W,Pin,val");
-      Terminal.println("PORT(S,Pin,0..1) set Pin Input/Output");
-      Terminal.println("PORT(W,Pin,0..1) write Pin High or Low");
+      Terminal.println("PIN(S/W,Pin,val)");
+      Terminal.println("PIN(S,Pin,0..1) set Pin Input/Output");
+      Terminal.println("PIN(W,Pin,0..1) write Pin High or Low");
       break;
     case 57:
       Terminal.println("CHD Pathname");
@@ -358,8 +365,9 @@ void show_Command_Help(int was) {
       Terminal.println("PIC_P(place,x,y,xx,yy)");
       Terminal.println("Save Screen as Raw-Pic in FRAM (0..4)");
       Terminal.println();
-      Terminal.println("PIC_D(place)");
-      Terminal.println("Show Raw-Pic in FRAM (0..4)");
+      Terminal.println("PIC_D(place<mode,x,y>)");
+      Terminal.println("Show Raw-Pic in FRAM (0..4)on x,y");
+      Terminal.println("mode 0..1 changes the Background-color");
       break;
     case 72:
       Terminal.println("OPEN filename,mode");
@@ -371,10 +379,15 @@ void show_Command_Help(int was) {
       Terminal.println("close the File");
       break;
     case 74:
-      Terminal.println("FWRITE");
-      Terminal.println("File-Function");
+      Terminal.println("FWRITE val1,val2...");
+      Terminal.println("writes values or strings on sd-card");
       break;
     case 75:
+      Terminal.println("TYPE Filename");
+      Terminal.println("shows the content of a file");
+      Terminal.println("Filename must be in quotes");
+      break;
+    case 76:
       Terminal.println("HELP");
       Terminal.println("without Parameters shows all Commands");
       Terminal.println("HELP Keyword shows Keyword-explanations");
@@ -402,14 +415,17 @@ void show_Function_Help(int was) {
     case 3:
       Terminal.println("SIN(Value)");
       Terminal.println("EXAMPLE: A=SIN(23)");
+      Terminal.println("returns the Sinus in RAD");
       break;
     case 4:
       Terminal.println("COS(Value)");
       Terminal.println("EXAMPLE: A=COS(34)");
+      Terminal.println("returns the Cosinus in RAD");
       break;
     case 5:
       Terminal.println("TAN(Value)");
       Terminal.println("EXAMPLE: A=TAN(45)");
+      Terminal.println("returns the Tangens in RAD");
       break;
     case 6:
       Terminal.println("LOG(Value)");
@@ -425,60 +441,254 @@ void show_Function_Help(int was) {
       Terminal.println("EXAMPLE: A=SQR(81)");
       break;
     case 9:
+      Terminal.println("INT(Value)");
+      Terminal.println("EXAMPLE: PRINT INT(81.23) ->81");
+      break;
     case 10:
+      Terminal.println("MIN(Val1,Val2)");
+      Terminal.println("EXAMPLE: PRINT MIN(81,23) ->23");
       break;
     case 11:
+      Terminal.println("MAX(Value1,Value2)");
+      Terminal.println("EXAMPLE: PRINT MAX(81,23) ->81");
       break;
     case 12:
+      Terminal.println("EXP(Val)");
+      Terminal.println("EXAMPLE: PRINT EXP(1) ->2.718282");
       break;
     case 13:
+      Terminal.println("GET(Val)");
+      Terminal.println("EXAMPLE: GET(0)->get Cursor Col");
+      Terminal.println("         GET(1)->get Cursor Row");
       break;
     case 14:
+      Terminal.println("CHR$(Val)");
+      Terminal.println("EXAMPLE: PRINT CHR$(65)->A");
       break;
     case 15:
+      Terminal.println("INKEY");
+      Terminal.println("EXAMPLE: A=INKEY");
+      Terminal.println("A=last Keypress");
       break;
     case 16:
+      Terminal.println("FONT");
+      Terminal.println("EXAMPLE: PRINT FONT");
+      Terminal.println("returns the current font number");
+      break;
     case 17:
+      Terminal.println("ASC(CHAR)");
+      Terminal.println("EXAMPLE: PRINT ASC(char)");
+      Terminal.println("returns the ASCII Code of char");
+      Terminal.println("char must be in quotes");
+      break;
     case 18:
+      Terminal.println("TIMER");
+      Terminal.println("EXAMPLE: A=TIMER");
+      Terminal.println("returns the millis since ESP-start");
+      break;
     case 19:
+      Terminal.println("ATN(Val)");
+      Terminal.println("EXAMPLE: A=ATN(VAL)");
+      Terminal.println("returns the AcusTangens in RAD");
+      break;
     case 20:
+      Terminal.println("LEN(Val$)");
+      Terminal.println("EXAMPLE: A=LEN(A$)");
+      Terminal.println("returns the Length of A$");
+      break;
     case 21:
+      Terminal.println("INSTR(Search$,String$)");
+      Terminal.println("EXAMPLE: A=INSTR(A$,B$)");
+      Terminal.println("returns the pos if A$ exist in B$");
+      break;
     case 22:
+      Terminal.println("COMP$(Search$,String$)");
+      Terminal.println("EXAMPLE: A=COMP$(A$,B$)");
+      Terminal.println("returns 0 a$=B$, 1 A$>B$, -1 A$<B$");
+      break;
     case 23:
+      Terminal.println("BIN(Val)");
+      Terminal.println("EXAMPLE: PRINT BIN(81)->%1010001");
+      break;
     case 24:
+      Terminal.println("HEX(Val)");
+      Terminal.println("EXAMPLE: PRINT HEX(81)->#51");
+      break;
     case 25:
+      Terminal.println("LEFT$(String$,n)");
+      Terminal.println("EXAMPLE: PRINT LEFT$(A$,4)");
+      Terminal.println("Prints the left 4 chars of A$");
+      break;
     case 26:
+      Terminal.println("RIGHT$(String$,n)");
+      Terminal.println("EXAMPLE: PRINT RIGHT$(A$,4)");
+      Terminal.println("Prints the right 4 chars of A$");
+      break;
     case 27:
+      Terminal.println("MID$(String$,start,n)");
+      Terminal.println("EXAMPLE: PRINT MID$(A$,4,3)");
+      Terminal.println("Prints 3 chars of A$ starting at 4");
+      break;
     case 28:
+      Terminal.println("TAB(Val)");
+      Terminal.println("EXAMPLE: PRINT TAB(5);12.3");
+      Terminal.println("Print 12.3 on x-pos 5");
+      break;
     case 29:
+      Terminal.println("SPC(Val)");
+      Terminal.println("EXAMPLE: PRINT SPC(5)");
+      Terminal.println("Print 5 Spaces ");
+      break;
     case 30:
+      Terminal.println("STR$(Val,n)");
+      Terminal.println("EXAMPLE: A$=STR$(-15.34,2)");
+      Terminal.println("Converts Val to String with");
+      Terminal.println("n numbers of decimal places");
+      break;
     case 31:
+      Terminal.println("DATE(Val)");
+      Terminal.println("EXAMPLE: A=DATE(0)");
+      Terminal.println("Return Day from Date-Array");
+      Terminal.println("0=Day, 1=Month, 2=Year, 3=DayofWeek");
+      break;
     case 32:
-    case 33:
+      Terminal.println("TIME(Val)");
+      Terminal.println("EXAMPLE: A=TIME(0)");
+      Terminal.println("Return Hour from Time-Array");
+      Terminal.println("0=Hour, 1=Minute, 2=Second");
+      break;
+    case 33:                                                      //IIC
+      break;
     case 34:
+      Terminal.println("AKKU(Val)");
+      Terminal.println("EXAMPLE: A=AKKU(0)");
+      Terminal.println("Return the Akku-Value in V");
+      Terminal.println("0=Volt, 1=Percent");
+      break;
     case 35:
+      Terminal.println("AIN(PIN<,mode>)");
+      Terminal.println("EXAMPLE: A=AIN(2,1)");
+      Terminal.println("Return the Analog-Value of Pin2 in V");
+      Terminal.println("mode: 0=Digital, 1=Volt");
+      Terminal.println("Pin's 2,12,26,27,34,35,36 allowed");
+      break;
     case 36:
+      Terminal.println("DIN(PIN)");
+      Terminal.println("EXAMPLE: A=DIN(2)");
+      Terminal.println("Return the Digital-Value of Pin2");
+      Terminal.println("0=Low, 1=High");
+      Terminal.println("Pin's 2,12,26,27,34,35,36 allowed");
+      break;
     case 37:
+      Terminal.println("UC$(A$)");
+      Terminal.println("EXAMPLE: A$=UC$(B$)");
+      Terminal.println("converts B$ to uppercase");
+      break;
     case 38:
+      Terminal.println("LC$(A$)");
+      Terminal.println("EXAMPLE: A$=LC$(B$)");
+      Terminal.println("converts B$ to lowercase");
+      break;
     case 39:
+      Terminal.println("VAL(A$)");
+      Terminal.println("EXAMPLE: PRINT 5+VAL(A$)");
+      Terminal.println("converts A$ to a numeric Value");
+      Terminal.println("only Numbers in A$ allowed");
+      break;
     case 40:
+      Terminal.println("MEM");
+      Terminal.println("EXAMPLE: PRINT MEM");
+      Terminal.println("Returns the free Memory-Bytes");
+      break;
     case 41:
+      Terminal.println("!");
+      Terminal.println("EXAMPLE: IF !A then PRINT B");
+      Terminal.println("Logical Not Operator");
+      break;
     case 42:
+      Terminal.println("TEMP(PIN,CHAN)");
+      Terminal.println("EXAMPLE: PRINT TEMP(2,1)");
+      Terminal.println("Read Dallas DS18S20 Sensor");
+      Terminal.println("only Pin 2 and 26 allowed!");
+      break;
     case 43:
-    case 44:
+      Terminal.println("DHT(PIN,Typ, Temp/Humi)");
+      Terminal.println("EXAMPLE: PRINT DHT(2,1,0)");
+      Terminal.println("Read DHT Sensor");
+      Terminal.println("Typ:1=DHT11, 2=DHT22, 3=dht21");
+      Terminal.println("Temp=0, Humi=1");
+      Terminal.println("only Pin 2 and 26 allowed!");
+      break;
+    case 44:                                                  //COL
+      break;
     case 45:
-    case 46:
+      Terminal.println("BMP(mode)");
+      Terminal.println("EXAMPLE: PRINT BMP(0)");
+      Terminal.println("Read BMP085 Sensor");
+      Terminal.println("0=Pressure in Pa, 1=Altitude in m, 2=Temp");
+      break;
+    case 46:                                                  //FN
+      Terminal.println("DEFN Var=[Function]");
+      Terminal.println("Create User-Function");
+      Terminal.println("EXAMPLE: DEFN A(A,B)=[SIN(A)*COS(B)]");
+      Terminal.println("         c=FN A(12,5)");
+      break;
     case 47:
+      Terminal.println("A=PORT(A) read Port A");
+      Terminal.println("A=PORT(B) read Port B");
+      Terminal.println("A=PORT() read Port A+B");
+      break;
     case 48:
+      Terminal.println("A=PIN(1..16) read Pin 1..16");
+      break;
     case 49:
+      Terminal.println("A=PI() = circular number pi");
+      break;
     case 50:
+      Terminal.println("A=LN(val) = natural Log.");
+      Terminal.println("val must be greater as -1");
+      break;
     case 51:
+      Terminal.println("A=DEEK(Memtype,Adress)");
+      Terminal.println("reads a Word value from Memory");
+      Terminal.println("0=RAM, 1=FRAM, 2=EEPROM");
+      break;
     case 52:
+      Terminal.println("A=FPEEK(Memtype,Adress)");
+      Terminal.println("reads a Float value from Memory");
+      Terminal.println("0=RAM, 1=FRAM, 2=EEPROM");
+      break;
     case 53:
+      Terminal.println("A=GPX(x,y)");
+      Terminal.println("reads the Color on pos x,y");
+      break;
     case 54:
+      Terminal.println("A=GPIC(0/1)");
+      Terminal.println("reads the width(0) or height(1)");
+      Terminal.println("from the last loaded BMP-Picture");
+      break;
     case 55:
+      Terminal.println("A=MAP(x,old_min,old_max,new_min,new_max)");
+      Terminal.println("Re-maps a number from one range to another");
+      Terminal.println("x is the Number to map");
+      break;
     case 56:
+      Terminal.println("A=CONS(x,min,max)");
+      Terminal.println("Constrains a number to be within a range");
+      Terminal.println("x is the Number to Constrain");
+      break;
     case 57:
+      Terminal.println("STRING$(n,String)");
+      Terminal.println("repeats the string n times");
+      Terminal.println("EXAMPLE: PRINT STRING$(23,'-')");
+      Terminal.println("String must be in quotes");
+      break;
+    case 58:
+      Terminal.println("FREAD()");
+      Terminal.println(" ");
+      Terminal.println(" ");
+      Terminal.println(" ");
+      break;
 
     default:
       Terminal.println("coming soon");
