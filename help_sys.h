@@ -381,6 +381,10 @@ void show_Command_Help(int was) {
     case 74:
       Terminal.println("FWRITE val1,val2...");
       Terminal.println("writes values or strings on sd-card");
+      Terminal.println("EXAMPLE: 10 OPEN 'Neu.txt',W");
+      Terminal.println("         20 A=12.34");
+      Terminal.println("         30 FWRITE A");
+      Terminal.println("         40 CLOSE");
       break;
     case 75:
       Terminal.println("TYPE Filename");

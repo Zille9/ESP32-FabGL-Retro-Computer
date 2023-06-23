@@ -50,7 +50,11 @@
 // siehe Logbuch.txt zum Entwicklungsverlauf
 // v1.72b:22.06.2023          -Befehl Type zum Betrachten von Text- oder Basic-Dateien auf dem Bildschirm
 //                            -hatte sich als notwendig herausgestellt für die Schaffung der Befehle FWRITE und FREAD
-//                            -14988 Zeilen/sek.
+//                            -LOAD Befehl erweitert LOAD"Filename.BAS",1 startet das Programm sofort (gleiche Funktion wie Start"Filename.BAS")
+//                            -PRINT Befehl korrigiert die Zeile : For I=1 to 20:print i,:next i führte dazu,das das Komma wirkungslos war
+//                            -Marker semicolon jetzt für , und ; aktiv
+//                            -Akku-Überwachung als Option definiert (#define Akkualarm_enabled)
+//                            -16275 Zeilen/sek.
 //
 // v1.71b:20.06.2023          -Kurzhilfe in help_sys.h ausgelagert
 //                            -Kurzhilfe soweit fertig und funktionstüchtig
@@ -141,16 +145,25 @@
 // Feature option configuration...
 //
 //
+
 //---------------------------------------------------------------- Verwendung der SD-Karte ---------------------------------------------------------
 // Dies aktiviert die Befehle LOAD, SAVE, DIR über die Arduino SD Library
 #define ENABLE_FILEIO 1
+//
+
+//---------------------------------------------------------------- Akku-Überwachung für Akkubetrieb ------------------------------------------------
+//#define Akkualarm_enabled
+//
+
 //---------------------------------------------------------------- Auswahl Bildschirmtreiber -------------------------------------------------------
 //#define AVOUT                  //activate for AV
 //#define VGA16                  //activate VGA 16 Color 320x240 Pixel Driver
 #define VGA64                    //activate VGA 64 Color 320x240 Pixel Driver
+
 #include "fabgl.h" //********************************************* Bibliotheken zur VGA-Signalerzeugung *********************************************
 fabgl::Terminal         Terminal;
 fabgl::LineEditor       LineEditor(&Terminal);
+
 //---------------------------------------- die verschiedenen Grafiktreiber --------------------------------------------------------------------------
 #ifdef AVOUT
 fabgl::CVBS16Controller VGAController;    //AV-Variante
@@ -166,8 +179,6 @@ fabgl::VGA16Controller  VGAController;      //VGA-Variante
 fabgl::VGAController    VGAController;      //VGA-Variante
 #endif
 
-
-
 //------------------------------------------ Tastatur,GFX-Treiber- und Terminaltreiber -------------------------------------------------------------
 fabgl::PS2Controller    PS2Controller;
 fabgl::Canvas           GFX(&VGAController);
@@ -177,7 +188,6 @@ TerminalController      tc(&Terminal);
 char * Themes[]    PROGMEM = {"C64", "C128", "CPC", "ATARI 800", "ZX-Spectrum", "KC87", "KC85", "VIC-20", "TRS-80", "ESP32+", "LCD", "User"}; //Theme-Namen
 byte x_char[]      PROGMEM = {8, 5, 6, 8,  10, 8,  8,  8,  8,  8,  8,  8,  8,  6,  8,  4, 6,  7,  7,  8, 8, 8, 6, 9, 8, 6}; //x-werte der Fontsätze zur Berechnung der Terminalbreite
 byte y_char[]      PROGMEM = {8, 8, 8, 14, 20, 14, 14, 16, 16, 14, 14, 14, 16, 10, 14, 6, 12, 13, 14, 9, 14, 14, 10, 15, 16, 8}; //y-werte der Fontsätze zur Berechnung der Terminalhöhe
-//byte font_offset[] PROGMEM = { 0, 12, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 20, 6, 2, 2, 0, 0, 0, 6, 0, 0, 6};            //Fontoffset zur Berechnung der Überschrifts-Position
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //------------------------------------------------------------- Soundgenerator ----------------------------------------------------------------------------
@@ -266,7 +276,6 @@ bool mcp_start_marker = false;
 
 //------------- EEPROM o.FRAM-Chip I2C-Adressen --------------------
 short int EEprom_ADDR = 0x50;
-//short int FRam_ADDR = 0x57;
 
 File fp;
 
@@ -342,7 +351,6 @@ uint32_t bmp_width, bmp_height;
 //------------------------------ hier wird der Funktionsstring gespeichert --------------------------------------------
 #define FN_SIZE STR_LEN                 //Funktionsspeicher für benutzerdefinierte Funktionen mit bis zu vier Operatoren-> FN A(A,B,C,D)
 
-//char * filenameWord(void);
 
 bool inhibitOutput = false;
 static bool autorun = false;            //Programm nach dem Laden automatisch starten
@@ -350,7 +358,7 @@ static bool triggerRun = false;
 
 short int Vordergrund = 43;             //Standard-Vordergrundfarbe (wenn noch nichts im EEprom steht)
 short int Hintergrund = 18;             //Standard-Hintergrundfarbe (wenn noch nichts im EEprom steht)
-short int Pencolor = 0;                //Standard-Stiftfarbe
+short int Pencolor = 0;                 //Standard-Stiftfarbe
 short int fontsatz = 0;                 //Nummer des ausgewählten Fontsatzes
 short int user_vcolor = Vordergrund;    //User-Vordergrundfarbe
 short int user_bcolor = Hintergrund;    //User-Hintergrundfarbe
@@ -411,7 +419,6 @@ static char expression_error;
 static char *tempsp;
 static char sd_pfad[STR_LEN];            //SD-Card Datei-Pfad
 
-//int i_key = 0;                           //letzte Tasteneingabe
 char path1[STR_LEN], path2[STR_LEN];     //Variablen für Dateioperationen
 unsigned int Datum[4];                   //Datums-Array
 unsigned int Zeit[4];                    //Zeit-Array
@@ -2781,7 +2788,7 @@ static float data_get(void)
   if (*txtpos < 'A' || *txtpos > 'Z')                                     //erster Variablenbuchstabe
   {
     syntaxerror(syntaxmsg);
-    return 1;//continue;
+    return 1;
   }
 
   var = (float *)variables_begin + *txtpos - 'A';
@@ -3229,6 +3236,11 @@ interpreteAtTxtpos:
 
         load_file();
         string_marker = false;
+        if(*txtpos==','){
+          txtpos++;
+          if(Test_char('1')) continue;              
+          autorun = true;                                 //Load"Filename",1 ->autostart
+        }
         continue;
         break;
 
@@ -4076,6 +4088,7 @@ static int command_Print(void)
           Terminal.println();
           //if(ser_marker) Serial1.println();
         }
+        semicolon = true;
         if (skip_spaces() == NL)
         {
           k = 1;
@@ -5653,12 +5666,15 @@ GFX.setBrushColor((bitRead(bc, 5) * 2 + bitRead(bc, 4)) * 64, (bitRead(bc, 3) * 
   { int c, d, e, f;
     int y_pos = y_char[fontsatz] / 2;
     int x_pos = VGAController.getScreenWidth() / x_char[fontsatz];
-
+    
+#ifdef Akkualarm_enabled
     float g = 3.3 / 4095 * analogRead(Batt_Pin);
-    g = g / 0.753865;                           //(Umess/(R2/(R1+R2)) R1=3.327kohm R2=10.19kohm
+    g = g / 0.753865;                                 //(Umess/(R2/(R1+R2)) R1=3.327kohm R2=10.19kohm
     int   h = 100 - ((4.2 - g) * 100);                //Akkuwert in Prozent
     if (h > 100) h = 100;
-
+#else
+    int h = 100;
+#endif
 
     fbcolor(Vordergrund, Hintergrund);
     Terminal.enableCursor(false);
@@ -5820,14 +5836,13 @@ inchar_loadfinish:
     }
     else {
       if (ser_marker && list_send) Serial1.write(c);       //User-Seriellschnittstelle
-      Terminal.write(c);       //------------------------ auf FabGl VGA-Terminal schreiben----------------------------------
+      Terminal.write(c);                                   //auf FabGl VGA-Terminal schreiben----------------------------------
     }
   }
   //############################################# Dateioperationen auf der SD-Karte #################################################################
   //--------------------------------------------- Unterprogramm SD-Karte initialisieren -------------------------------------------------------------
   static int initSD( void )
   {
-
     spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
     //spiSD.begin(14, 2, 12, kSD_CS);                         //TTGO Board
     if ( !SD.begin( kSD_CS, spiSD )) {                        //SD-Card starten
@@ -6366,11 +6381,12 @@ VGAController.setResolution(QVGA_320x240_60Hz);
 
 
     //-------------------------------- Akku-Überwachung per Timer0-Interrupt --------------------------------------------
-
+#ifdef Akkualarm_enabled
     Akku_timer = timerBegin(0, 80, true);
     timerAttachInterrupt(Akku_timer, &onTimer, true);
     timerAlarmWrite(Akku_timer, 60000000, true);         //ca.60sek bis Interrupt ausgelöst wird
-    //timerAlarmEnable(Akku_timer); //wenn alles fertig aufgebaut ist, diese Zeile aktivieren
+    timerAlarmEnable(Akku_timer); //wenn alles fertig aufgebaut ist, diese Zeile aktivieren
+#endif
     //-------------------------------------------------------------------------------------------------------------------
 
   }
@@ -8185,6 +8201,7 @@ weiter:                                                         //Schreibschleif
       }
       fp.close();
       sd_ende();
+      string_marker = false;
     }
 
     int key_wait(void) {
