@@ -94,6 +94,8 @@ die Grundversion wurde erweitert durch:
 Screenshot als BMP-Datei exportiert
 ```
 
+
+
 ## Komponenten:
 
 -ESP32 NodeMCU https://www.berrybase.de/esp32-nodemcu-development-board?sPartner=g_shopping&gclid=EAIaIQobChMI-fTJwNmx_wIVkupRCh1mTAgZEAQYBSABEgKjwvD_BwE
