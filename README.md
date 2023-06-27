@@ -94,7 +94,7 @@ die Grundversion wurde erweitert durch:
 Screenshot als BMP-Datei exportiert
 ```
 
-
+![..mit BLOAD kann dann auch CPM gestartet werden](IMG/Bload.JPG)
 
 ## Komponenten:
 
