@@ -49,13 +49,13 @@ Die Ursprungsversion wurde durch folgende Funktionen erweitert
 
 ***Also thanks on Fabrizio Di Vittorio for the excellent FabGl-Library***
 
-```
-
-![picture](IMG/Banner.png)
 
 
 
-```
+![IMG/Banner.png](IMG/Banner.png?raw=true)
+
+
+
 
 ![Startbildschirm](IMG/start.JPG) 
 ```
