@@ -81,6 +81,13 @@ Screenshot als BMP-Datei exportiert
 ...RUN-CPM Startbildschirm , mit EXIT kehrt man wieder zum Basic32+ zurück.
 ```
 
+## Bibliotheken:
+-die im Ordner libraries liegenden Unterverzeichnisse ins Arduino libraries-Verzeichnis kopieren
+-zusätzlich die FabGL-lib mit dem Bibliotheksmanager der Arduino-IDE installieren
+-
+
+
+
 ## Komponenten:
 
 -ESP32 NodeMCU https://www.berrybase.de/esp32-nodemcu-development-board?sPartner=g_shopping&gclid=EAIaIQobChMI-fTJwNmx_wIVkupRCh1mTAgZEAQYBSABEgKjwvD_BwE
