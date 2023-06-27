@@ -1,11 +1,9 @@
 # ESP32-Basic with FabGL VGA library + PS2-Keyboard
-ESP-Basic+
-Basic32+ with FabGL VGA library + PS2 PS2Controller 
-for VGA monitor output - May 2019       
-Ursprungsversion von: Rob Cai <rocaj74@gmail.com>
-erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>                                                                   
-So entstand ein kleiner Restro-Computer - Schaltplan siehe Ordner Schematic
-
+### Basic32+ with FabGL VGA library + PS2 PS2Controller for VGA monitor output - 2019 - 2023       
+#### Ursprungsversion von: Rob Cai <rocaj74@gmail.com>
+#### erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>                                                                   
+#### Das Ergebnis ist ein kleiner Restro-Computer mit folgender Ausstattung:
+- (Schaltplan siehe Ordner Schematic) 
 
 ## Hardware:
 ```
@@ -23,8 +21,7 @@ So entstand ein kleiner Restro-Computer - Schaltplan siehe Ordner Schematic
 
 ## Software:
 ```
-Die Version meiner Vor-Authoren wird die Grundlage für einen erweiterten Basic-Interpreter
-die Grundversion wurde erweitert durch:   
+Die Ursprungsversion wurde durch folgende Funktionen erweitert  
 
 -fliesskomma Arithmetik
 -Grafikfunktionen 	
@@ -45,22 +42,36 @@ die Grundversion wurde erweitert durch:
 -Soundfunktionen (noch in der Entwicklung)
 -integrierte Kurzhilfe
 -RUN-CPM kann mit BLOAD"/cpm.bin" gestartet werden (Rückkehr mit EXIT)
- special Thanks on Guido Lehwalder and Marcelo Dantas ->RUN-CPM is a great Work!
--also thanks on Fabrizio Di Vittorio for the excellent FabGl-Library
 
 ```
+
+***Special Thanks on Guido Lehwalder and Marcelo Dantas ->RUN-CPM is a great Work!***
+
+***Also thanks on Fabrizio Di Vittorio for the excellent FabGl-Library***
+
+```
+
+
+
+
+
+```
+
 ![Startbildschirm](IMG/start.JPG) 
 ```
 -Startbildschirm
 ```
+
 ![Programm Globus.Bas](IMG/globus.JPG)
 ```
 -Programm Globus.Bas
 ```
+
 ![Darstellung einer BMP-Datei](IMG/norw.JPG)
 ```
 -Darstellung einer BMP-Datei
 ```
+
 ![Programmlisting](IMG/prgm.JPG)
 ```
 -Programmlisting
