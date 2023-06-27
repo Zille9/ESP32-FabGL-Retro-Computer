@@ -94,7 +94,7 @@ die Grundversion wurde erweitert durch:
 Screenshot als BMP-Datei exportiert
 ```
 
-
+![..mit BLOAD kann dann auch CPM gestartet werden](https://github.com/Zille9/ESP32-FabGL-Retro-Computer/blob/FABGL-Basic/IMG/Bload.JPG)
 
 ## Komponenten:
 
