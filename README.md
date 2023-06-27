@@ -95,6 +95,14 @@ Screenshot als BMP-Datei exportiert
 ```
 
 ![..mit BLOAD kann dann auch CPM gestartet werden](IMG/Bload.JPG)
+```
+...mit BLOAD kann dann auch CPM gestartet werden.
+```
+
+![..RUN-CPM-Startbildschirm](IMG/cpm.JPG)
+```
+...RUN-CPM Startbildschirm , mit EXIT kehrt man wieder zum Basic32+ zurück.
+```
 
 ## Komponenten:
 
