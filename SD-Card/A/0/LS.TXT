@@ -1,0 +1,72 @@
+ls: an implementation of the Unix `ls` file lister for CP/M
+-----------------------------------------------------------
+
+"ls" is a file lister for CP/M, broadly similar to the Unix utility of the
+same name.
+
+Usage
+-----
+
+    A> ls [options] [drive:pattern] [drive:pattern]...
+
+Options can be specified using the '/' or '-' characters.  With no options,
+ls lists the current drive, in wide format, in alphabetical order.
+
+The drive/pattern specification can contain wildcards (see below), such as
+"b:*.com". 
+
+Options
+-------
+
+-b : In 'long' format, display file size in CP/M blocks rather than
+bytes/kilobytes
+
+-l : Display in long format, one file to a line, including file attributes
+and size. Attributes are displayed like this:
+
+    [RSA]
+
+where R=read-only, S=system, A=archive.
+
+-p : Display a page at a time. After each page, hit 'enter' to advance by one
+line, 'space' to advance by a page, or ctrl-c to exit.
+
+-r : Sort in the opposite order to the default (i.e., reverse alphabetic
+order).
+
+-s : Sort by size.
+
+-u : Unsorted -- do not sort at all.
+
+-x : Sort by file extension.
+
+Wildcards
+---------
+
+* and ? can be used as wildcards. 
+
+"*.com" matches anything that has the extension `com`.
+
+"c*.com" matches anything that begins with 'c', and has the extension "com".
+
+"*c.com" is treated the same as "*.com".
+
+"*" matches anything _without_ an extension.
+
+"*.*" matches everything, with or without extension. Specifying this as a
+pattern is equivalent to just specifying the drive letter ("C:") 
+
+Notes
+-----
+
+Sorting files, particular by name, can be slow on low-powered systems. Use
+"-u" to turn off sorting if necessary. 
+
+File sizes are displayed in kB when larger than 1 kB. 
+
+Author
+------
+ls is maintained by Kevin Boone, and is distributed under the terms of the
+GNU public licence, v3.0.
+
+
