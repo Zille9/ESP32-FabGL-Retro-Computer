@@ -51,7 +51,7 @@ Die Ursprungsversion wurde durch folgende Funktionen erweitert
 
 ```
 
-
+![picture](IMG/Banner.png)
 
 
 
