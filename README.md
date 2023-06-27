@@ -9,20 +9,13 @@ erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>
 
 ## Hardware:
 ```
--ESP32 / 240MHz 
-
+-ESP32 / 240MHz
 -56472 Basic Bytes free
-
 -VGA-Display 320x240 Pixel 64 Farben oder 400x300 Pixel 64 Farben oder AV (IO26)
-
 -IO-Erweiterung mit MCP23017 (2x8 IO-Ports) + EEPROM 512kB 
-
 -FRAM 512kB (Adafruit SPI FRAM)
-
 -PS2-Keyboard 
-
 -RTC DS3231 
-
 -SD-Card
 ```
 
@@ -34,42 +27,25 @@ Die Version meiner Vor-Authoren wird die Grundlage für einen erweiterten Basic-
 die Grundversion wurde erweitert durch:   
 
 -fliesskomma Arithmetik
-
 -Grafikfunktionen 	
-
 -mathematische Funktionen 	
-
 -Stringfunktionen 	
-
 -lange Variablennamen  	
-
 -viele zusätzliche Befehle (DATA,READ,STRG$,LEFT$,RIGHT$,MID$,POS,TAB,SPC,SIN,COS,TAN,ATN,LOG,SQR,PI usw.) 	
-
 -erweiterte logische Operatoren (AND, OR) 	
-
 -BIT-Manipulation &,|,%,<<,>> usw. 	
-
 -Klammerrechnung 	
-
 -IF THEN ELSE Abfragen 	
-
 -Speichermonitor 	
-
 -Exponential-Ein/Ausgabe 	
-
 -Verschiedene Sensoren und Komponenten HC-S04, Dallas DS18S20, DHT, LCD, Neopixel-LED, BMP180 	
-
 -Zeileneditor 
-
 -BMP-Bilddatei-Import / Export
-
 -Spritefunktionen (noch in der Entwicklung)
-
 -Soundfunktionen (noch in der Entwicklung)
-
 -integrierte Kurzhilfe
-
--RUN-CPM kann mit BLOAD"/cpm.bin" gestartet werden (Rückkehr mit EXIT) special Thanks on Guido Lehwalder and Marcelo Dantas ->RUN-CPM is a amazing Work!
+-RUN-CPM kann mit BLOAD"/cpm.bin" gestartet werden (Rückkehr mit EXIT)
+ special Thanks on Guido Lehwalder and Marcelo Dantas ->RUN-CPM is a amazing Work!
 
 ```
 ![Startbildschirm](IMG/start.JPG) 
@@ -89,7 +65,7 @@ die Grundversion wurde erweitert durch:
 -Programmlisting
 ```
 
-![grafik](https://github.com/Zille9/ESP32-Basic/assets/78110942/86d8d629-1a02-479d-8408-bb93a8eed3ce)
+![Screenshot als BMP-Datei exportiert](IMG/export.png)
 ```
 Screenshot als BMP-Datei exportiert
 ```
