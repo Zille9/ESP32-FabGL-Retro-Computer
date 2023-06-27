@@ -50,8 +50,6 @@ Die Ursprungsversion wurde durch folgende Funktionen erweitert
 ***Also thanks on Fabrizio Di Vittorio for the excellent FabGl-Library***
 
 
-
-
 ![IMG/Banner.png](IMG/Banner.png?raw=true)
 
 
