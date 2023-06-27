@@ -4,7 +4,7 @@ Basic32+ with FabGL VGA library + PS2 PS2Controller
 for VGA monitor output - May 2019       
 Ursprungsversion von: Rob Cai <rocaj74@gmail.com>
 erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>                                                                   
-
+So entstand ein kleiner Restro-Computer - Schaltplan siehe Ordner Schematic
 
 
 ## Hardware:
@@ -82,6 +82,7 @@ Screenshot als BMP-Datei exportiert
 ```
 
 ## Bibliotheken einbinden und Basic32+ compilieren:
+```
 -die im Ordner libraries liegenden Unterverzeichnisse ins Arduino libraries-Verzeichnis kopieren
 
 -zusätzlich die FabGL-lib mit dem Bibliotheksmanager der Arduino-IDE installieren
@@ -90,6 +91,8 @@ Screenshot als BMP-Datei exportiert
 
 -den Inhalt des Verzeichnisses SD-Card auf eine SD-Karte kopieren .... und mit ESP32+Basic loslegen :-)
 
+Im Ordner RUN-CPM befindet sich die um den OTA-Loader erweiterte Variante, um nach Eingabe von EXIT wieder zum Basic zurückzukehren.
+```
 
 ## Komponenten:
 
