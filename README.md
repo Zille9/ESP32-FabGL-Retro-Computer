@@ -81,11 +81,14 @@ Screenshot als BMP-Datei exportiert
 ...RUN-CPM Startbildschirm , mit EXIT kehrt man wieder zum Basic32+ zurück.
 ```
 
-## Bibliotheken:
+## Bibliotheken einbinden und Basic32+ compilieren:
 -die im Ordner libraries liegenden Unterverzeichnisse ins Arduino libraries-Verzeichnis kopieren
--zusätzlich die FabGL-lib mit dem Bibliotheksmanager der Arduino-IDE installieren
--
 
+-zusätzlich die FabGL-lib mit dem Bibliotheksmanager der Arduino-IDE installieren
+
+-die Quellen befinden sich im Ordner "src/FabGL-Basic" ->kompilieren und in den ESP32 laden
+
+-den Inhalt des Verzeichnisses SD-Card auf eine SD-Karte kopieren .... und mit ESP32+Basic loslegen :-)
 
 
 ## Komponenten:
