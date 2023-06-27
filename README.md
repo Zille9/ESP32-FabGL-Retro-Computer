@@ -17,7 +17,7 @@ erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>
 
 -IO-Erweiterung mit MCP23017 (2x8 IO-Ports) + EEPROM 512kB 
 
--FRAM 512kB 
+-FRAM 512kB (Adafruit SPI FRAM)
 
 -PS2-Keyboard 
 
@@ -66,8 +66,12 @@ die Grundversion wurde erweitert durch:
 -Spritefunktionen (noch in der Entwicklung)
 
 -Soundfunktionen (noch in der Entwicklung)
-```
 
+-integrierte Kurzhilfe
+
+-RUN-CPM kann mit BLOAD"/cpm.bin" gestartet werden (Rückkehr mit EXIT) special Thanks on Guido Lehwalder ->RUN-CPM is a amazing Work!
+
+```
 ![grafik](https://github.com/Zille9/ESP32-Basic/assets/78110942/ecedcc85-2db3-4dfa-919c-8043cce69693) 
 ```
 -Startbildschirm
@@ -89,6 +93,8 @@ die Grundversion wurde erweitert durch:
 ```
 Screenshot als BMP-Datei exportiert
 ```
+
+
 
 ## Komponenten:
 
