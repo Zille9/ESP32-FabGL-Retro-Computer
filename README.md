@@ -66,7 +66,10 @@ die Grundversion wurde erweitert durch:
 -Spritefunktionen (noch in der Entwicklung)
 
 -Soundfunktionen (noch in der Entwicklung)
-```
+
+-integrierte Kurzhilfe
+
+-RUN-CPM kann mit BLOAD"/cpm.bin" gestartet werden (Rückkehr mit EXIT) special Thanks on Guido Lehwalder ->RUN-CPM is a amazing Work!
 
 ![grafik](https://github.com/Zille9/ESP32-Basic/assets/78110942/ecedcc85-2db3-4dfa-919c-8043cce69693) 
 ```
