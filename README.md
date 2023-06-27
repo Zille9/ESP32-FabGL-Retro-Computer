@@ -17,7 +17,7 @@ erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>
 
 -IO-Erweiterung mit MCP23017 (2x8 IO-Ports) + EEPROM 512kB 
 
--FRAM 512kB 
+-FRAM 512kB (Adafruit SPI FRAM)
 
 -PS2-Keyboard 
 
