@@ -69,7 +69,7 @@ die Grundversion wurde erweitert durch:
 
 -integrierte Kurzhilfe
 
--RUN-CPM kann mit BLOAD"/cpm.bin" gestartet werden (Rückkehr mit EXIT) special Thanks on Guido Lehwalder and Marcello Dantas ->RUN-CPM is a amazing Work!
+-RUN-CPM kann mit BLOAD"/cpm.bin" gestartet werden (Rückkehr mit EXIT) special Thanks on Guido Lehwalder and Marcelo Dantas ->RUN-CPM is a amazing Work!
 
 ```
 ![Startbildschirm](IMG/start.JPG) 
