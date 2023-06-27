@@ -1,0 +1,21 @@
+
+                        BARSOOM
+                        
+
+This text adventure game runs under CP/M 2.2 on any type of terminal.
+
+The game consists of three files:     BARSOOM.COM
+                                      BARSOOM1.DAT
+                                      BARSOOM2.DAT
+
+(Once you have "saved" your position during the game there will 
+also be a "BARSOOM.SAV" file.)
+
+To play: have the three files, extracted from the library and unsqueezed,
+on your logged drive.  Type "BARSOOM" -- it starts with a couple of
+screens of instructions.
+
+Complaints and bug reports can be addressed to Susan Schnitger on the Boskug
+BBS at 617-965-7046.
+
+(Released 5/29/89)

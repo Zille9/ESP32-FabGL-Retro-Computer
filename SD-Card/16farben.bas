@@ -1,4 +1,0 @@
-10 FOR I=0 TO 15
-20 COLOR 0,I:PRINT" ";I;" "
-30 NEXT I
-

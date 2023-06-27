@@ -1,9 +1,0 @@
-10 CUR0
-20 CLS
-30 PIC_L(0,"/lillith.pic")
-40 PIC_D(0)
-50 FOR I=0 TO 320
-60 SCROLL 1,0
-70 PAUSE 10
-80 NEXT I
-

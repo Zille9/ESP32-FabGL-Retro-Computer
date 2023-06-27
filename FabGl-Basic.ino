@@ -44,16 +44,27 @@
 // April 2021
 //
 //
-#define BasicVersion "1.72b"
-#define BuiltTime "Built:22.06.2023"
+#define BasicVersion "1.73b"
+#define BuiltTime "Built:24.06.2023"
 #pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v1.73b:24.06.2023          -Befehl BLOAD"Filename.bin" zum Laden von Binärdateien integriert
+//                            -HELP Funktion optisch etwas verbessert
+//                            -RUN-CPM als funktionsfähige (sehr schnelle) CP/M Emulation entdeckt - Dateiaustausch einfacher (Unterverzeichnisse auf SD-Card als Laufwerke)
+//                            -Rückkehrroutine in RUN-CPM integriert->der Befehl Exit unter RUN-CPM stoppt den Emulator und lädt wieder das Basic32 :-)
+//                            -Rückkehrroutine ausgelagert (updater.ino)
+//                            -EEPROM und FRAM-Routinen ausgelagert (Memory_RW.ino)
+//                            -OPT-Befehl erweitert OPT PATH="Workdir" speichert das Arbeitsverzeichnis im EEPROM und setzt den Pfad beim Initialisieren der SD-Karte
+//                            -16650 Zeilen/sek.
+//
 // v1.72b:22.06.2023          -Befehl Type zum Betrachten von Text- oder Basic-Dateien auf dem Bildschirm
 //                            -hatte sich als notwendig herausgestellt für die Schaffung der Befehle FWRITE und FREAD
 //                            -LOAD Befehl erweitert LOAD"Filename.BAS",1 startet das Programm sofort (gleiche Funktion wie Start"Filename.BAS")
 //                            -PRINT Befehl korrigiert die Zeile : For I=1 to 20:print i,:next i führte dazu,das das Komma wirkungslos war
 //                            -Marker semicolon jetzt für , und ; aktiv
 //                            -Akku-Überwachung als Option definiert (#define Akkualarm_enabled)
+//                            -Start-Prozedur überarbeitet, wurde ein frischer ESP geflasht, konnte es vorkommen, das Vorder-und Hintergrundfarbe gleich waren
+//                            -dadurch war der Startbildschirm unsichtbar, jetzt werden beim Erststart Standardwerte gesetzt
 //                            -16275 Zeilen/sek.
 //
 // v1.71b:20.06.2023          -Kurzhilfe in help_sys.h ausgelagert
@@ -184,6 +195,8 @@ fabgl::PS2Controller    PS2Controller;
 fabgl::Canvas           GFX(&VGAController);
 TerminalController      tc(&Terminal);
 
+#define erststart_marker 131                //dieser Marker steht im EEprom an Position 100 - wird der ESP32 zum ersten mal mit dem Basic gestartet werden standard-Werte gesetzt
+//damit eine benutzbare Version gestartet wird
 //---------------------------------------------------- verfügbare Themes ---------------------------------------------------------------------------
 char * Themes[]    PROGMEM = {"C64", "C128", "CPC", "ATARI 800", "ZX-Spectrum", "KC87", "KC85", "VIC-20", "TRS-80", "ESP32+", "LCD", "User"}; //Theme-Namen
 byte x_char[]      PROGMEM = {8, 5, 6, 8,  10, 8,  8,  8,  8,  8,  8,  8,  8,  6,  8,  4, 6,  7,  7,  8, 8, 8, 6, 9, 8, 6}; //x-werte der Fontsätze zur Berechnung der Terminalbreite
@@ -200,7 +213,7 @@ unsigned int noteTable []  PROGMEM = {16350, 17320, 18350, 19450, 20600, 21830, 
 #include "FS.h"
 #include <SD.h>
 #include <SPI.h>
-//#include <Update.h>
+#include <Update.h>
 
 //SPI CLASS FOR REDEFINED SPI PINS !
 SPIClass spiSD(HSPI);
@@ -219,9 +232,8 @@ byte SD_SET   = 44;      // -steht 44 im EEprom-Platz 10, dann sind die Werte im
 byte FRAM_CS  = 0;//13;       //SPI_FRAM 512kB CS-Pin
 word FRAM_OFFSET = 0x8000;    //Offset für Poke-Anweisungen, um zu verhindern, das in den Array-Bereich gepoked wird
 word FRAM_PIC_OFFSET = 0x12C04; //Platz pro Bildschirm im Speicher
-word Free_Bytes = 0;          //freie Bytes wird beim Start gesetzt
+
 //-------- Parameter für FRAM-Load ------------------------
-word load_n_bytes, read_n_bytes = 0;
 long load_adress = 0x70000;
 
 Adafruit_FRAM_SPI spi_fram = Adafruit_FRAM_SPI(kSD_CLK, kSD_MISO, kSD_MOSI, FRAM_CS);
@@ -290,9 +302,11 @@ byte IIC_SET = 55;      // -steht 55 im EEprom-Platz 13, dann sind die Werte im 
 byte SDA_RTC = 3;
 byte SCL_RTC = 1;
 
-byte Keyboard_lang = 3;
+byte Keyboard_lang = 3; //Tastatur-Layout (Deutsch)
 byte KEY_SET = 66;      //-steht 66 im EEprom Platz 15, dann Nummer des Keyboard-Layouts aus dem EEProm laden
 byte THEME_SET = 77;    //-steht 77 im EEPROM Platz 17, dann setze das gespeicherte Theme
+byte PATH_SET = 88;     //-steht 88 im EEPROM Platz 19, dann setze Arbeits-Pfad
+
 //-------------- LCD-Treiber -----------------------------
 #include "HD44780_LCD_PCF8574.h"
 #define DISPLAY_DELAY_INIT 50 // mS
@@ -401,7 +415,6 @@ int Fnoperator[27 * 5];                   //DEFN A(a,b,c,d,e,f,g,h)-> Name 0-26,
 bool fn_marker = false;
 
 //------------------------------------ TRON ----------------------------------------------------------------------------------------------------
-static bool tron_marker = false;                           //TRON Aus
 //------------------------------------ Editor --------------------------------------------------------------------------------------------------
 char const * Edit_line = nullptr;        //Editor-Zeile
 
@@ -429,9 +442,6 @@ unsigned int restorepointer = 0;    //begin des Datanfeldes
 unsigned int num_of_datalines = 0;  //Anzahl DATA-Zeilen
 unsigned int current_dataline = 0;  //aktuelle DATA-Zeile
 unsigned int data_numbers[300];     //Array zur speicherung von 300 DATA Zeilennummern
-
-//---------------------- Hilfe-System ------------------------------------------
-#include "help_sys.h"
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -530,6 +540,7 @@ const static char keywords[] PROGMEM = {
   'C', 'L', 'O', 'S', 'E' + 0x80,
   'F', 'W', 'R', 'I', 'T', 'E' + 0x80,
   'T', 'Y', 'P', 'E' + 0x80,
+  'B', 'L', 'O', 'A', 'D' + 0x80,
   'H', 'E', 'L', 'P' + 0x80,
   0
 };
@@ -613,8 +624,9 @@ enum {
   KW_CLOSE,
   KW_FWRITE,
   KW_TYPE,
+  KW_CPM,
   KW_HELP,
-  KW_DEFAULT  //77/* hier ist das Ende */
+  KW_DEFAULT  //78/* hier ist das Ende */
 };
 
 int KW_WORDS = KW_DEFAULT;
@@ -777,6 +789,7 @@ const static char options[] PROGMEM = {
   'C', 'O', 'L' , 'O', 'R' + 0x80,          //Vordergrund- und Hintergrundfarbe dauerhaft speichern
   'K', 'E', 'Y' + 0x80,                     //Keyboardlayout 1=US,2=UK,3=GE,4=IT,5=ES,6=FR,7=BE,8=NO,9=JP
   'T', 'H', 'E', 'M', 'E' + 0x80,           //THEME
+  'P', 'A', 'T', 'H' + 0x80,                //Arbeitsverzeichnis
   0
 };
 
@@ -788,7 +801,8 @@ enum {
   OPT_COLOR,
   OPT_KEYBOARD,
   OPT_THEME,
-  OPT_UNKNOWN
+  OPT_PATH,
+  OPT_UNKNOWN  //8
 };
 //---------------------------------------------------------------------------------------------------------------------------------------
 
@@ -886,6 +900,7 @@ static const char bmpfilemsg[]       PROGMEM = "No BMP-File!";                  
 static const char no_prg_msg[]       PROGMEM = "No Program in Memory !";        //23
 static const char no_command_msg[]   PROGMEM = "Keyword not found !";           //24
 static const char not_openmsg[]      PROGMEM = "File not open Error !";         //25
+static const char dirnotfound[]      PROGMEM = "DIR not found !";               //26
 /***************************************************************************/
 
 /******************** Interpreter-Variablen ********************************/
@@ -1142,7 +1157,7 @@ static int Memory_Dump() {                       //DMP Speichertyp 0..2 <,Adress
     syntaxerror(syntaxmsg);
     return 1;
   }
-  spi_fram.begin(3);
+  //spi_fram.begin(3);
   while (!ex) {
     for (int i = 1; i < ln; i++)
     {
@@ -1471,9 +1486,6 @@ static float expr4(void)
     txtpos++;
     a = expression();
     if (Test_char(')')) goto expr4_error;
-    //if (*txtpos != ')')
-    //  goto expr4_error;
-    //txtpos++;
     return a;
   }
   //******************************************** Zahleneingabe mit Exponentialschreibweise ************************************
@@ -1652,7 +1664,7 @@ static float expr4(void)
         expression_error = 0;
         v_adr = rw_array(v_name, VAR_TBL);
         if (expression_error) goto expr4_error;
-        SPI_RAM_read(v_adr, buf, 4);
+        spi_fram.read(v_adr, buf, 4);
 
         a = *((float *)buf);                                            //byte-array des Wertes nach float konvertieren
 
@@ -3146,10 +3158,9 @@ void Basic_Interpreter()
 {
   char pa, pb;
   initSD();                                              //SD-Karte initialisieren
-  spi_fram.begin(3);                                     //Fram select
   cmd_new();                                             //alles löschen
   int a, e;
-  tron_marker = false;
+  bool tron_marker = false;                              //TRON "Aus"
 
   //################################################# Hauptprogrammschleife ######################################################
   while (1)
@@ -3236,9 +3247,9 @@ interpreteAtTxtpos:
 
         load_file();
         string_marker = false;
-        if(*txtpos==','){
+        if (*txtpos == ',') {
           txtpos++;
-          if(Test_char('1')) continue;              
+          if (Test_char('1')) continue;
           autorun = true;                                 //Load"Filename",1 ->autostart
         }
         continue;
@@ -3784,7 +3795,7 @@ interpreteAtTxtpos:
 
       case KW_MOUNT:
         initSD();                                              //SD-Karte initialisieren
-        spi_fram.begin(3);                                     //Fram select
+        //spi_fram.begin(3);                                     //Fram select
         break;
 
       case KW_COM:
@@ -3811,6 +3822,10 @@ interpreteAtTxtpos:
 
       case KW_TYPE:
         type_file();
+        break;
+
+      case KW_CPM:
+        load_binary();
         break;
 
       case KW_HELP:
@@ -4182,7 +4197,6 @@ static float var_get(void)
   int tmp, stmp, svar, i, var_pos, array_art ;
   char c;
   word arr_adr;
-  //byte p_data[8], str_data[STR_LEN];
 
   array_art = 0;
 
@@ -4234,7 +4248,6 @@ static float var_get(void)
       if (c == '\0') {
         if (array_art == 2) {
           SPI_RAM_write8(arr_adr + i, '\0');
-          //writeEEPROM(FRam_ADDR, arr_adr + i, '\0' );
         }
         else {
           Stringtable[stmp + i] = '\0';                                   //Nullterminator setzen
@@ -4245,14 +4258,12 @@ static float var_get(void)
         if (i < STR_LEN) {
           if (array_art == 2) {
             SPI_RAM_write8(arr_adr + i++, c);
-            //writeEEPROM(FRam_ADDR, arr_adr + i++, c);
           }
           else Stringtable[stmp + i++] = c;
         }
         else {
           if (array_art == 2) {
             SPI_RAM_write8(arr_adr + i, '\0');
-            //writeEEPROM(FRam_ADDR, arr_adr + i, '\0' );
             break;
           }
           else {
@@ -4284,7 +4295,6 @@ static float var_get(void)
   if (array_art == 1) {
     byte* bytes = (byte*)&value;                            //float nach byte-array umwandeln
     SPI_RAM_write(arr_adr, bytes, 4);
-    //WriteBuffer(FRam_ADDR, arr_adr, 4, bytes);
     return 0;
   }
 
@@ -4318,7 +4328,7 @@ float rw_array(int num, word table) {
 
 
   //Dimensionswerte aus dem FRAM lesen und mit Eingabe vergleichen
-  SPI_RAM_read(ort, p_data, 6);
+  spi_fram.read(ort, p_data, 6);
   //readBuffer(FRam_ADDR, ort, 6, p_data);
 
   vadresse = word(p_data[0], p_data[1]);                                //word(h, l) //vadresse = p_data[0] << 8; vadresse += p_data[1]; Variablen-Feldadresse - Adresse bei dem das Array-Feld beginnt
@@ -4462,8 +4472,8 @@ default:
 switch (value)
 {
 case 0: //C64
-Vordergrund = 27;
-Hintergrund = 22;
+Vordergrund = 43;
+Hintergrund = 18;
 set_font(0);
 break;
 
@@ -5666,14 +5676,14 @@ GFX.setBrushColor((bitRead(bc, 5) * 2 + bitRead(bc, 4)) * 64, (bitRead(bc, 3) * 
   { int c, d, e, f;
     int y_pos = y_char[fontsatz] / 2;
     int x_pos = VGAController.getScreenWidth() / x_char[fontsatz];
-    
+
 #ifdef Akkualarm_enabled
-    float g = 3.3 / 4095 * analogRead(Batt_Pin);
-    g = g / 0.753865;                                 //(Umess/(R2/(R1+R2)) R1=3.327kohm R2=10.19kohm
-    int   h = 100 - ((4.2 - g) * 100);                //Akkuwert in Prozent
-    if (h > 100) h = 100;
+float g = 3.3 / 4095 * analogRead(Batt_Pin);
+g = g / 0.753865;                                 //(Umess/(R2/(R1+R2)) R1=3.327kohm R2=10.19kohm
+int   h = 100 - ((4.2 - g) * 100);                //Akkuwert in Prozent
+if (h > 100) h = 100;
 #else
-    int h = 100;
+int h = 100;
 #endif
 
     fbcolor(Vordergrund, Hintergrund);
@@ -5727,9 +5737,10 @@ GFX.setBrushColor((bitRead(bc, 5) * 2 + bitRead(bc, 4)) * 64, (bitRead(bc, 3) * 
     Terminal.print(Theme_state);
     Terminal.print("=");
     Terminal.print(Themes[Theme_state]);
-
+    Terminal.println(String(sd_pfad));
     Terminal.enableCursor(true);
     tc.setCursorPos(1, 9);
+    
   }
 
 
@@ -5843,10 +5854,13 @@ inchar_loadfinish:
   //--------------------------------------------- Unterprogramm SD-Karte initialisieren -------------------------------------------------------------
   static int initSD( void )
   {
+    int c;
+    int adr,i;
+
     spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-    //spiSD.begin(14, 2, 12, kSD_CS);                         //TTGO Board
+
     if ( !SD.begin( kSD_CS, spiSD )) {                        //SD-Card starten
-      // failed
+      // mount-fehler
       spiSD.end();                                            //unmount
       syntaxerror(sderrormsg);
       return kSD_Fail;
@@ -5858,8 +5872,29 @@ inchar_loadfinish:
     inhibitOutput = false;
     sd_pfad[0] = '/';                                         //setze Root-Verzeichnis
     sd_pfad[1] = 0;
+    
+    adr=20;                                                   //ab Adresse 20 im EEPROM ist der User-Pfad abgelegt
+    i=0;
+    if (EEPROM.read(19) == PATH_SET) {                        //Pfad im EEPROM gespeichert?
+       while(1){
+        c=EEPROM.read(adr++);
+        sd_pfad[i++]=char(c);
+        if(c==0) break;
+       }
+      }
+
+    
+    if ( !SD.open(String(sd_pfad)))                            //Überprüfung, ob Pfad gültig
+      {
+        printmsg(dirnotfound, 1);
+        sd_pfad[0] = '/';                                      //Verzeichnis ungültig->Root-Verzeichnis
+        sd_pfad[1] = 0;
+        sd_ende();                                             //SD-Card unmount
+        return 1;
+      }
+
     Terminal.println("SD-Card OK");
-    spiSD.end();                                              //unmount
+    sd_ende();                                                 //unmount
     return kSD_OK;
   }
 
@@ -5867,6 +5902,7 @@ inchar_loadfinish:
 
   void sd_ende(void) {
     spiSD.end();                                              //SD-Card unmount
+    //spiSD.setClockDivider(SPI_CLOCK_DIV4);
     spi_fram.begin(3);                                        //FRAM aktivieren
 
   }
@@ -5875,17 +5911,15 @@ inchar_loadfinish:
   static int load_file(void)
   {
 
-    // clear the program
+    // Programmspeicher löschen
     program_end = program_start;
 
-    // load from a file into memory
-
+    // lade BAS-Datei in den Speicher
 
     bool a_st = false;
 
-    // Work out the filename
     expression_error = 0;
-    get_value();
+    get_value();                                              //in tempstring steht der Dateiname
 
     if (expression_error)
     {
@@ -5895,17 +5929,16 @@ inchar_loadfinish:
 
     spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
 
-    if ( !SD.exists(String(sd_pfad) + String(tempstring)))
+    if ( !SD.exists(String(sd_pfad) + String(tempstring)))    //Datei vorhanden?
     {
-      syntaxerror(sdfilemsg);
+      syntaxerror(sdfilemsg);                                 //Datei nicht vorhanden -> Fehlerausgabe
       sd_ende();
     }
     else {
-      fp = SD.open(String(sd_pfad) + String(tempstring));
+      fp = SD.open(String(sd_pfad) + String(tempstring));     //Datei zum Laden öffnen
       inStream = kStreamFile;
       inhibitOutput = true;
     }
-
 
     warmstart();
     return 0;
@@ -5918,9 +5951,8 @@ inchar_loadfinish:
 
     char c;
 
-    // Work out the filename
     expression_error = 0;
-    get_value();
+    get_value();                                                      //in tempstring steht der Dateiname
 
 
     if (expression_error)
@@ -5929,27 +5961,27 @@ inchar_loadfinish:
       return 1;
     }
 
-    spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+    spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);                 
 
 
     // remove the old file if it exists
-    if ( SD.exists( String(sd_pfad) + String(tempstring))) {
+    if ( SD.exists( String(sd_pfad) + String(tempstring))) {          //Datei existiert schon, überschreiben?
       Terminal.print("File exist, overwrite? (y/n)");
       while (1)
       {
-        c = wait_key();
+        c = wait_key();                                               //Ja/Nein?
         if (c == 'y' || c == 'n')
           break;
       }
       if (c == 'y') {
-        SD.remove( String(sd_pfad) + String(tempstring));
+        SD.remove( String(sd_pfad) + String(tempstring));             //ja, Datei löschen
         Terminal.print(c);
       }
       else
       {
-        Terminal.print(c);
+        Terminal.print(c);                                            //nein gedrückt, Abbruch
         Terminal.println();
-        sd_ende();                                             //SD-Card unmount
+        sd_ende();                                                    //SD-Card unmount
         warmstart();
         return 0;
       }
@@ -5957,23 +5989,23 @@ inchar_loadfinish:
     }
 
     // open the file, switch over to file output
-    fp = SD.open( String(sd_pfad) + String(tempstring), FILE_WRITE);
-    if (!fp) {
+    fp = SD.open( String(sd_pfad) + String(tempstring), FILE_WRITE);  //Datei wird zum Schreiben geöffnet
+    if (!fp) {                                                        //Fehler?
       Terminal.println("Open File-Error!");
     }
     outStream = kStreamFile;
 
     // copied from "List"
     list_line = findline();
-    while (list_line != program_end)
+    while (list_line != program_end)                                  //Zeile für Zeile des Programms in die Datei schreiben
       printline();
 
-    // go back to standard output, close the file
-    outStream = kStreamTerminal;
+    
+    outStream = kStreamTerminal;                                      // zurück zum standard output, Datei schließen
 
     fp.close();
     Terminal.println();
-    sd_ende();                                             //SD-Card unmount
+    sd_ende();                                                        //SD-Card unmount
     warmstart();
     return 0;
 
@@ -6012,15 +6044,15 @@ inchar_loadfinish:
     program_end = program_start;
     memset(program, 0, 0x8000);                                          //die ersten 32kb des Arbeitsspeichers löschen
 
-    a = SPI_RAM_read8(adress++);
-    b = SPI_RAM_read8(adress++);
+    a = spi_fram.read8(adress++);
+    b = spi_fram.read8(adress++);
     //------ Kennung f. Programm im FRAM ------
     if (a == 'B' && b == 'S') {
 
-      n_bytes = SPI_RAM_read8(adress++);                                //Anzahl der zu lesenden Bytes
-      n_bytes = n_bytes + (SPI_RAM_read8(adress++) << 8);
+      n_bytes = spi_fram.read8(adress++);                                //Anzahl der zu lesenden Bytes
+      n_bytes = n_bytes + (spi_fram.read8(adress++) << 8);
       for (i = 0; i < n_bytes; i++) {                                   //Programm in Arbeitsspeicher schreiben
-        program[i] = SPI_RAM_read8(adress++);
+        program[i] = spi_fram.read8(adress++);
         program_end++;
       }
 
@@ -6113,8 +6145,11 @@ inchar_loadfinish:
 
     //prüfen, ob der Pfad gültig ist
     if ( !SD.open(String(sd_pfad))) {
-      printmsg(sderrormsg, 1);
+      printmsg(dirnotfound, 1);
+      sd_pfad[0]='/';                                       //kein gültiger Pfad, dann Root-Verzeichnis setzen
+      sd_pfad[0]=0;
     }
+    
     sd_ende();                                             //SD-Card unmount
 
   }
@@ -6294,53 +6329,64 @@ inchar_loadfinish:
 
     EEPROM. begin ( EEPROM_SIZE ) ;
     delay(200);
-    //################ Farbschema aus dem EEPROM lesen ############################
-    Vordergrund = EEPROM.read(0) ;   //512 Byte Werte im EEPROM speicherbar
-    Hintergrund = EEPROM.read(1);
-    Pencolor = Vordergrund;
-    user_vcolor = Vordergrund;    //User-Vordergrundfarbe merken
-    user_bcolor = Hintergrund;    //User-Hintergrundfarbe merken
-    //#############################################################################
+    if (EEPROM.read(100) == erststart_marker) {                                         //auf jungfräulichkeit prüfen
 
-    //Mode_state = EEPROM.read(1);
-    fontsatz = EEPROM.read(2);
-    user_font = fontsatz;         //User-Fontsatz merken
+      //################ Farbschema aus dem EEPROM lesen ############################
+      Vordergrund = EEPROM.read(0) ;   //512 Byte Werte im EEPROM speicherbar
+      Hintergrund = EEPROM.read(1);
+      Pencolor = Vordergrund;
+      user_vcolor = Vordergrund;    //User-Vordergrundfarbe merken
+      user_bcolor = Hintergrund;    //User-Hintergrundfarbe merken
+      //#############################################################################
 
-    LCD_ZEILEN = EEPROM.read(3);
-    LCD_SPALTEN = EEPROM.read(4);
-    LCD_ADRESSE = EEPROM.read(5);
+      //Mode_state = EEPROM.read(1);
+      fontsatz = EEPROM.read(2);
+      user_font = fontsatz;         //User-Fontsatz merken
 
-    //--- ist der SD-Marker (44) auf Platz 10 gesetzt, dann sind folgende Werte für die SD-Card-Konfiguration zu verwenden ---------------------------
-    if (EEPROM.read(10) == 44) {
-      kSD_CLK  = EEPROM.read(6);
-      kSD_MISO = EEPROM.read(7);
-      kSD_MOSI = EEPROM.read(8);
-      kSD_CS   = EEPROM.read(9);
+      LCD_ZEILEN = EEPROM.read(3);
+      LCD_SPALTEN = EEPROM.read(4);
+      LCD_ADRESSE = EEPROM.read(5);
+
+      //--- ist der SD-Marker (44) auf Platz 10 gesetzt, dann sind folgende Werte für die SD-Card-Konfiguration zu verwenden ---------------------------
+      if (EEPROM.read(10) == 44) {
+        kSD_CLK  = EEPROM.read(6);
+        kSD_MISO = EEPROM.read(7);
+        kSD_MOSI = EEPROM.read(8);
+        kSD_CS   = EEPROM.read(9);
+      }
+
+      //--- ist der IIC_Marker (55) auf Platz 13 gesetzt, dann sind die folgenden Werte zu verwenden
+      if (EEPROM.read(13) == 55) {
+        SDA_RTC = EEPROM.read(11);
+        SCL_RTC = EEPROM.read(12);
+      }
+
+      //--- ist der KEY_Marker (66) auf Platz 15 gestzt, dann ist das gespeicherte Layout zu wählen
+      if (EEPROM.read(15) == 66) {
+        Keyboard_lang = EEPROM.read(14);
+      }
+
+      // --- ist der Theme_marker (77) auf Platz 17 gesetzt, dann das gespeicherte Theme setzen
+      if (EEPROM.read(17) == 77) {
+        Theme_state = EEPROM.read(16);
+        Theme_marker = true;
+      }
+      else Theme_state = 0;
     }
-
-    //--- ist der IIC_Marker (55) auf Platz 13 gesetzt, dann sind die folgenden Werte zu verwenden
-    if (EEPROM.read(13) == 55) {
-      SDA_RTC = EEPROM.read(11);
-      SCL_RTC = EEPROM.read(12);
+    else                                                  //der ESP ist noch jungfräulich, also standard-Werte setzen
+    {
+      Vordergrund = 43;                                   //Standard-Vordergrundfarbe (wenn noch nichts im EEprom steht)
+      Hintergrund = 18;                                   //Standard-Hintergrundfarbe (wenn noch nichts im EEprom steht)
+      user_font = 19;
+      Theme_state = 0;
     }
 
     VGAController.queueSize = 400;
     PS2Controller.begin(PS2Preset::KeyboardPort0);
 
-    //--- ist der KEY_Marker (66) auf Platz 15 gestzt, dann ist das gespeicherte Layout zu wählen
-    if (EEPROM.read(15) == 66) {
-      Keyboard_lang = EEPROM.read(14);
-    }
     Set_Layout();           //Keyboard-Layout setzen
 
-    // --- ist der Theme_marker (77) auf Platz 17 gesetzt, dann das gespeicherte Theme setzen
-    if (EEPROM.read(17) == 77) {
-      Theme_state = EEPROM.read(16);
-      Theme_marker = true;
-    }
-    else Theme_state = 11;
-
-    delay(2000);
+    delay(1000);
     //************************************************************ welcher Bildschirmtreiber? *********************************************************
     // 64 colors
 #ifdef AVOUT                                                                          //AV-Variante
@@ -6382,12 +6428,12 @@ VGAController.setResolution(QVGA_320x240_60Hz);
 
     //-------------------------------- Akku-Überwachung per Timer0-Interrupt --------------------------------------------
 #ifdef Akkualarm_enabled
-    Akku_timer = timerBegin(0, 80, true);
-    timerAttachInterrupt(Akku_timer, &onTimer, true);
-    timerAlarmWrite(Akku_timer, 60000000, true);         //ca.60sek bis Interrupt ausgelöst wird
-    timerAlarmEnable(Akku_timer); //wenn alles fertig aufgebaut ist, diese Zeile aktivieren
+Akku_timer = timerBegin(0, 80, true);
+timerAttachInterrupt(Akku_timer, &onTimer, true);
+timerAlarmWrite(Akku_timer, 60000000, true);         //ca.60sek bis Interrupt ausgelöst wird
+timerAlarmEnable(Akku_timer); //wenn alles fertig aufgebaut ist, diese Zeile aktivieren
 #endif
-    //-------------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------
 
   }
 
@@ -6922,67 +6968,6 @@ nochmal:
 
     }
 
-    //############################################### externer EEPROM/FRAM #################################################################
-    void writeEEPROM(int deviceaddress, word eeaddress, byte dat )
-    {
-      myI2C.beginTransmission(deviceaddress);
-      myI2C.write((int)(highByte(eeaddress)));   // MSB
-      myI2C.write((int)(lowByte(eeaddress)));    // LSB
-      myI2C.write(dat);
-      myI2C.endTransmission();
-      if (deviceaddress == EEprom_ADDR)                           //bei EEprom muss etwas gewartet werden
-        delay(10);
-    }
-
-    byte readEEPROM(int deviceaddress, word eeaddress )
-    {
-      myI2C.beginTransmission(deviceaddress);
-      myI2C.write((int)(highByte(eeaddress)));   // MSB
-      myI2C.write((int)(lowByte(eeaddress)));    // LSB
-      myI2C.endTransmission();
-      if (deviceaddress == EEprom_ADDR)
-        delay(2);
-      myI2C.requestFrom(deviceaddress, 1);
-      while (myI2C.available() == 0);
-      return myI2C.read();
-      //Serial.println(myI2C.read(), HEX);
-    }
-
-    void WriteBuffer(int deviceaddress, word address, byte ln, byte* p_data)
-    {
-      myI2C.beginTransmission(deviceaddress);
-      myI2C.write(highByte(address));
-      myI2C.write(lowByte(address));
-      //myI2C.write(p_data,ln);
-
-      for (byte i = 0; i < ln; i++)
-      {
-        myI2C.write(p_data[i]);
-      }
-
-      myI2C.endTransmission();
-
-      // Write cycle time (tWR). See EEPROM memory datasheet for more details.
-      if (deviceaddress == EEprom_ADDR)                                         //bei EEprom muss etwas gewartet werden
-        delay(10);
-    }
-
-    void readBuffer(int deviceaddress, word address, byte ln, byte* p_data)
-    {
-      myI2C.beginTransmission(deviceaddress);
-      myI2C.write(highByte(address));
-      myI2C.write(lowByte(address));
-      myI2C.endTransmission();
-      myI2C.requestFrom(deviceaddress, ln);
-      for (byte i = 0; i < ln; i++)
-      {
-        if (myI2C.available())
-        {
-          p_data[i] = myI2C.read();
-        }
-      }
-    }
-
 
     //############################################### Zeileneditor ###################################################################
     void Editor(int lnr) {
@@ -7139,7 +7124,7 @@ nochmal:
       byte p[6];
       scantable(options);                                                  //Optionstabelle lesen
       char fu = table_index;
-
+      int i,adr;
       if (Test_char('=')) return 1;                                        //nach der Option kommt ein '='
 
       switch (fu) {
@@ -7163,6 +7148,10 @@ nochmal:
           Vordergrund = p[0];
           Hintergrund = p[1];
           fbcolor(Vordergrund, Hintergrund); //Farben setzen
+          if (EEPROM.read(100) != erststart_marker) {                              //marker-setzen, das werte im EEprom stehen
+            EEPROM.write ( 100, erststart_marker) ;
+            EEPROM.commit () ;
+          }
           break;
 
         case OPT_SDCARD:
@@ -7205,8 +7194,30 @@ nochmal:
           EEPROM.write(17, THEME_SET);     //THEME-Marker
           EEPROM.commit();
           set_theme(p[0]);
+          if (EEPROM.read(100) != erststart_marker) {                              //marker-setzen, das werte im EEprom stehen
+            EEPROM.write ( 100, erststart_marker) ;
+            EEPROM.commit () ;
+          }
           break;
-
+          
+        case OPT_PATH:                    //Arbeits-Pfad im EEPROM-Platz 20-50 (max. 30 Zeichen)
+          cmd_chdir();
+          adr=20;
+          i=0;
+          EEPROM.write(19,PATH_SET);
+          EEPROM.commit();
+          while(sd_pfad[i]){
+            
+            EEPROM.write (adr++,sd_pfad[i++]);
+            EEPROM.commit();
+            Terminal.print(char(EEPROM.read(adr-1)));
+            
+          }
+          EEPROM.write(adr,0);
+          EEPROM.commit();
+          
+          break;
+          
         default:
           break;
       }
@@ -7217,7 +7228,6 @@ nochmal:
         syntaxerror(syntaxmsg);
         return 1;
       }
-
       return 0;
     }
 
@@ -7259,38 +7269,6 @@ nochmal:
 
     }
 
-    void SPI_RAM_write8(uint32_t addr, uint8_t value) {
-      spi_fram.begin(3);
-      spi_fram.writeEnable(true);
-      spi_fram.write8(addr, value);
-      spi_fram.writeEnable(false);
-    }
-
-    void SPI_RAM_write(uint32_t addr, const uint8_t *values, int count) {
-      spi_fram.begin(3);
-      spi_fram.writeEnable(true);
-      spi_fram.write(addr, values, count);
-      spi_fram.writeEnable(false);
-    }
-
-    uint8_t SPI_RAM_read8(uint32_t addr) {
-      byte c;
-      spi_fram.begin(3);
-      c = spi_fram.read8(addr);
-      return c;
-    }
-    void SPI_RAM_read(uint32_t addr, uint8_t *values, int count) {
-      spi_fram.begin(3);
-      spi_fram.read(addr, values, count);
-    }
-
-    void SPI_FRAM_init(void) {
-      if (spi_fram.begin(3)) {
-        Terminal.println("Found SPI FRAM");
-      } else {
-        Terminal.println("No SPI FRAM found\r\n");
-      }
-    }
 
     //**************************************************************** Seriell-Funktionen *****************************************************************************
 
@@ -7509,13 +7487,13 @@ nochmal:
             dy = get_value();                             //y
           }
           if (Test_char(')')) return 1;
-          SPI_RAM_read(FRAM_OFFSET + ad, buf, 4);         //Dimension lesen
+          spi_fram.read(FRAM_OFFSET + ad, buf, 4);         //Dimension lesen
           px = buf[0] + (buf[1] << 8);
           py = buf[2] + (buf[3] << 8);
           ad += 4;
           for (y = dy + py - 1 ; y > dy - 1; y--) {
             for (x = dx; x < (dx + px); x++) {
-              w = SPI_RAM_read8(FRAM_OFFSET + ad++);
+              w = spi_fram.read8(FRAM_OFFSET + ad++);
               fcolor(w);
               if (x < vh && y < vv) GFX.setPixel(x, y);
             }
@@ -7578,7 +7556,7 @@ nochmal:
           if (Test_char(',')) return 1;                   //Komma überspringen
           get_value();                                    //Dateiname in tempstring
           if (Test_char(')')) return 1;
-          SPI_RAM_read(FRAM_OFFSET + ad, buf, 4);         //Dimension lesen
+          spi_fram.read(FRAM_OFFSET + ad, buf, 4);         //Dimension lesen
           px = buf[0] + (buf[1] << 8);
           py = buf[2] + (buf[3] << 8);
           n_bytes = (px * py) + 4;                        //x*y=Biddaten + 4 Bytes der Dimension
@@ -7847,7 +7825,7 @@ nochmal:
       sd_ende();                                                //SD-Card unmount
 
       for (int i = 0; i < durchlaeufe; i++) {
-        SPI_RAM_read(adr, c, 1024);
+        spi_fram.read(adr, c, 1024);
         adr += 1024;
         spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
         fp = SD.open( String(sd_pfad) + String(file), FILE_APPEND);
@@ -7858,7 +7836,7 @@ nochmal:
         sd_ende();                                                //SD-Card unmount
       }
       if (rest > 0) {
-        SPI_RAM_read(adr, c, rest);
+        spi_fram.read(adr, c, rest);
         spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
         fp = SD.open( String(sd_pfad) + String(file), FILE_APPEND);
         for (int s = 0; s < rest; s++) {
@@ -8194,8 +8172,8 @@ weiter:                                                         //Schreibschleif
         }
         if (b == 20)
         {
-          if(key_wait()==3) break;
-          b = 0; 
+          if (key_wait() == 3) break;
+          b = 0;
         }
         Terminal.print(c);
       }
@@ -8214,39 +8192,61 @@ weiter:                                                         //Schreibschleif
       }
       return ex;
     }
-    //*************************************************** integrierte Kurzhilfe ***************************************************************************
+    //*************************************************** Befehl Help ***************************************************************************
     void show_help(void) {
-      int n, e;
+      int n, e, z, y;
+      int x[] = {};
+      x[0] = 0;
+      x[1] = 9;
+      x[2] = 18;
+      x[3] = 27;
       Terminal.println("BASIC-COMMANDS:");
-      n = 0;
+      n = z = 0;
+      Terminal.println("---------------");
+
       for (int i = 0; i < KW_WORDS; i++)
       { e = 0;
+        tc.setCursorPos(z * 8, tc.getCursorRow());
         while (!e) {
           if (keywords[n] > 0x80) {
             Terminal.write(keywords[n++] - 0x80);
             e = 1;
           }
           else  Terminal.write(keywords[n++]);
-
         }
-        Terminal.print("  ");
+        z++;
+        if (z == 5) {
+          Terminal.println();
+          z = 0;
+          y = tc.getCursorRow();
+        }
       }
 
+      if (key_wait() == 3) return;
+
       n = 0;
+      z = 0;
       Terminal.println();
       Terminal.println();
       Terminal.println("BASIC-FUNCTIONS:");
+      Terminal.println("----------------");
+      y = tc.getCursorRow();
       for (int i = 0; i < FUNC_WORDS; i++)
       { e = 0;
+        tc.setCursorPos(z * 8, tc.getCursorRow());
+
         while (!e) {
           if (func_tab[n] > 0x80) {
             Terminal.write(func_tab[n++] - 0x80);
             e = 1;
           }
-          else  Terminal.write(func_tab[n++]);
-
+          else Terminal.write(func_tab[n++]);
         }
-        Terminal.print("  ");
+        z++;
+        if (z == 5 ) {
+          Terminal.println();
+          z = 0;
+        }
       }
       Terminal.println();
 

@@ -1,0 +1,4 @@
+10 FOR I=32 TO 255
+20 PRINT CHR$(I);
+30 NEXT I
+

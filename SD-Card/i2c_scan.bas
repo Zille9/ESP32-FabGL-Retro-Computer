@@ -1,9 +1,0 @@
-10 FOR I=1 TO 127
-15 REM --- START I2C MIT ADRESSE ---
-20 IIC(S,I)
-25 REM --- END I2C ---
-30 B=IIC(E)
-50 IF B=0 THEN PRINT I;"-";HEX(I)
-55 IF B=4 THEN PRINT"Error on ";I;"-";HEX(I)
-60 NEXT I
-

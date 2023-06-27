@@ -1,14 +1,0 @@
-100 REM BENCHMARK 8
-105 T=TIMER
-110 PRINT"Start"
-120 K=0
-130 K=K+1
-140 A=K^2
-150 B=LOG(K)
-160 C=SIN(K)
-170 IF K<1000 THEN GOTO 130
-175 D=TIMER
-180 PRINT"stop"
-190 PRINT (D-T);" ms"
-200 PRINT"Das entspricht:";INT((1000/(D-T)*K*5));" Zeilen/sek."
-

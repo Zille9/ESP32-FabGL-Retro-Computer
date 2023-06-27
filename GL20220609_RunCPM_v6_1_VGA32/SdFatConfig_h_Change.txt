@@ -1,0 +1,28 @@
+Guido
+Jun 14, 2023 @ 11:31:32
+
+Your comment is awaiting moderation.
+
+@Olimex: which problem did you have to compile RunCPM woth SDFat Library 2.2.2? Here on my system it does compile fine.
+Did you the “normal” change of the SdFatConfig.h which is mentioned at the original RunCPM Github-Page https://github.com/MockbaTheBorg/RunCPM
+under the Section “SdFat Library change”?
+————————————————————-
+SdFat library change
+If you get a ‘File’ has no member named ‘dirEntry’ error, then a modification is needed on the SdFat Library SdFatConfig.h file (line 78 as of version 2.0.2) changing:
+#define SDFAT_FILE_TYPE 3
+to
+#define SDFAT_FILE_TYPE 1
+As file type 1 is required for most of the RunCPM ports.
+
+To find your libraries folder, open the Preferences in Arduino IDE and look at the Sketchbook location field.
+
+On Windows systems, SdFatConfig.h will be in Documents\Arduino\libraries\SdFat\src
+————————————————————-
+
+BTW: This change has to be done also every time you update the SdFat-Library, because it overwrites thsi change.
+
+See also that this solved my issue since SdFat-Library v2.0.2:
+https://github.com/MockbaTheBorg/RunCPM/issues/143
+
+Kind Regards
+Guido Lehwalder

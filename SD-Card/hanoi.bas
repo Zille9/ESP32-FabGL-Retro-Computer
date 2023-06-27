@@ -1,103 +1,0 @@
-2 B$="SPIEL"
-3 C$="R+HANOI"  
-4 D$="TURM"      
-5 E$="VON HANOI"                 
-9 FONT0:CUR0:CLS
-11 PRINT AT(8,3);A$ 
-15 PRINT AT(2,6);STRING$(38,CHR$(219)) 
-16 PRINT AT(2,6);STRING$(38,CHR$(219)) 
-17 FOR I=7 TO 11:PRINT AT(2,I);CHR$(219):PRINT AT(39,I);CHR$(219):NEXT I
-18 PRINT AT(2,12);STRING$(38,CHR$(219)) 
-19 PRINT AT(18,8);D$:PRINT AT(16,10);E$ 
-45 PRINT AT(31,28);">ENTER<"
-46 T=INKEY:IF T=0 THEN GOTO 46
-70 DIM T$(6): DIM P(6,3)
-80 GOSUB 1000
-100 REM
-110 N=0
-120 CLS
-150 PRINT "      T U R M   V O N   H A N O I"
-160 PRINT STRING$(39,"_"):PRINT:PRINT
-170 PRINT:PRINT:PRINT TAB(7);1;TAB(19);2;TAB(32);3:PRINT
-180 REM 1.TURM -----
-185 FOR I=1 TO 5:PRINT T$(I):P(I,0)=I:P(I,1)=0:P(I,2)=0:NEXT I
-208 REM ABFRAGE ------
-210 POS 1,20
-220 PRINT "Sie starten jetzt den Versuch Nr.";N+1:PRINT
-230 INPUT "Transport von Position ";A
-235 IF (A<1) OR (A>3) THEN GOTO 280
-240 PRINT:INPUT "Transport nach Position";B
-250 IF (B<1) OR (B>3) OR B=A THEN GOTO 280
-260 ELSE GOTO 300
-280 GOSUB 1200
-290 GOTO 210
-300 REM VERSUCH -----
-310 N=N+1:AA=A-1:BA=B-1:V=0:Q=0
-320 FOR I=1 TO 5
-325 IF Q=1 THEN GOTO 340
-330 IF P(I,AA)>0 THEN V=I:VS=P(I,AA):Q=1
-340 NEXT I
-360 IF V=0 THEN GOTO 210
-390 W=5:WU=6:Q=0
-400 FOR I=1 TO 5
-405 IF Q=1 THEN GOTO 420
-410 IF P(I,BA)>0 THEN W=I-1:WU=P(I,BA): Q=1
-420 NEXT I
-450 IF VS<WU OR W=5 THEN GOTO 460
-455 GOSUB 1500:GOTO 210
-460 P(W,BA)=VS
-470 P(V,AA)=0
-500 REM UMSETZEN ----
-505 A=AA*13
-510 B=BA*13
-520 PRINT AT(A,8+V);T$(0)
-530 PRINT AT(B,8+W);T$(VS)
-540 IF P(1,2)=1 OR N=80 THEN PAUSE 20:GOTO 600
-550 ELSE GOTO 210
-600 REM AUSWERTUNG ---
-630 CLS:IF N>31 THEN GOTO 690
-660 CLS:PRINT TAB(9)"FAST UNMOEGLICH !"
-670 PRINT TAB(8)"31 Zuege sind das minimal erreichbare !"
-680 GOTO 890
-690 IF N>35 THEN GOTO 750
-700 PRINT:PRINT "Geben Sie zu, dass Sie nicht"
-710 PRINT:PRINT "allein gespielt haben!"
-720 PRINT:PRINT "Fuer eine Einzelperson"
-730 PRINT:PRINT "sind Sie zu schlau!"
-740 GOTO 890
-750 IF N>40 THEN GOTO 800
-760 PRINT:PRINT "Sie sind schon ganz gut."
-770 PRINT:PRINT "Ihnen fehlt nur etwas Uebung."
-780 GOTO 890
-800 PRINT:PRINT "Verlieren Sie bloss nicht die Nerven!!!"
-810 PRINT:PRINT "Konzentrieren Sie sich,"
-820 PRINT:PRINT "vielleicht wird noch 'was"
-830 PRINT:PRINT "Brauchbares aus Ihnen!"
-890 PRINT:PRINT:INPUT "Neues Spiel: (J/N) ";W
-900 IF W=VAL("J")THEN GOTO 920             
-910 CLS:PRINT AT(0,0);" ":PRINT AT(12,13);"Auf Wiedersehen !"
-915 PAUSE 3000:FOR I=1 TO 120:SCROLL 0,-2:PAUSE 10:NEXT I:REM ENDE!!!
-916 CUR 1:END
-920 IF N>42 THEN GOTO 930
-925 ELSE GOTO 100
-930 CLS
-940 PRINT:PRINT"Sie, Sie...Sie waren es, der mich eben"
-950 PRINT:PRINT"mit ";N;" Versuchen gequaelt hat."
-960 PRINT:PRINT"I C H   W I L L   N I C H T   M E H R  !"
-970 PAUSE 2000:CLS:END
-1000 T$(0)="              "
-1010 T$(1)="      xx      "
-1020 T$(2)="     xxxx     "
-1030 T$(3)="    xxxxxx    "
-1040 T$(4)="   xxxxxxxx   "
-1050 T$(5)="  xxxxxxxxxx  "
-1060 RETURN
-1200 REM FEHLER
-1210 RECT 0,150,319,239,1
-1220 PRINT TAB(8);"Wo soll denn das sein ?":PAUSE 1000:RECT 0,150,319,239,1
-1230 RETURN
-1500 RECT 0,150,319,239,1:BEEP
-1505 PRINT TAB(13)"F E H L E R !":PRINT
-1510 PRINT TAB(13)"Regel beachten !":PAUSE 2000:RECT 0,150,319,239,1
-1530 RETURN
-

@@ -1,0 +1,9 @@
+5 CLS
+10 INPUT"Leistung in kW:";A
+20 PRINT A/0.4/1.73/0.9;" A"
+25 PRINT A/0.9;" kVA"
+30 PRINT"Nochmal?";
+40 K=INKEY:IF K=0 THEN GOTO 40
+50 IF K=ASC("j") THEN GOTO 5
+60 PRINT CHR$(K)
+

@@ -1,8 +1,0 @@
-10 T=TIMER
-20 FOR I=0 TO #7FFFF STEP 4
-30 FPOKE 1,I,0
-40 NEXT I
-50 PRINT (TIMER-T)/1000;" sek."
-60 PRINT B*3;" Zeilen/sek."
-70 END
-
