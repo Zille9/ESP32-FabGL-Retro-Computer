@@ -1,11 +1,9 @@
 # ESP32-Basic with FabGL VGA library + PS2-Keyboard
-ESP-Basic+
-Basic32+ with FabGL VGA library + PS2 PS2Controller 
-for VGA monitor output - May 2019       
-Ursprungsversion von: Rob Cai <rocaj74@gmail.com>
-erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>                                                                   
-
-
+### Basic32+ with FabGL VGA library + PS2 PS2Controller for VGA monitor output - 2019 - 2023       
+#### Ursprungsversion von: Rob Cai <rocaj74@gmail.com>
+#### erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>                                                                   
+#### Das Ergebnis ist ein kleiner Restro-Computer mit folgender Ausstattung:
+- (Schaltplan siehe Ordner Schematic) 
 
 ## Hardware:
 ```
@@ -23,8 +21,7 @@ erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>
 
 ## Software:
 ```
-Die Version meiner Vor-Authoren wird die Grundlage für einen erweiterten Basic-Interpreter
-die Grundversion wurde erweitert durch:   
+Die Ursprungsversion wurde durch folgende Funktionen erweitert  
 
 -fliesskomma Arithmetik
 -Grafikfunktionen 	
@@ -45,22 +42,36 @@ die Grundversion wurde erweitert durch:
 -Soundfunktionen (noch in der Entwicklung)
 -integrierte Kurzhilfe
 -RUN-CPM kann mit BLOAD"/cpm.bin" gestartet werden (Rückkehr mit EXIT)
- special Thanks on Guido Lehwalder and Marcelo Dantas ->RUN-CPM is a great Work!
--also thanks on Fabrizio Di Vittorio for the excellent FabGl-Library
 
 ```
+
+***Special Thanks on Guido Lehwalder and Marcelo Dantas ->RUN-CPM is a great Work!***
+
+***Also thanks on Fabrizio Di Vittorio for the excellent FabGl-Library***
+
+```
+
+![picture](IMG/Banner.png)
+
+
+
+```
+
 ![Startbildschirm](IMG/start.JPG) 
 ```
 -Startbildschirm
 ```
+
 ![Programm Globus.Bas](IMG/globus.JPG)
 ```
 -Programm Globus.Bas
 ```
+
 ![Darstellung einer BMP-Datei](IMG/norw.JPG)
 ```
 -Darstellung einer BMP-Datei
 ```
+
 ![Programmlisting](IMG/prgm.JPG)
 ```
 -Programmlisting
@@ -82,6 +93,7 @@ Screenshot als BMP-Datei exportiert
 ```
 
 ## Bibliotheken einbinden und Basic32+ compilieren:
+```
 -die im Ordner libraries liegenden Unterverzeichnisse ins Arduino libraries-Verzeichnis kopieren
 
 -zusätzlich die FabGL-lib mit dem Bibliotheksmanager der Arduino-IDE installieren
@@ -90,6 +102,8 @@ Screenshot als BMP-Datei exportiert
 
 -den Inhalt des Verzeichnisses SD-Card auf eine SD-Karte kopieren .... und mit ESP32+Basic loslegen :-)
 
+Im Ordner RUN-CPM befindet sich die um den OTA-Loader erweiterte Variante, um nach Eingabe von EXIT wieder zum Basic zurückzukehren.
+```
 
 ## Komponenten:
 
