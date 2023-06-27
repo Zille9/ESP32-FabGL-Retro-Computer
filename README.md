@@ -45,7 +45,8 @@ die Grundversion wurde erweitert durch:
 -Soundfunktionen (noch in der Entwicklung)
 -integrierte Kurzhilfe
 -RUN-CPM kann mit BLOAD"/cpm.bin" gestartet werden (Rückkehr mit EXIT)
- special Thanks on Guido Lehwalder and Marcelo Dantas ->RUN-CPM is a amazing Work!
+ special Thanks on Guido Lehwalder and Marcelo Dantas ->RUN-CPM is a great Work!
+-also thanks on Fabrizio Di Vittorio for the excellent FabGl-Library
 
 ```
 ![Startbildschirm](IMG/start.JPG) 
