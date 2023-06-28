@@ -2,7 +2,7 @@
 ### Basic32+ with FabGL VGA library + PS2 PS2Controller for VGA monitor output - 2019 - 2023       
 #### Ursprungsversion von: Rob Cai <rocaj74@gmail.com>
 #### erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>                                                                   
-#### Das Ergebnis ist ein kleiner Restro-Computer mit folgender Ausstattung:
+#### Das Ergebnis ist ein kleiner Retro-Computer mit folgender Ausstattung:
 - (Schaltplan siehe Ordner Schematic) 
 
 ## Hardware:
