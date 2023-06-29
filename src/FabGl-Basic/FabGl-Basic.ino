@@ -44,10 +44,20 @@
 // April 2021
 //
 //
-#define BasicVersion "1.73b"
-#define BuiltTime "Built:24.06.2023"
+#define BasicVersion "1.74b"
+#define BuiltTime "Built:29.06.2023"
 #pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v1.74b:29.06.2023          -Befehl FWRITE und FREAD zusammengefasst in FILE_WR und FILE_RD ->Helpsystem angepasst
+//                            -FILE_RD funktionsfähig ->FILE_RD A$,A,B - Typprüfung muss selbst übernommen werden
+//                            -Übergabe an Arrays zur Zeit noch nicht möglich nur über Umweg->A$(3)=A$, A(1,2)=A
+//                            -der Versuch, Basic im Unterverzeichnis arbeiten zu lassen funktioniert zwar aber die Geschwindigkeit von Dateioperationen
+//                            -bricht brutal ein - beim Programm FILE_RD.BAS ca. um den Faktor 10
+//                            -man sollte Basic also im Root-Verzeichnis arbeiten lassen
+//                            -FILE-Funktionen ausgelagert ->FILE_RW.ino
+//                            -DIM erweitert, jetzt sind verkettete Dimensionierungen möglich ->DIM a$(3),S(8),T(7)
+//                            -16470 Zeilen/sek.
+//
 // v1.73b:24.06.2023          -Befehl BLOAD"Filename.bin" zum Laden von Binärdateien integriert
 //                            -HELP Funktion optisch etwas verbessert
 //                            -RUN-CPM als funktionsfähige (sehr schnelle) CP/M Emulation entdeckt - Dateiaustausch einfacher (Unterverzeichnisse auf SD-Card als Laufwerke)
@@ -55,7 +65,7 @@
 //                            -Rückkehrroutine ausgelagert (updater.ino)
 //                            -EEPROM und FRAM-Routinen ausgelagert (Memory_RW.ino)
 //                            -OPT-Befehl erweitert OPT PATH="Workdir" speichert das Arbeitsverzeichnis im EEPROM und setzt den Pfad beim Initialisieren der SD-Karte
-//                            -16650 Zeilen/sek.
+//                            -16755 Zeilen/sek.
 //
 // v1.72b:22.06.2023          -Befehl Type zum Betrachten von Text- oder Basic-Dateien auf dem Bildschirm
 //                            -hatte sich als notwendig herausgestellt für die Schaffung der Befehle FWRITE und FREAD
@@ -420,12 +430,13 @@ char const * Edit_line = nullptr;        //Editor-Zeile
 
 //------------------------------------ Interpreter ---------------------------------------------------------------------------------------------
 char tempstring[STR_LEN];                //String Zwischenspeicher
-
+char tmp_line[STR_LEN];                  //noch ein String Zwischenspeicher
 //------------------------------------ Dateifunktionen FREAD,FWRITE ----------------------------------------------------------------------------
 char filestring[STR_LEN];                //Namensstring für Dateioperationen Fread,Fwrite
 static bool Datei_open = false;          //FREAD, FWRITE Open-marker
 char File_function;                      //R,W,A für Datei-Funktionen (read,write,append)
-long File_pos = 0;                       //Dateipositions-merker
+long File_pos = 0;                       //Dateipositions-merker der geöffneten Datei
+long File_size = 0;                      //Dateigrösse der geöffneten Datei
 
 static char *txtpos, *list_line, *tmptxtpos, *dataline;
 static char expression_error;
@@ -538,7 +549,7 @@ const static char keywords[] PROGMEM = {
   'P', 'I', 'C' + 0x80,
   'O', 'P', 'E', 'N' + 0x80,
   'C', 'L', 'O', 'S', 'E' + 0x80,
-  'F', 'W', 'R', 'I', 'T', 'E' + 0x80,
+  'F', 'I', 'L', 'E' + 0x80,
   'T', 'Y', 'P', 'E' + 0x80,
   'B', 'L', 'O', 'A', 'D' + 0x80,
   'H', 'E', 'L', 'P' + 0x80,
@@ -622,7 +633,7 @@ enum {
   KW_PIC,
   KW_OPEN,
   KW_CLOSE,
-  KW_FWRITE,
+  KW_FILE,
   KW_TYPE,
   KW_CPM,
   KW_HELP,
@@ -712,7 +723,7 @@ const static char func_tab[] PROGMEM = {
   'M', 'A', 'P' + 0x80,
   'C', 'O', 'N', 'S' + 0x80,
   'S', 'T', 'R', 'I', 'N', 'G', '$' + 0x80,
-  'F', 'R', 'E', 'A', 'D' + 0x80,
+  'F', 'I', 'L', 'E' + 0x80,
   0
 };
 
@@ -775,11 +786,12 @@ enum {
   FUNC_MAP,
   FUNC_CONSTRAIN,
   FUNC_STRING,
-  FUNC_FREAD,
+  FUNC_FILE,
   FUNC_UNKNOWN   //59
 };
 
 int FUNC_WORDS = FUNC_UNKNOWN;
+
 //------------------------------- OPTION-Tabelle - alle Optionen, die dauerhaft gespeichert werden sollen ------------------------------
 const static char options[] PROGMEM = {
   'S', 'D', 'C', 'A', 'R', 'D' + 0x80,      //Pin-Festlegung SD-Karte
@@ -1211,8 +1223,8 @@ static int Memory_Dump() {                       //DMP Speichertyp 0..2 <,Adress
       Terminal.println();
     }
 
-    Terminal.println("SPACE<Continue>/CTR+C<Exit>");
-    if (wait_key() == 3) ex = 1;
+    //Terminal.println("SPACE<Continue>/CTR+C<Exit>");
+    if (wait_key(true) == 3) ex = 1;
 
   }//while (ex)
   return 0;
@@ -1248,15 +1260,20 @@ void printmsg(const char *msg, int nl)
 
 //--------------------------------------------- Unterprogramm - Tastenabfrage (list-Ausgaben) -----------------------------------------------------
 
-static unsigned short wait_key(void) {
+static unsigned short wait_key(bool modes) {
   char c;
+  if (modes)
+  {
+    Terminal.println();
+    Terminal.println("SPACE<Continue>/CTR+C<Exit>");
+  }
   while (1) {
     if (Terminal.available())
     {
       c = Terminal.read();
       break;
     }
-  }//while (1)
+  }
   return c;
 }
 
@@ -1297,7 +1314,6 @@ static void getln(char prompt)
         printmsg(breaks, 1);
         current_line = 0;
         sp = program + sizeof(program);
-        //printmsg(okmsg, 1);
         txtpos[0] = NL;
         return;
         break;
@@ -1352,7 +1368,6 @@ static char *find_data_line(void)
     if (dataline[0] == 'D' && dataline[1] == 'A' && dataline[2] == 'T' && dataline[3] == 'A')
     {
       data_numbers[num_of_datalines++] = *((LINENUM *)line);
-
     }
     // Add the line length onto the current address, to get to the next line;
     line += line[sizeof(LINENUM)];
@@ -1453,6 +1468,7 @@ static int hexDigit(char c)
 //--------------------------------------------- logische Abhängigkeiten auswerten -----------------------------------------------------------------
 //--------------------------------------------- mathematische Funtionen ausführen -----------------------------------------------------------------
 /*************************************************************************************************************************************************/
+
 
 static float expr4(void)
 {
@@ -1698,6 +1714,20 @@ static float expr4(void)
         return a;                                             // INKEY - Taste abfragen
         break;
 
+      case FUNC_FILE:
+        if (Test_char('_')) goto expr4_error;                 //FILE_PS ->Pos
+        if (*txtpos == 'P') {
+          txtpos++;
+          if (Test_char('S')) goto expr4_error;
+          return File_pos;
+        }
+        else if (*txtpos == 'S') {                            //FILE_SZ ->Size
+          txtpos++;
+          if (Test_char('Z')) goto expr4_error;
+          return File_size;
+        }
+        break;
+
       case FUNC_NOT:                                          //NOT-Funktion
         a = expression();
         return int(!a);
@@ -1741,6 +1771,7 @@ static float expr4(void)
     }
     else if ( fu == FUNC_PI )                    //PI benötigt nur die Klammern PI()
       a = M_PI;
+
 
     else if (fu == FUNC_IIC) {                   //*********** I2C-Befehle ***********
       iic = *txtpos;
@@ -2573,7 +2604,7 @@ void list_out()
     if (!list_send) {
       if (l == 12) {                          //nach 12 Zeilen auf Tastatur warten
         l = 0;
-        if (wait_key() == 3) break;
+        if (wait_key(true) == 3) break;
       }
     }
   }
@@ -3814,10 +3845,12 @@ interpreteAtTxtpos:
 
       case KW_CLOSE:
         Datei_open = false;
+        File_pos = 0;
+        File_size = 0;
         break;
 
-      case KW_FWRITE:
-        File_write();
+      case KW_FILE:                 //File_Open,File_Read,File_Write,File_Close
+        File_Operations();
         break;
 
       case KW_TYPE:
@@ -5737,10 +5770,9 @@ int h = 100;
     Terminal.print(Theme_state);
     Terminal.print("=");
     Terminal.print(Themes[Theme_state]);
-    Terminal.println(String(sd_pfad));
     Terminal.enableCursor(true);
     tc.setCursorPos(1, 9);
-    
+
   }
 
 
@@ -5850,15 +5882,17 @@ inchar_loadfinish:
       Terminal.write(c);                                   //auf FabGl VGA-Terminal schreiben----------------------------------
     }
   }
+
+
   //############################################# Dateioperationen auf der SD-Karte #################################################################
   //--------------------------------------------- Unterprogramm SD-Karte initialisieren -------------------------------------------------------------
   static int initSD( void )
   {
     int c;
-    int adr,i;
+    int adr, i;
 
     spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-
+    SPI.setFrequency(20000000);
     if ( !SD.begin( kSD_CS, spiSD )) {                        //SD-Card starten
       // mount-fehler
       spiSD.end();                                            //unmount
@@ -5872,26 +5906,26 @@ inchar_loadfinish:
     inhibitOutput = false;
     sd_pfad[0] = '/';                                         //setze Root-Verzeichnis
     sd_pfad[1] = 0;
-    
-    adr=20;                                                   //ab Adresse 20 im EEPROM ist der User-Pfad abgelegt
-    i=0;
-    if (EEPROM.read(19) == PATH_SET) {                        //Pfad im EEPROM gespeichert?
-       while(1){
-        c=EEPROM.read(adr++);
-        sd_pfad[i++]=char(c);
-        if(c==0) break;
-       }
-      }
 
-    
-    if ( !SD.open(String(sd_pfad)))                            //Überprüfung, ob Pfad gültig
-      {
-        printmsg(dirnotfound, 1);
-        sd_pfad[0] = '/';                                      //Verzeichnis ungültig->Root-Verzeichnis
-        sd_pfad[1] = 0;
-        sd_ende();                                             //SD-Card unmount
-        return 1;
+    adr = 20;                                                 //ab Adresse 20 im EEPROM ist der User-Pfad abgelegt
+    i = 0;
+    if (EEPROM.read(19) == PATH_SET) {                        //Pfad im EEPROM gespeichert?
+      while (1) {
+        c = EEPROM.read(adr++);
+        sd_pfad[i++] = char(c);
+        if (c == 0) break;
       }
+    }
+
+
+    if ( !SD.open(String(sd_pfad)))                            //Überprüfung, ob Pfad gültig
+    {
+      printmsg(dirnotfound, 1);
+      sd_pfad[0] = '/';                                      //Verzeichnis ungültig->Root-Verzeichnis
+      sd_pfad[1] = 0;
+      sd_ende();                                             //SD-Card unmount
+      return 1;
+    }
 
     Terminal.println("SD-Card OK");
     sd_ende();                                                 //unmount
@@ -5961,7 +5995,7 @@ inchar_loadfinish:
       return 1;
     }
 
-    spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);                 
+    spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
 
 
     // remove the old file if it exists
@@ -5969,7 +6003,7 @@ inchar_loadfinish:
       Terminal.print("File exist, overwrite? (y/n)");
       while (1)
       {
-        c = wait_key();                                               //Ja/Nein?
+        c = wait_key(false);                                               //Ja/Nein?
         if (c == 'y' || c == 'n')
           break;
       }
@@ -6000,7 +6034,7 @@ inchar_loadfinish:
     while (list_line != program_end)                                  //Zeile für Zeile des Programms in die Datei schreiben
       printline();
 
-    
+
     outStream = kStreamTerminal;                                      // zurück zum standard output, Datei schließen
 
     fp.close();
@@ -6089,7 +6123,7 @@ inchar_loadfinish:
       Terminal.print("delete File? (y/n)");
       while (1)
       {
-        c = wait_key();
+        c = wait_key(false);
         if (c == 'y' || c == 'n')
           break;
       }
@@ -6146,10 +6180,10 @@ inchar_loadfinish:
     //prüfen, ob der Pfad gültig ist
     if ( !SD.open(String(sd_pfad))) {
       printmsg(dirnotfound, 1);
-      sd_pfad[0]='/';                                       //kein gültiger Pfad, dann Root-Verzeichnis setzen
-      sd_pfad[0]=0;
+      sd_pfad[0] = '/';                                     //kein gültiger Pfad, dann Root-Verzeichnis setzen
+      sd_pfad[0] = 0;
     }
-    
+
     sd_ende();                                             //SD-Card unmount
 
   }
@@ -6213,20 +6247,22 @@ inchar_loadfinish:
       // common header
       printmsg( indentmsg, 0 );
       printmsg( (const char *)entry.name() , 0);
+
       if ( entry.isDirectory() ) {
         printmsg( slashmsg, 0 );
       }
 
       if ( entry.isDirectory() ) {
         // directory ending
-        for ( int i = strlen( entry.name()) ; i < 16 ; i++ ) {
+
+        for ( int i = strlen( entry.name()) ; i < 25 ; i++ ) {
           printmsg( spacemsg, 0 );
         }
         printmsg( dirextmsg , 0);
       }
       else {
         // file ending
-        for ( int i = strlen( entry.name()) ; i < 17 ; i++ ) {
+        for ( int i = strlen( entry.name()) ; i < 25 ; i++ ) {
           printmsg( spacemsg , 0);
         }
         Terminal.print(" ");
@@ -6237,9 +6273,9 @@ inchar_loadfinish:
       entry.close();
       ln++;
 
-      if (ln == 15)
+      if (ln == 16)
       { //nach 15 Zeilen auf Tastatur warten ->SPACE,ENTER=weiter, CTRL+C=EXIT
-        if (wait_key() == 3) ex = 1;
+        if (wait_key(true) == 3) ex = 1;
         ln = 1;
       }
     }
@@ -6256,7 +6292,7 @@ inchar_loadfinish:
     sd_ende();                                             //SD-Card unmount
   }
 
-  //--------------------------------------------- RENAME - Befehl -----------------------------------------------------------------------------------
+  //--------------------------------------------- RENAME - Befehl REN(Filename_old,Filename_new) ----------------------------------------------------
 
   void renameFile(fs::FS &fs, const char * path1, const char * path2) {
     Terminal.printf("Renaming file %s to %s\n", path1, path2);
@@ -6269,7 +6305,6 @@ inchar_loadfinish:
       Terminal.println("Rename failed");
     }
     sd_ende();                                             //SD-Card unmount
-
   }
 
   //----------------------------------------- Unterprogramm - Überprüfung auf gültige Zeichen -------------------------------------------------------
@@ -7035,86 +7070,88 @@ nochmal:
 
     //********************************************************** DIM-Befehl **************************************************************
     int Array_Dim(void) {
+      while (1) {
 
-      if (*txtpos >= 'A' && *txtpos <= 'Z')
-      {
-        int tmp, x, y, z;
-        int stmp, i;
-        word grenze, ort, ad;
-        char c;
-        byte p_data[8], len;
-        bool str = false;
+        if (*txtpos >= 'A' && *txtpos <= 'Z')
+        {
+          int tmp, x, y, z;
+          int stmp, i;
+          word grenze, ort, ad;
+          char c;
+          byte p_data[8], len;
+          bool str = false;
 
-        //len = 4;
-        x = y = z = 0;
-        tmp = (*txtpos - 'A');                                    //Variablennummer
-        txtpos++;
-        while (*txtpos >= 'A' && *txtpos <= 'Z') txtpos++;        //lange Variablennamen
-        if (*txtpos == '$') {
-          len = STR_LEN;
-          str = true;
+          //len = 4;
+          x = y = z = 0;
+          tmp = (*txtpos - 'A');                                    //Variablennummer
           txtpos++;
-        }
-        else {
-          len = sizeof (float);
-        }
-        if (Test_char('(')) return 1;
-        x = abs(expression());
-        if (*txtpos == ',') {
-          txtpos++;
-          y = abs(expression());
+          while (*txtpos >= 'A' && *txtpos <= 'Z') txtpos++;        //lange Variablennamen
+          if (*txtpos == '$') {
+            len = STR_LEN;
+            str = true;
+            txtpos++;
+          }
+          else {
+            len = sizeof (float);
+          }
+          if (Test_char('(')) return 1;
+          x = abs(expression());
           if (*txtpos == ',') {
             txtpos++;
-            z = abs(expression());
+            y = abs(expression());
+            if (*txtpos == ',') {
+              txtpos++;
+              z = abs(expression());
+            }
           }
-        }
-        if (Test_char(')')) return 1;                            //Überprüfung der generellen Feldgrenzen
+          if (Test_char(')')) return 1;                            //Überprüfung der generellen Feldgrenzen
 
-        grenze = (z + 1) * (y + 1) * (x + 1) * len;
-        if (grenze > (32256) ) {                                 //Feldgrenze überschritten maximal 32256 Bytes
-          syntaxerror(outofmemory);
-          return 1;
-        }
-
-        if (str) {                                              //Überprüfung unter Berücksichtigung des schon zugewiesenen Array-Speichers
-          ad = Var_Neu_Platz + grenze;
-          if (ad > (32256))                                     //überprüfung, ob noch Platz vorhanden ist maximal 32256 Bytes
-          {
+          grenze = (z + 1) * (y + 1) * (x + 1) * len;
+          if (grenze > (32256) ) {                                 //Feldgrenze überschritten maximal 32256 Bytes
             syntaxerror(outofmemory);
             return 1;
           }
+
+          if (str) {                                              //Überprüfung unter Berücksichtigung des schon zugewiesenen Array-Speichers
+            ad = Var_Neu_Platz + grenze;
+            if (ad > (32256))                                     //überprüfung, ob noch Platz vorhanden ist maximal 32256 Bytes
+            {
+              syntaxerror(outofmemory);
+              return 1;
+            }
+            else
+            {
+              ort = STR_TBL + (tmp * 8);
+            }
+          }
+
           else
           {
-            ort = STR_TBL + (tmp * 8);
+            ad = Var_Neu_Platz + grenze;                          //Überprüfung unter Berücksichtigung des schon zugewiesenen Array-Speichers
+            if (ad > (32256)) {                                   //überprüfung, ob noch Platz vorhanden ist maximal 32256 Bytes
+              syntaxerror(outofmemory);
+              return 1;
+            }
+            else
+            {
+              ort = VAR_TBL + (tmp * 8);
+            }
           }
+
+          p_data[0] = highByte(Var_Neu_Platz);                     //Adresse im FRAM
+          p_data[1] = lowByte(Var_Neu_Platz);
+          p_data[2] = highByte(x);
+          p_data[3] = lowByte(x);
+          p_data[4] = y;
+          p_data[5] = z;
+          SPI_RAM_write(ort, p_data, 6);
+          Var_Neu_Platz += (grenze * len);
         }
-
-        else
-        {
-          ad = Var_Neu_Platz + grenze;                          //Überprüfung unter Berücksichtigung des schon zugewiesenen Array-Speichers
-          if (ad > (32256)) {                                   //überprüfung, ob noch Platz vorhanden ist maximal 32256 Bytes
-            syntaxerror(outofmemory);
-            return 1;
-          }
-          else
-          {
-            ort = VAR_TBL + (tmp * 8);
-          }
-        }
-
-        p_data[0] = highByte(Var_Neu_Platz);                     //Adresse im FRAM
-        p_data[1] = lowByte(Var_Neu_Platz);
-        p_data[2] = highByte(x);
-        p_data[3] = lowByte(x);
-        p_data[4] = y;
-        p_data[5] = z;
-        SPI_RAM_write(ort, p_data, 6);
-        //WriteBuffer(FRam_ADDR, ort, 6, p_data);
-        Var_Neu_Platz += (grenze * len);
-
-        return 0;
-      }
-
+        
+        if (*txtpos != ',') return 0;                              //kein weiteres dim
+        txtpos++;                                                  //nächstes Dim
+      }//while(1)
+      
       syntaxerror(syntaxmsg);
       return 1;
     }
@@ -7124,7 +7161,7 @@ nochmal:
       byte p[6];
       scantable(options);                                                  //Optionstabelle lesen
       char fu = table_index;
-      int i,adr;
+      int i, adr;
       if (Test_char('=')) return 1;                                        //nach der Option kommt ein '='
 
       switch (fu) {
@@ -7199,25 +7236,22 @@ nochmal:
             EEPROM.commit () ;
           }
           break;
-          
+
         case OPT_PATH:                    //Arbeits-Pfad im EEPROM-Platz 20-50 (max. 30 Zeichen)
           cmd_chdir();
-          adr=20;
-          i=0;
-          EEPROM.write(19,PATH_SET);
+          adr = 20;
+          i = 0;
+          EEPROM.write(19, PATH_SET);
           EEPROM.commit();
-          while(sd_pfad[i]){
-            
-            EEPROM.write (adr++,sd_pfad[i++]);
+          while (sd_pfad[i]) {
+            EEPROM.write (adr++, sd_pfad[i++]);
             EEPROM.commit();
-            Terminal.print(char(EEPROM.read(adr-1)));
-            
           }
-          EEPROM.write(adr,0);
+          EEPROM.write(adr, 0);
           EEPROM.commit();
-          
+
           break;
-          
+
         default:
           break;
       }
@@ -7659,7 +7693,7 @@ nochmal:
         Terminal.print("File exist, overwrite? (y/n)");
         while (1)
         {
-          k = wait_key();
+          k = wait_key(false);
           if (k == 'y' || k == 'n')
             break;
         }
@@ -7802,7 +7836,7 @@ nochmal:
         Terminal.print("File exist, overwrite? (y/n)");
         while (1)
         {
-          k = wait_key();
+          k = wait_key(false);
           if (k == 'y' || k == 'n')
             break;
         }
@@ -8006,6 +8040,9 @@ nochmal:
           return 0;
         }
     */
+    //------------------------------------------------- Prüfe, ob Pixel gesetzt ist --------------------------------------------------------------
+    //->modes=0 - test Pixel gesetzt(1) oder nicht(0); modes=1 gibt die Farbe des Pixels zurück
+
     int Test_pixel(int x, int y, bool modes) {
       int buf[3], c;
       if (x > -1 && x < GFX.getWidth() && y > -1 && y < GFX.getHeight()) {
@@ -8021,247 +8058,4 @@ nochmal:
           return 1;           //Pixel gesetzt
       }
       else return c;          //Farbe des Pixels
-    }
-
-
-    //--------------------------------------------- Befehl OPEN ---------------------------------------------------------------------------------------
-    void file_rw_open(void) {
-      char c;
-      int a = 1;
-      get_value();                    //Dateiname in tempstring
-
-      strcpy(filestring, tempstring); //Tempstring nach filestring kopieren
-
-      if (Test_char(',')) {
-        syntaxerror(sdfilemsg);
-        return;
-      }
-
-      File_function = *txtpos;        //Datei-Operation (r,w)
-      txtpos++;
-      spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-
-      if ( SD.exists( String(sd_pfad) + String(filestring)) && (File_function == 'W')) //Datei existiert, überschreiben?
-      {
-        Terminal.print("File exist, overwrite? (y/n)");
-        while (a)
-        {
-          c = wait_key();
-          if (c == 'y' || c == 'n')
-            a = 0;
-        }
-        if (c == 'y') {
-          SD.remove( String(sd_pfad) + String(filestring));
-          Terminal.print(c);
-        }
-      }
-
-      if (File_function == 'W') {                                       //Dateien für Write-Operation immer im Appendmodus öffnen
-        fp = SD.open( String(sd_pfad) + String(filestring), FILE_APPEND);
-        fp.close();
-        Datei_open = true;                                                //Datei-geöffnet marker
-      }
-      else if (File_function == 'R') {                                  //Dateimodus Lesen
-        if ( !SD.exists(String(sd_pfad) + String(tempstring)))          //Datei nicht vorhanden
-        {
-          syntaxerror(sdfilemsg);
-          sd_ende();                                                    //SD-Card unmount
-          return;
-        }
-        else Datei_open = true;                                                //Datei-geöffnet marker
-        //fp = SD.open( String(sd_pfad) + String(filestring), FILE_READ); //Datei im Lesemodus öffnen
-      }
-
-      else
-      { //falsche Funktion
-        syntaxerror(sdfilemsg);
-        sd_ende();                                                      //SD-Card unmount
-        return;
-      }
-      sd_ende();
-    }
-    //--------------------------------------------- Befehl FWRITE --------------------------------------------------------------------------------
-    void File_write(void) {
-      float b, t;
-      char c[16];
-      int i;
-      int stellen;
-      String stz, cbuf;
-      int len;
-
-      spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-      if (!SD.exists( String(sd_pfad) + String(filestring)) || Datei_open == false) {
-        syntaxerror(sdfilemsg);
-        return;
-      }
-      fp = SD.open( String(sd_pfad) + String(filestring), FILE_APPEND);
-
-weiter:                                                         //Schreibschleife
-
-      b = get_value();
-
-      if (string_marker) {
-        i = 0;
-        while (tempstring[i] > 0) {
-          fp.write(tempstring[i++]);
-        }
-      }
-      else {
-
-        t = b - int(b);                    //Nachkommastelle vorhanden oder 0 ?
-        if (t == 0) {
-          cbuf = String(b, 0);
-          cbuf.trim();
-          cbuf.toCharArray(tempstring, cbuf.length() + 1);
-          i = 0;
-          while (tempstring[i] > 0) {
-            fp.write(tempstring[i++]);
-          }
-
-        }
-
-        else {
-          dtostrf(b, 1, Prezision, c);               //Nullen abschneiden
-          stz = c;
-          len = stz.length();
-          stellen = Prezision;
-          for (int i = len - 1; i > 0; i--) {
-            if ((c[i] > '0') || (c[i] == '.')) break; //keine Null oder komma?
-            if (c[i] == '0') stellen -= 1;
-          }
-
-          dtostrf(b, 1, stellen, c);                //formatierte Ausgabe ohne Nullen
-          for (int i = 0; i < stellen + 1; i++) {
-            fp.write(c[i]);
-          }
-        }
-
-      }
-
-      string_marker = false;
-      if (*txtpos == ',') {
-        fp.write(';');
-        txtpos++;
-        goto weiter;                                          //solange wiederholen, bis kein komma mehr kommt
-      }
-      fp.write('\n');                                           //neue Zeile
-      fp.close();
-      sd_ende();
-
-    }
-    //------------------------------------------------------- Befehl TYPE -------------------------------------------------------------------------------------
-    void type_file(void) {
-      char c, d;
-      int b, ex = 0;
-      get_value();                    //Dateiname in tempstring
-
-      strcpy(filestring, tempstring); //Tempstring nach filestring kopieren
-      spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-      if (!SD.exists( String(sd_pfad) + String(tempstring))) {  //Datei nicht vorhanden
-        syntaxerror(sdfilemsg);
-        return;
-      }
-      fp = SD.open( String(sd_pfad) + String(filestring), FILE_READ);
-
-      while (fp.available()) {
-        c = fp.read();
-        if (c == NL) {
-          Terminal.println();
-          b++;
-          continue;
-        }
-        if (b == 20)
-        {
-          if (key_wait() == 3) break;
-          b = 0;
-        }
-        Terminal.print(c);
-      }
-      fp.close();
-      sd_ende();
-      string_marker = false;
-    }
-
-    int key_wait(void) {
-      char ex;
-      while (!ex)
-      {
-        Terminal.println();
-        Terminal.println("SPACE<Continue>/CTR+C<Exit>");
-        ex = wait_key();
-      }
-      return ex;
-    }
-    //*************************************************** Befehl Help ***************************************************************************
-    void show_help(void) {
-      int n, e, z, y;
-      int x[] = {};
-      x[0] = 0;
-      x[1] = 9;
-      x[2] = 18;
-      x[3] = 27;
-      Terminal.println("BASIC-COMMANDS:");
-      n = z = 0;
-      Terminal.println("---------------");
-
-      for (int i = 0; i < KW_WORDS; i++)
-      { e = 0;
-        tc.setCursorPos(z * 8, tc.getCursorRow());
-        while (!e) {
-          if (keywords[n] > 0x80) {
-            Terminal.write(keywords[n++] - 0x80);
-            e = 1;
-          }
-          else  Terminal.write(keywords[n++]);
-        }
-        z++;
-        if (z == 5) {
-          Terminal.println();
-          z = 0;
-          y = tc.getCursorRow();
-        }
-      }
-
-      if (key_wait() == 3) return;
-
-      n = 0;
-      z = 0;
-      Terminal.println();
-      Terminal.println();
-      Terminal.println("BASIC-FUNCTIONS:");
-      Terminal.println("----------------");
-      y = tc.getCursorRow();
-      for (int i = 0; i < FUNC_WORDS; i++)
-      { e = 0;
-        tc.setCursorPos(z * 8, tc.getCursorRow());
-
-        while (!e) {
-          if (func_tab[n] > 0x80) {
-            Terminal.write(func_tab[n++] - 0x80);
-            e = 1;
-          }
-          else Terminal.write(func_tab[n++]);
-        }
-        z++;
-        if (z == 5 ) {
-          Terminal.println();
-          z = 0;
-        }
-      }
-      Terminal.println();
-
-    }
-
-
-    void show_help_name(void) {
-      int kw, fu;
-      tmptxtpos = txtpos;
-      scantable(keywords);                                                  //Befehlstabelle lesen
-      kw = table_index;
-      txtpos = tmptxtpos;
-      scantable(func_tab);                                                  //Funktionstabelle lesen
-      fu = table_index;
-      if (kw != KW_DEFAULT) show_Command_Help(kw);                          //Hilfe zum Befehl anzeigen
-      if (fu != FUNC_UNKNOWN)show_Function_Help(fu);                        //Hilfe zur Funktion anzeigen
-
     }

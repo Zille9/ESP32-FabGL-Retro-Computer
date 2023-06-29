@@ -72,16 +72,7 @@ void SPI_RAM_write(uint32_t addr, const uint8_t *values, int count) {
   spi_fram.write(addr, values, count);
   spi_fram.writeEnable(false);
 }
-/*
-uint8_t SPI_RAM_read8(uint32_t addr) {
-  byte c;
-  return spi_fram.read8(addr);
-}
 
-void SPI_RAM_read(uint32_t addr, uint8_t *values, int count) {
-  spi_fram.read(addr, values, count);
-}
-*/
 void SPI_FRAM_init(void) {
   if (spi_fram.begin(3)) {
     Terminal.println("Found SPI FRAM");

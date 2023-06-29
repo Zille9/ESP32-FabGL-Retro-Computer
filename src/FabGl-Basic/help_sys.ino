@@ -1,5 +1,77 @@
 //************************************************integrated Helpsystem***************************************************
-void show_Command_Help(int was) {
+//*************************************************** Befehl Help ***************************************************************************
+void show_help(void) {  //Unterprogramme des Helpsystems in help_sys
+  int n, e, z, y;
+  int x[] = {};
+  x[0] = 0;
+  x[1] = 9;
+  x[2] = 18;
+  x[3] = 27;
+  Terminal.println("BASIC-COMMANDS:");
+  n = z = 0;
+  Terminal.println("---------------");
+
+  for (int i = 0; i < KW_WORDS; i++)
+  { e = 0;
+    tc.setCursorPos(z * 8, tc.getCursorRow());
+    while (!e) {
+      if (keywords[n] > 0x80) {
+        Terminal.write(keywords[n++] - 0x80);
+        e = 1;
+      }
+      else  Terminal.write(keywords[n++]);
+    }
+    z++;
+    if (z == 5) {
+      Terminal.println();
+      z = 0;
+      y = tc.getCursorRow();
+    }
+  }
+
+  if (wait_key(true) == 3) return;
+
+  n = 0;
+  z = 0;
+  Terminal.println();
+  Terminal.println();
+  Terminal.println("BASIC-FUNCTIONS:");
+  Terminal.println("----------------");
+  y = tc.getCursorRow();
+  for (int i = 0; i < FUNC_WORDS; i++)
+  { e = 0;
+    tc.setCursorPos(z * 8, tc.getCursorRow());
+
+    while (!e) {
+      if (func_tab[n] > 0x80) {
+        Terminal.write(func_tab[n++] - 0x80);
+        e = 1;
+      }
+      else Terminal.write(func_tab[n++]);
+    }
+    z++;
+    if (z == 5 ) {
+      Terminal.println();
+      z = 0;
+    }
+  }
+  Terminal.println();
+
+}
+
+void show_help_name(void) {                                             //Anzeige aller Befehle und Funktionen
+  int kw, fu;
+  tmptxtpos = txtpos;
+  scantable(keywords);                                                  //Befehlstabelle lesen
+  kw = table_index;
+  txtpos = tmptxtpos;
+  scantable(func_tab);                                                  //Funktionstabelle lesen
+  fu = table_index;
+  if (kw != KW_DEFAULT) show_Command_Help(kw);                          //Hilfe zum Befehl anzeigen
+  if (fu != FUNC_UNKNOWN)show_Function_Help(fu);                        //Hilfe zur Funktion anzeigen
+}
+
+void show_Command_Help(int was) {                                       //Anzeige eines spezifischen Befehls oder Funktion
   switch (was) {
     case 0:
       Terminal.println("LIST <Linenumber>");
@@ -220,7 +292,7 @@ void show_Command_Help(int was) {
       Terminal.println("SPRT(C,nr)-> create nr Sprites");                                //noch überarbeiten
       Terminal.println("SPRT(D,nr,xdim,ydim,color,A$) def Sprite ");
       Terminal.println("A$ holds the Sprite-Data");
-      Terminal.println();      
+      Terminal.println();
       Terminal.println("SPRT(S,nr,'H'/'V',x,y) Set Sprite on x,y");
       Terminal.println("H=Hide, V=Visible");
       break;
@@ -380,12 +452,14 @@ void show_Command_Help(int was) {
       Terminal.println("close the File");
       break;
     case 74:
-      Terminal.println("FWRITE val1,val2...");
-      Terminal.println("writes values or strings on sd-card");
+      Terminal.println("FILE_WR val1,val2...");
+      Terminal.println("writes values or strings in File");
       Terminal.println("EXAMPLE: 10 OPEN 'Neu.txt',W");
       Terminal.println("         20 A=12.34");
-      Terminal.println("         30 FWRITE A");
+      Terminal.println("         30 FILE_WR A");
       Terminal.println("         40 CLOSE");
+      Terminal.println("FILE_RD val1,val2...");
+      Terminal.println("reads values or strings from File");
       break;
     case 75:
       Terminal.println("TYPE Filename");
@@ -694,10 +768,11 @@ void show_Function_Help(int was) {
       Terminal.println("String must be in quotes");
       break;
     case 58:
-      Terminal.println("FREAD()");
-      Terminal.println(" ");
-      Terminal.println(" ");
-      Terminal.println(" ");
+      Terminal.println("val=FILE_PS");
+      Terminal.println("return the Fileposition in a opened File");
+      Terminal.println("val=FILE_SZ");
+      Terminal.println("return the Filesize of an opened File");
+      Terminal.println("Don't forget to close a file after use!!!");
       break;
 
     default:
