@@ -44,10 +44,15 @@
 // April 2021
 //
 //
-#define BasicVersion "1.74b"
-#define BuiltTime "Built:29.06.2023"
+#define BasicVersion "1.75b"
+#define BuiltTime "Built:30.06.2023"
 #pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v1.75b:30.06.2023          -Befehl GRID geschaffen ->erzeugt ein Rasterfeld variabler Grösse
+//                            -GRID(x,y,x_zellen,y_zellen,x_pixelbreite,y_pixelhöhe,rahmen_farbe,grid_farbe,skala,pfeile,rahmen)
+//                            -Befehl TEXT für pixelgenaue Textausgaben ->TEXT(x,y,Zeichenkette)
+//                            -15945 Zeilen/sek.
+//
 // v1.74b:29.06.2023          -Befehl FWRITE und FREAD zusammengefasst in FILE_WR und FILE_RD ->Helpsystem angepasst
 //                            -FILE_RD funktionsfähig ->FILE_RD A$,A,B - Typprüfung muss selbst übernommen werden
 //                            -Übergabe an Arrays zur Zeit noch nicht möglich nur über Umweg->A$(3)=A$, A(1,2)=A
@@ -112,70 +117,22 @@
 //                            -mal sehen, ob ich eine Lösung finde, wäre cool, andere Programme zu laden und wieder zum Basic zurückzukehren.
 //                            -18033 Zeilen/sek.
 //
-// v1.66b:25.05.2023          -Skalierung funktioniert jetzt besser
-//                            -Routine verbessert, jetzt dauern auch sehr grosse Bilder nicht mehr ewig
-//                            -krumme Formate führen allerdings zu Verzerrungen, Bilder sollten im Verhältnis dem Bildschirmformat entsprechen
-//                            -Fehler in der Darstellungsroutine behoben, war das Bild kleiner als die Bildschirmauflösung, wurde das Bild nicht dargestellt
-//                            -Bildschirmauflösung wird jetzt berücksichtigt damit ist die Darstellung auch bei 400x300 korrekt
-//                            -18200 Zeilen/sek.
-//
-// v1.65b:23.05.2023          -Export des Bildschirminhaltes (oder eines Ausschnittes) im BMP-Format funktioniert
-//                            -Import BMP-Datei funktioniert ebenfalls, Laden eines Bildes dauert ca.6.5sek.
-//                            -Skalierung von größeren Bildern (>320x240) nicht perfekt aber funktionstüchtig
-//                            -18099 Zeilen/sek.
-//
-// v1.64b:19.05.2023          -Laden (PIC_L(Adr,Filename)) und Speichern (PIC_S(Adr,Filename)) funktioniert
-//                            -Datei-Sicherheitsabfragen für PIC_L und PIC_S hinzugefügt, Puffer auf 1024 Bytes erhöht ->Laden und Speichern erfolgt schneller
-//                            -nächster Schritt: Daten von und ins BMP-Format wandeln und speichern/laden
-//                            -18102 Zeilen/sek.
-//
-// v1.63b:12.05.2023          -erneut begonnen den PIC-Befehl zu integrieren, für erste Tests kann mit PIC_P(Adr) ein Grafikbildschirm
-//                            -im FRAM abgelegt werden mit PIC_D(Adr) kann der gesicherte Bildinhalt wieder auf dem Bildschirm dargestellt werden
-//                            -PIC_P(Adr<,x,y,xx,yy>) speichert den Bildausschnitt x,y,xx,yy PIC_P(Adr) speichert den gesamten Bildschirm
-//                            -PIC_D(Adr,<x,y><,mode>) lädt die Bilddaten an Position x,y,mode=1 ->Hintergrund erhält die aktuelle Hintergrundfarbe
-//                            -nächster Schritt: Laden und Speichern der Bilddaten auf SD-Karte
-//                            -Unterprogramm FilenameWord eingespart - Umstellung der Dateioperationen auf die Stringfunktionen
-//                            -damit ist die Übergabe des Dateinamens als Stringvariable möglich
-//                            -17727 Zeilen/sek.
-//
-// v1.62b:07.05.2023          -COM-Befehl modifiziert ->COM_S(RX,TX,Baud) bzw. COM_S(0), COM_P(Zeichenkette,...), COM_W(Zeichenkette,...),
-//                            -COM_T -> sendet das Programm im Speicher an die ser. Schnittstelle
-//                            -Theme jetzt mit OPT THEME=x speicherbar, werden Farben oder Font über OPT gespeichert, wird beim Start das Theme ignoriert
-//                            -Startbildschirm etwas angepasst ->Font_offset eingespart, wird jetzt berechnet
-//                            -ein Farbbalken zeigt jetzt zusätzlich die Akku-Kapazität an ->mal sehen, ob das so bleibt
-//                            -16575 Zeile/sek.
-//
-// v1.61b:04.05.2023          -begonnen serielle Funktionen zu integrieren, noch ist das Konzept nicht ganz klar
-//                            -RX-Puffer der seriellen Schnittstelle auf 1024 Bytes erhöht, so können ganze Basic-Programme über die Com-Schnittstelle vom PC eingelesen werden,
-//                            -ohne verlorene Zeichen (gibt ja keine Flusskontrolle)
-//                            -bisherige Funktionen P=print W=write T=transfer (List)
-//                            -COM P und COM W können jetzt verkettete Ausgaben (wie Print) durchführen (P mit, W ohne Zeilenumbruch)
-//                            -17847 Zeilen/sek.
-//
-// v1.60b:29.04.2023          -DURCHBRUCH: es ist gelungen, den SPI-Port mit SD-Karte "und" FRAM zu betreiben ->FRAM_CS=Pin 0 (Sharing mit Flash-Taste);
-//                            -diverse Aktivierungen und Deaktivierungen der einzelnen Treiber machte es möglich :D
-//                            -somit können die vorherigen Einschränkungen zurückgenommen werden
-//                            -mein BASIC-LAPTOP ist fertig :-) ->Befehl Akku erweitert Print Akku(0) zeigt die Spannung und Akku(1) die Akkukapazität in Prozent an
-//                            -Akku-Interrupt-Routine ist jetzt aktiv und zeigt bei leerem Akku eine Warnung auf dem Bildschirm an
-//                            -Funktion GPIX(x,y) zum ermitteln des Farbwertes eines Pixel an Position x,y hinzugefügt.
-//                            -etwas schneller geworden 17379 Zeilen/sek. Mandel4.bas 14.71 Min
-//
 //
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Feature option configuration...
 //
 //
-
+//
 //---------------------------------------------------------------- Verwendung der SD-Karte ---------------------------------------------------------
 // Dies aktiviert die Befehle LOAD, SAVE, DIR über die Arduino SD Library
 #define ENABLE_FILEIO 1
 //
-
+//
 //---------------------------------------------------------------- Akku-Überwachung für Akkubetrieb ------------------------------------------------
 //#define Akkualarm_enabled
 //
-
+//
 //---------------------------------------------------------------- Auswahl Bildschirmtreiber -------------------------------------------------------
 //#define AVOUT                  //activate for AV
 //#define VGA16                  //activate VGA 16 Color 320x240 Pixel Driver
@@ -242,12 +199,9 @@ byte SD_SET   = 44;      // -steht 44 im EEprom-Platz 10, dann sind die Werte im
 byte FRAM_CS  = 0;//13;       //SPI_FRAM 512kB CS-Pin
 word FRAM_OFFSET = 0x8000;    //Offset für Poke-Anweisungen, um zu verhindern, das in den Array-Bereich gepoked wird
 word FRAM_PIC_OFFSET = 0x12C04; //Platz pro Bildschirm im Speicher
-
-//-------- Parameter für FRAM-Load ------------------------
-long load_adress = 0x70000;
+long load_adress = 0x70000;   //hier kann ein Basicprogramm abgelegt werden (Eingabe: LOAD oder SAVE ohne Parameter)
 
 Adafruit_FRAM_SPI spi_fram = Adafruit_FRAM_SPI(kSD_CLK, kSD_MISO, kSD_MOSI, FRAM_CS);
-
 
 //-------------- Konfiguration serielle Schnittstelle -----
 uint8_t prx, ptx;             //RX- und TX-Pin
@@ -294,7 +248,6 @@ Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);              
 Adafruit_MCP23X17 mcp;
 short int MCP23017_ADDR = 0x20 ; //Adresse 32 (0x20) für eingebauten MCP23017
 bool mcp_start_marker = false;
-
 
 //------------- EEPROM o.FRAM-Chip I2C-Adressen --------------------
 short int EEprom_ADDR = 0x50;
@@ -371,10 +324,8 @@ uint32_t bmp_width, bmp_height;
 #define STR_LEN 30
 #define STR_SIZE 26*STR_LEN             //Stringspeicher = Stringlänge 26*30 Zeichen (A..Z * 30 Zeichen)
 
-
 //------------------------------ hier wird der Funktionsstring gespeichert --------------------------------------------
 #define FN_SIZE STR_LEN                 //Funktionsspeicher für benutzerdefinierte Funktionen mit bis zu vier Operatoren-> FN A(A,B,C,D)
-
 
 bool inhibitOutput = false;
 static bool autorun = false;            //Programm nach dem Laden automatisch starten
@@ -405,6 +356,10 @@ static word VAR_TBL = 0x7e00;           //Variablen-Array-Tabelle im FRAM
 static word STR_TBL = 0x7f00;           //String-Array-Tabelle im FRAM
 //--------------------------------------------------------------------------------------
 
+//------------------------------ Grid-Parameter ----------------------------------------
+int Grid[10];  //0=x, 1=y, 2=xx, 3=yy, 4=zell_x, 5=zell_y, 6=pix_x, 7=pix_y, 8=frame-col, 9=grid_col
+int Grid_point_x, Grid_point_y;
+
 // these will select, at runtime, where IO happens through for load/save
 enum {
   kStreamTerminal = 0,
@@ -424,17 +379,15 @@ int Fnvar = 0;                            //Operatorenzähler
 int Fnoperator[27 * 5];                   //DEFN A(a,b,c,d,e,f,g,h)-> Name 0-26,0-26=Operator1,0-26=operator2,0-26=Operator3,0-26=Operator4 + 1 Anzahl
 bool fn_marker = false;
 
-//------------------------------------ TRON ----------------------------------------------------------------------------------------------------
 //------------------------------------ Editor --------------------------------------------------------------------------------------------------
 char const * Edit_line = nullptr;        //Editor-Zeile
 
 //------------------------------------ Interpreter ---------------------------------------------------------------------------------------------
 char tempstring[STR_LEN];                //String Zwischenspeicher
-char tmp_line[STR_LEN];                  //noch ein String Zwischenspeicher
+
 //------------------------------------ Dateifunktionen FREAD,FWRITE ----------------------------------------------------------------------------
 char filestring[STR_LEN];                //Namensstring für Dateioperationen Fread,Fwrite
 static bool Datei_open = false;          //FREAD, FWRITE Open-marker
-char File_function;                      //R,W,A für Datei-Funktionen (read,write,append)
 long File_pos = 0;                       //Dateipositions-merker der geöffneten Datei
 long File_size = 0;                      //Dateigrösse der geöffneten Datei
 
@@ -454,7 +407,6 @@ unsigned int num_of_datalines = 0;  //Anzahl DATA-Zeilen
 unsigned int current_dataline = 0;  //aktuelle DATA-Zeile
 unsigned int data_numbers[300];     //Array zur speicherung von 300 DATA Zeilennummern
 
-
 ////////////////////////////////////////////////////////////////////////////////
 // ASCII Characters
 #define CR	'\r'
@@ -470,7 +422,6 @@ unsigned int data_numbers[300];     //Array zur speicherung von 300 DATA Zeilenn
 #define CTRLS	0x13
 
 typedef short unsigned LINENUM;
-
 
 /***************************Basic-Befehle ********************************/
 // Keyword table and constants - the last character has 0x80 added to it
@@ -552,6 +503,8 @@ const static char keywords[] PROGMEM = {
   'F', 'I', 'L', 'E' + 0x80,
   'T', 'Y', 'P', 'E' + 0x80,
   'B', 'L', 'O', 'A', 'D' + 0x80,
+  'G', 'R', 'I', 'D' + 0x80,
+  'T', 'E', 'X', 'T' + 0x80,
   'H', 'E', 'L', 'P' + 0x80,
   0
 };
@@ -636,6 +589,8 @@ enum {
   KW_FILE,
   KW_TYPE,
   KW_CPM,
+  KW_GRID,
+  KW_TEXT,
   KW_HELP,
   KW_DEFAULT  //78/* hier ist das Ende */
 };
@@ -724,6 +679,7 @@ const static char func_tab[] PROGMEM = {
   'C', 'O', 'N', 'S' + 0x80,
   'S', 'T', 'R', 'I', 'N', 'G', '$' + 0x80,
   'F', 'I', 'L', 'E' + 0x80,
+  'G', 'R', 'I', 'D' + 0x80,
   0
 };
 
@@ -787,6 +743,7 @@ enum {
   FUNC_CONSTRAIN,
   FUNC_STRING,
   FUNC_FILE,
+  FUNC_GRID,
   FUNC_UNKNOWN   //59
 };
 
@@ -1804,7 +1761,6 @@ static float expr4(void)
         a = mcp.readGPIOAB();                   //Port() liest Port A+B
     }
 
-
     else  {
       a = expression();                         //1.Zahl (bei Stringvariablen steht in tempstring die 1.Zeichenkette)
     }
@@ -2341,6 +2297,11 @@ static float expr4(void)
 
       case FUNC_CONSTRAIN:
         return constrain(a, b, c);
+        break;
+
+      case FUNC_GRID:
+        if (a > 9) a = 9;
+        return Grid[abs(int(a))];
         break;
 
       default:
@@ -2880,14 +2841,7 @@ static float data_get(void)
     spaces();
     value = data_expr();
   }
-  //if (expression_error) return 1;//continue;
   // Check that we are at the end of the statement
-  if (*txtpos == NL)
-  {
-    *var = value;
-
-    return 0;//continue;
-  }
 
   *var = value;
   return 0;
@@ -3046,7 +3000,6 @@ static char Data_String_quoted_read(void)
   dataline++;                       //Anführungszeichen überspringen
 
 
-
   if (*dataline == NL || *dataline == NULL)
   {
     datapointer = 0;
@@ -3064,8 +3017,6 @@ static char Data_String_quoted_read(void)
 void move_line() {
 
   toUppercaseBuffer();                              //Zeile in Großbuchstaben umwandeln
-
-  //convert();
 
   txtpos = program_end + sizeof(unsigned short);
 
@@ -3859,6 +3810,16 @@ interpreteAtTxtpos:
 
       case KW_CPM:
         load_binary();
+        break;
+
+      case KW_GRID:
+        if (make_grid())
+          continue;
+        break;
+
+      case KW_TEXT:
+        if (draw_text())
+          continue;
         break;
 
       case KW_HELP:
@@ -7147,11 +7108,11 @@ nochmal:
           SPI_RAM_write(ort, p_data, 6);
           Var_Neu_Platz += (grenze * len);
         }
-        
+
         if (*txtpos != ',') return 0;                              //kein weiteres dim
         txtpos++;                                                  //nächstes Dim
       }//while(1)
-      
+
       syntaxerror(syntaxmsg);
       return 1;
     }
@@ -8058,4 +8019,299 @@ nochmal:
           return 1;           //Pixel gesetzt
       }
       else return c;          //Farbe des Pixels
+    }
+    //-----------------------------------------Befehl GRID(x,y,x_zell,y_zell,x_pixel_step,y_pixelstep,frame_color,grid_color,scale,arrow,frame) ----------------------
+    int make_grid(void) {
+      int x_grid, y_grid, x_zell, y_zell, x_stp, y_stp;
+      int i, a, gc, fc, pr, xdiff, ydiff, sc , arrow, frame;
+      char typ;
+      pr = 0;                                       //Pixelraster
+      sc = 0;                                       //Skala
+      if (Test_char('_')) return 1;
+      typ = spaces();
+      txtpos++;
+      switch (typ) {
+        case 'G':                                   //Gitter-Raster
+          if (Test_char('R')) return 1;
+          break;
+        case 'K':                                   //Kartesisches Koordinatensystem
+          if (Test_char('T')) return 1;
+          break;
+        case 'X':                                   //XY-Diagramm
+          if (Test_char('Y')) return 1;
+          break;
+        case 'U':                                   //UI-Diagramm
+          if (Test_char('I')) return 1;
+          break;
+        default:
+
+          break;
+      }
+
+      if (Test_char('(')) return 1;
+      x_grid = get_value();
+      if (Test_char(',')) return 1;
+      y_grid = get_value();
+      if (Test_char(',')) return 1;
+      x_zell = get_value();
+      if (Test_char(',')) return 1;
+      y_zell = get_value();
+      if (Test_char(',')) return 1;
+      x_stp = get_value();
+      if (Test_char(',')) return 1;
+      y_stp = get_value();
+      if (Test_char(',')) return 1;
+      fc = get_value();
+      if (Test_char(',')) return 1;
+      gc = get_value();
+      if (*txtpos == ',') {
+        txtpos++;
+        pr = get_value();
+        if (*txtpos == ',') {
+          txtpos++;
+          sc = get_value();
+          if (*txtpos == ',') {
+            txtpos++;
+            arrow = get_value();
+            if (*txtpos == ',') {
+              txtpos++;
+              frame = get_value();
+            }
+          }
+        }
+      }
+      if (Test_char(')')) return 1;
+
+      Grid[0] = x_grid;
+      Grid[1] = y_grid;
+      Grid[2] = x_grid + (x_stp * x_zell);
+      Grid[3] = y_grid + (y_stp * y_zell);
+      Grid[4] = x_zell;
+      Grid[5] = y_zell;
+      Grid[6] = x_stp;
+      Grid[7] = y_stp;
+      Grid[8] = fc;
+      Grid[9] = gc;
+
+      //-------------------------------- RS=Raster ---------------------------------------------------------------------------------
+
+      i = x_grid;
+      a = 0;
+      //-------------------- Grid zeichnen ---------------------------------------------------
+      fcolor(gc);
+      while (a < x_zell + 1) {
+        //------------- Raster zeichnen --------------------
+        if (pr) pixel_line(i, y_grid, i, y_grid + (y_stp * y_zell), pr);
+        else GFX.drawLine(i, y_grid, i, y_grid + (y_stp * y_zell));
+        fcolor(fc);
+        //---------- Skala zeichnen ------------------------
+        if (sc) {
+          if (typ == 'K' || typ == 'X') {
+            ydiff = y_grid + ((Grid[3] - Grid[1]) / 2);
+            GFX.drawLine(i, ydiff - 2, i, ydiff + 2);
+          }
+          else {
+            ydiff = y_grid + Grid[3] - Grid[1];
+            GFX.drawLine(i, ydiff - 2, i, ydiff + 2);
+          }
+        }
+        fcolor(gc);
+        i += x_stp;
+        a++;
+      }
+      a = 0;
+      i = y_grid;
+      while (a < y_zell + 1) {
+        //------------- Raster zeichnen --------------------
+        if (pr) pixel_line(x_grid, i, x_grid + (x_stp * x_zell), i, pr);
+        else GFX.drawLine(x_grid, i, x_grid + (x_stp * x_zell), i);
+        //---------- Skala zeichnen ------------------------
+        if (sc) {
+          fcolor(fc);
+          if (typ == 'K') {
+            xdiff = x_grid + ((Grid[2] - Grid[0]) / 2);
+            GFX.drawLine(xdiff - 2, i, xdiff + 2, i);
+          }
+          else if (typ == 'X' || typ == 'U') GFX.drawLine(x_grid - 2, i, x_grid + 2, i);
+
+        }
+        fcolor(gc);
+        i += y_stp;
+        a++;
+      }
+      //--------------------- Rahmen zeichnen ------------------------------------------------
+      fcolor(fc);
+
+      if (typ == 'R' || frame == 1) {
+        //zweimal Rahmen (einmal um einen Pixel versetzt, damit er etwas breiter ist)
+        GFX.drawRectangle(x_grid, y_grid, x_grid + (x_stp * x_zell), y_grid + (y_stp * y_zell));
+        GFX.drawRectangle(x_grid - 1, y_grid - 1, x_grid + (x_stp * x_zell) + 1, y_grid + (y_stp * y_zell) + 1);
+      }
+
+      if (typ == 'K' || typ == 'X') {
+        xdiff = x_grid + Grid[2] - Grid[0];
+        ydiff = y_grid + ((Grid[3] - Grid[1]) / 2);
+        GFX.drawLine(x_grid, ydiff, xdiff, ydiff);
+        //----------- Pfeil zeichnen ---------------
+        if (arrow) {
+          bcolor(fc);
+          Point points[3] = { {xdiff, ydiff - 3}, {xdiff + 6, ydiff}, {xdiff, ydiff + 3} };
+          GFX.fillPath(points, 3);
+          bcolor(Hintergrund);
+        }
+
+        if (typ == 'K') {
+          xdiff = x_grid + ((Grid[2] - Grid[0]) / 2);
+          ydiff = y_grid + Grid[3] - Grid[1];
+          GFX.drawLine(xdiff, y_grid, xdiff, ydiff);
+          //----------- Pfeil zeichnen ---------------
+          if (arrow) {
+            bcolor(fc);
+            Point points[3] = { {xdiff - 3, y_grid}, {xdiff, y_grid - 6}, {xdiff + 3, y_grid} };
+            GFX.fillPath(points, 3);
+            bcolor(Hintergrund);
+          }
+        }
+        else if (typ == 'X' ||  typ == 'U') {
+          ydiff = y_grid + Grid[3] - Grid[1];
+          GFX.drawLine(x_grid, y_grid, x_grid, ydiff);
+          //----------- Pfeil zeichnen ---------------
+          if (arrow) {
+            bcolor(fc);
+            Point points[3] = { {x_grid - 3, y_grid}, {x_grid, y_grid - 6}, {x_grid + 3, y_grid} };
+            GFX.fillPath(points, 3);
+            bcolor(Hintergrund);
+          }
+
+        }
+
+      }
+      else if (typ  == 'U') {
+        ydiff = y_grid + Grid[3] - Grid[1];
+        xdiff = x_grid + Grid[2] - Grid[0];
+        GFX.drawLine(x_grid, ydiff, xdiff, ydiff);
+        GFX.drawLine(x_grid, y_grid, x_grid, ydiff);
+        if (arrow) {
+            bcolor(fc);
+            Point points[3] = { {x_grid - 3, y_grid}, {x_grid, y_grid - 6}, {x_grid + 3, y_grid} };
+            GFX.fillPath(points, 3);
+            
+            Point pointe[3] =  { {xdiff, ydiff - 3}, {xdiff + 6, ydiff}, {xdiff, ydiff + 3} };
+            GFX.fillPath(pointe, 3);
+            bcolor(Hintergrund);
+          }
+
+      }
+
+      fcolor(Vordergrund);
+      return 0;
+    }
+
+    //------------------------------------------ Pixellinie zeichnen ----------------------------------------------------------------
+    void pixel_line(int x, int y, int xx, int yy, uint8_t pix) {
+      for (int a = x; a < xx + 1; a) {
+        for (int b = y; b < yy + 1; b) {
+          GFX.setPixel(a, b);
+          b += pix;
+        }
+        a += pix;
+      }
+
+    }
+    //-------------------------------------------- Befehl TEXT(x,y,font,String)------------------------------------------------------
+    int draw_text(void) {
+      int x_text, y_text, fnt;
+
+      if (Test_char('(')) return 1;
+      x_text = get_value();
+      if (Test_char(',')) return 1;
+      y_text = get_value();
+      if (Test_char(',')) return 1;
+      fnt = get_value();
+      if (Test_char(',')) return 1;
+      get_value();                      //text in tempstring
+      if (Test_char(')')) return 1;
+
+      switch (fnt) {
+        case 0:
+          GFX.drawText(&fabgl::FONT_8x8, x_text, y_text, tempstring);
+          break;
+        case 1:
+          GFX.drawText(&fabgl::FONT_5x8, x_text, y_text, tempstring);
+          break;
+        case 2:
+          GFX.drawText(&fabgl::FONT_6x8, x_text, y_text, tempstring);
+          break;
+        case 3:
+          GFX.drawText(&fabgl::FONT_LCD_8x14, x_text, y_text, tempstring);
+          break;
+        case 4:
+          GFX.drawText(&fabgl::FONT_10x20, x_text, y_text, tempstring);
+          break;
+        case 5:
+          GFX.drawText(&fabgl::FONT_BLOCK_8x14, x_text, y_text, tempstring);
+          break;
+        case 6:
+          GFX.drawText(&fabgl::FONT_BROADWAY_8x14, x_text, y_text, tempstring);
+          break;
+        case 7:
+          GFX.drawText(&fabgl::FONT_OLDENGL_8x16, x_text, y_text, tempstring);
+          break;
+        case 8:
+          GFX.drawText(&fabgl::FONT_BIGSERIF_8x16, x_text, y_text, tempstring);
+          break;
+        case 9:
+          GFX.drawText(&fabgl::FONT_SANSERIF_8x14, x_text, y_text, tempstring);
+          break;
+        case 10:
+          GFX.drawText(&fabgl::FONT_COURIER_8x14, x_text, y_text, tempstring);
+          break;
+        case 11:
+          GFX.drawText(&fabgl::FONT_SLANT_8x14, x_text, y_text, tempstring);
+          break;
+        case 12:
+          GFX.drawText(&fabgl::FONT_WIGGLY_8x16, x_text, y_text, tempstring);
+          break;
+        case 13:
+          GFX.drawText(&fabgl::FONT_6x10, x_text, y_text, tempstring);
+          break;
+        case 14:
+          GFX.drawText(&fabgl::FONT_BIGSERIF_8x14, x_text, y_text, tempstring);
+          break;
+        case 15:
+          GFX.drawText(&fabgl::FONT_4x6, x_text, y_text, tempstring);
+          break;
+        case 16:
+          GFX.drawText(&fabgl::FONT_6x12, x_text, y_text, tempstring);
+          break;
+        case 17:
+          GFX.drawText(&fabgl::FONT_7x13, x_text, y_text, tempstring);
+          break;
+        case 18:
+          GFX.drawText(&fabgl::FONT_7x14, x_text, y_text, tempstring);
+          break;
+        case 19:
+          GFX.drawText(&fabgl::FONT_8x9, x_text, y_text, tempstring);
+          break;
+        case 20:
+          GFX.drawText(&fabgl::FONT_COMPUTER_8x14, x_text, y_text, tempstring);
+          break;
+        case 21:
+          GFX.drawText(&fabgl::FONT_SANSERIF_8x14, x_text, y_text, tempstring);
+          break;
+        case 22:
+          GFX.drawText(&fabgl::FONT_6x10, x_text, y_text, tempstring);
+          break;
+        case 23:
+          GFX.drawText(&fabgl::FONT_9x15, x_text, y_text, tempstring);
+          break;
+        case 24:
+          GFX.drawText(&fabgl::FONT_8x16, x_text, y_text, tempstring);
+          break;
+        default:
+          GFX.drawText(&fabgl::FONT_6x8, x_text, y_text, tempstring);
+          break;
+      }
+      string_marker = false;
+      return 0;
     }

@@ -469,9 +469,19 @@ void show_Command_Help(int was) {                                       //Anzeig
     case 76:
       Terminal.println("BLOAD Filename.Bin");
       Terminal.println("start binary-Program");
-      Terminal.println("Function under construction!");
       break;
     case 77:
+      Terminal.println("GRID(x,y,x_zell,y_zell,x_pixel,y_pixel,fcol,gcol)");
+      Terminal.println("draws a Grid in variable size at x,y position");
+      Terminal.println("with framecolor and gridcolor");
+      Terminal.println("EXAMPLE:GRID(10,10,10,8,8,8,60,21)");
+      break;
+    case 78:
+      Terminal.println("TEXT(x,y,font,String$)");
+      Terminal.println("draws a String at x,y position");
+      Terminal.println("EXAMPLE: TEXT(100,100,3,'Hello World')");
+      break;
+    case 79:
       Terminal.println("HELP");
       Terminal.println("without Parameters shows all Commands");
       Terminal.println("HELP Keyword shows Keyword-explanations");
@@ -483,6 +493,7 @@ void show_Command_Help(int was) {                                       //Anzeig
   }
 }
 void show_Function_Help(int was) {
+  Terminal.println();
   switch (was) {
     case 0:
       Terminal.println("PEEK(Memtype,Adress)");
@@ -773,6 +784,13 @@ void show_Function_Help(int was) {
       Terminal.println("val=FILE_SZ");
       Terminal.println("return the Filesize of an opened File");
       Terminal.println("Don't forget to close a file after use!!!");
+      break;
+    case 59:
+      Terminal.println("val=GRID(0..9)");
+      Terminal.println("0=x, 1=y, 2=xx, 3=yy, 4=x_zell, 5=y_zell");
+      Terminal.println("6=x_pixel, 7=y_pixel, 8=frame_col, 9=Grid_col");
+      Terminal.println("return the last Gridparameter");
+      Terminal.println("EXAMPLE: A=GRID(2) - xx_pos");
       break;
 
     default:
