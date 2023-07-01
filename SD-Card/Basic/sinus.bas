@@ -9,7 +9,7 @@
 80 PEN 48:PSET (10*I*PI())+2,B
 90 NEXT I
 95 PEN 63
-100 TEXT(110,225,16,"----- Time ----->")
-110 TEXT(70,5,16,"- Function Sin(x) , Cos(x) -")
+100 TEXT(100,225,10,"----- Time ----->")
+110 TEXT(50,5,10,"- Function Sin(x) , Cos(x) -")
 200 CUR 1
 
