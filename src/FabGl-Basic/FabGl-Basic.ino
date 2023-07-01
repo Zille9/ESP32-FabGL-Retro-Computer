@@ -357,7 +357,7 @@ static word STR_TBL = 0x7f00;           //String-Array-Tabelle im FRAM
 //--------------------------------------------------------------------------------------
 
 //------------------------------ Grid-Parameter ----------------------------------------
-int Grid[10];  //0=x, 1=y, 2=xx, 3=yy, 4=zell_x, 5=zell_y, 6=pix_x, 7=pix_y, 8=frame-col, 9=grid_col
+int Grid[15];  //0=x, 1=y, 2=xx, 3=yy, 4=zell_x, 5=zell_y, 6=pix_x, 7=pix_y, 8=frame-col, 9=grid_col
 int Grid_point_x, Grid_point_y;
 
 // these will select, at runtime, where IO happens through for load/save
@@ -2300,7 +2300,7 @@ static float expr4(void)
         break;
 
       case FUNC_GRID:
-        if (a > 9) a = 9;
+        if (a > 11) a = 11;
         return Grid[abs(int(a))];
         break;
 
@@ -7614,9 +7614,9 @@ nochmal:
     int export_pic(long x, long y, long xx, long yy, char *file) {
       byte i, r, g, b, cl;
       uint32_t pic_size, pic, weite, hoehe;
-      //                    0     1    2      3    4     5    6    7    8    9    10    11    12  13   14    15   16   17    18    19    20   21   22    23   24  25   26    27    28   29    30  31   32   33   34   35     36   37
+      //                       0     1    2      3    4     5    6    7    8    9    10    11    12  13   14    15   16   17    18    19    20   21   22    23   24  25   26    27    28   29    30  31   32   33   34   35     36   37
       byte bmp_header[54] = {0x42, 0x4D, 0x36, 0x84, 0x03, 0x0, 0x0, 0x0, 0x0, 0x0, 0x36, 0x00, 0x0, 0x0, 0x28, 0x0, 0x0, 0x0, 0x40, 0x01, 0x0, 0x0, 0xF0, 0x0, 0x0, 0x0, 0x01, 0x0, 0x18, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2C, 0x01, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-      //                     B    M     |  ---  Size ---- |   |    Reseved     |   |   bfoffbits    |   |   bisize       |    |   Width        |    |   Height      |   |Planes| |BitCnt| |  Compress    |    |   size Img    |
+      //                       B    M     |  ---  Size ---- |   |    Reseved     |   |   bfoffbits    |   |   bisize       |    |   Width        |    |   Height      |   |Planes| |BitCnt| |  Compress    |    |   size Img    |
       int rest, dx, dy;
       int durchlaeufe, tm;
       char k;
@@ -8049,31 +8049,31 @@ nochmal:
       }
 
       if (Test_char('(')) return 1;
-      x_grid = get_value();
+      x_grid = get_value();           //x-Position
       if (Test_char(',')) return 1;
-      y_grid = get_value();
+      y_grid = get_value();           //y-Position
       if (Test_char(',')) return 1;
-      x_zell = get_value();
+      x_zell = get_value();           //Anzahl Zellen in x-Richtung
       if (Test_char(',')) return 1;
-      y_zell = get_value();
+      y_zell = get_value();           //Anzahl Zellen in y-Richtung
       if (Test_char(',')) return 1;
-      x_stp = get_value();
+      x_stp = get_value();            //Rastergrösse in x-Richtung (pixel)
       if (Test_char(',')) return 1;
-      y_stp = get_value();
+      y_stp = get_value();            //Rastergrösse in y-Richtung (pixel)
       if (Test_char(',')) return 1;
-      fc = get_value();
+      fc = get_value();               //Farbe der Achsen und des Rahmens
       if (Test_char(',')) return 1;
-      gc = get_value();
-      if (*txtpos == ',') {
+      gc = get_value();               //Farbe des Rasters
+      if (*txtpos == ',') {           //Pixelraster (Pixelabstand im Raster)
         txtpos++;
         pr = get_value();
-        if (*txtpos == ',') {
+        if (*txtpos == ',') {         //Skale hinzufügen
           txtpos++;
           sc = get_value();
-          if (*txtpos == ',') {
+          if (*txtpos == ',') {       //Pfeile anzeigen
             txtpos++;
             arrow = get_value();
-            if (*txtpos == ',') {
+            if (*txtpos == ',') {     //Rahmen darstellen
               txtpos++;
               frame = get_value();
             }
@@ -8092,7 +8092,7 @@ nochmal:
       Grid[7] = y_stp;
       Grid[8] = fc;
       Grid[9] = gc;
-
+      
       //-------------------------------- RS=Raster ---------------------------------------------------------------------------------
 
       i = x_grid;
@@ -8109,10 +8109,12 @@ nochmal:
           if (typ == 'K' || typ == 'X') {
             ydiff = y_grid + ((Grid[3] - Grid[1]) / 2);
             GFX.drawLine(i, ydiff - 2, i, ydiff + 2);
+            
           }
           else {
             ydiff = y_grid + Grid[3] - Grid[1];
             GFX.drawLine(i, ydiff - 2, i, ydiff + 2);
+           
           }
         }
         fcolor(gc);
@@ -8131,8 +8133,12 @@ nochmal:
           if (typ == 'K') {
             xdiff = x_grid + ((Grid[2] - Grid[0]) / 2);
             GFX.drawLine(xdiff - 2, i, xdiff + 2, i);
+            
           }
-          else if (typ == 'X' || typ == 'U') GFX.drawLine(x_grid - 2, i, x_grid + 2, i);
+          else if (typ == 'X' || typ == 'U') {
+            GFX.drawLine(x_grid - 2, i, x_grid + 2, i);
+            
+          }
 
         }
         fcolor(gc);
@@ -8148,10 +8154,12 @@ nochmal:
         GFX.drawRectangle(x_grid - 1, y_grid - 1, x_grid + (x_stp * x_zell) + 1, y_grid + (y_stp * y_zell) + 1);
       }
 
-      if (typ == 'K' || typ == 'X') {
+      if (typ == 'K' || typ == 'X') {                 //x-Achse
         xdiff = x_grid + Grid[2] - Grid[0];
         ydiff = y_grid + ((Grid[3] - Grid[1]) / 2);
         GFX.drawLine(x_grid, ydiff, xdiff, ydiff);
+        Grid[10] = ydiff;  //y-Position der x-Skale
+        
         //----------- Pfeil zeichnen ---------------
         if (arrow) {
           bcolor(fc);
@@ -8160,10 +8168,11 @@ nochmal:
           bcolor(Hintergrund);
         }
 
-        if (typ == 'K') {
+        if (typ == 'K') {                               //y-Achse
           xdiff = x_grid + ((Grid[2] - Grid[0]) / 2);
           ydiff = y_grid + Grid[3] - Grid[1];
           GFX.drawLine(xdiff, y_grid, xdiff, ydiff);
+          Grid[11] = xdiff;  //x-Position der y-Skale
           //----------- Pfeil zeichnen ---------------
           if (arrow) {
             bcolor(fc);
@@ -8172,9 +8181,10 @@ nochmal:
             bcolor(Hintergrund);
           }
         }
-        else if (typ == 'X' ||  typ == 'U') {
+        else if (typ == 'X' ||  typ == 'U') {           //y-Achse
           ydiff = y_grid + Grid[3] - Grid[1];
           GFX.drawLine(x_grid, y_grid, x_grid, ydiff);
+          Grid[11] = x_grid;  //x-Position der y-Skale
           //----------- Pfeil zeichnen ---------------
           if (arrow) {
             bcolor(fc);
@@ -8189,8 +8199,11 @@ nochmal:
       else if (typ  == 'U') {
         ydiff = y_grid + Grid[3] - Grid[1];
         xdiff = x_grid + Grid[2] - Grid[0];
-        GFX.drawLine(x_grid, ydiff, xdiff, ydiff);
-        GFX.drawLine(x_grid, y_grid, x_grid, ydiff);
+        GFX.drawLine(x_grid, ydiff, xdiff, ydiff);          //x-Achse
+        GFX.drawLine(x_grid, y_grid, x_grid, ydiff);        //y-Achse
+        Grid[10] = ydiff;   //y-Position der x-Skale
+        Grid[11] = x_grid;  //x-Position der y-Skale
+        
         if (arrow) {
             bcolor(fc);
             Point points[3] = { {x_grid - 3, y_grid}, {x_grid, y_grid - 6}, {x_grid + 3, y_grid} };
