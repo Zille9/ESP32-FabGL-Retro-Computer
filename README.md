@@ -90,6 +90,13 @@ Screenshot als BMP-Datei exportiert
 ...RUN-CPM Startbildschirm , mit EXIT kehrt man wieder zum Basic32+ zurück.
 ```
 
+![..Darstellung der Grid-Funktion](IMG/sinus.png)
+```
+...der GRID-Befehl in Aktion .
+```
+
+
+
 ## Bibliotheken einbinden und Basic32+ compilieren:
 ```
 -die im Ordner libraries liegenden Unterverzeichnisse ins Arduino libraries-Verzeichnis kopieren
