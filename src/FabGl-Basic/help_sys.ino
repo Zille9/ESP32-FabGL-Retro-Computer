@@ -471,10 +471,12 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("start binary-Program");
       break;
     case 77:
-      Terminal.println("GRID(x,y,x_zell,y_zell,x_pixel,y_pixel,fcol,gcol)");
+      Terminal.println("GRID_typ(x,y,x_zell,y_zell,x_pix,y_pix,fcol,gcol,<opt>)");
       Terminal.println("draws a Grid in variable size at x,y position");
       Terminal.println("with framecolor and gridcolor");
-      Terminal.println("EXAMPLE:GRID(10,10,10,8,8,8,60,21)");
+      Terminal.println("typ can be - RS, KT, XY, UI");
+      Terminal.println("opt -> pix_spacing, arrow, frame");
+      Terminal.println("EXAMPLE:GRID_XY(10,10,10,8,8,8,60,21,2,1,0)");
       break;
     case 78:
       Terminal.println("TEXT(x,y,font,String$)");
@@ -786,9 +788,10 @@ void show_Function_Help(int was) {
       Terminal.println("Don't forget to close a file after use!!!");
       break;
     case 59:
-      Terminal.println("val=GRID(0..9)");
+      Terminal.println("val=GRID(0..11)");
       Terminal.println("0=x, 1=y, 2=xx, 3=yy, 4=x_zell, 5=y_zell");
       Terminal.println("6=x_pixel, 7=y_pixel, 8=frame_col, 9=Grid_col");
+      Terminal.println("10=y-Pos x-Axis, 11=x-pos y-Axis");
       Terminal.println("return the last Gridparameter");
       Terminal.println("EXAMPLE: A=GRID(2) - xx_pos");
       break;
