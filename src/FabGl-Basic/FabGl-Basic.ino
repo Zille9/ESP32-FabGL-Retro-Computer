@@ -51,6 +51,9 @@
 // v1.75b:30.06.2023          -Befehl GRID geschaffen ->erzeugt ein Rasterfeld variabler Grösse
 //                            -GRID(x,y,x_zellen,y_zellen,x_pixelbreite,y_pixelhöhe,rahmen_farbe,grid_farbe,skala,pfeile,rahmen)
 //                            -Befehl TEXT für pixelgenaue Textausgaben ->TEXT(x,y,Zeichenkette)
+//                            -Funktionstaste F1 schaltet in den Grafiksymbol-Modus, so sind die Grafiksymbole im font_8x8 über die Tastatur erreichbar
+//                            -Stringverarbeitung angepasst und korrigiert, normale Strings konnten keine Leerzeichen als String aufnehmen
+//                            -Programm Hanoi.Bas mit Grafiksymbolen und etwas Farbe aufgehübscht
 //                            -15945 Zeilen/sek.
 //
 // v1.74b:29.06.2023          -Befehl FWRITE und FREAD zusammengefasst in FILE_WR und FILE_RD ->Helpsystem angepasst
@@ -305,9 +308,9 @@ uint32_t bmp_width, bmp_height;
 
 // RAM Puffer-Größe für Programm und Benutzereingaben
 // NOTE: Dieser Wert kann bei Verwendung anderer Librarys abweichen
-#define kRamFileIO (1024)
+//#define kRamFileIO (1024)
 
-#define kRamSize  (RAMEND - kRamFileIO)
+#define kRamSize  (RAMEND)// - kRamFileIO)
 
 #define bool int
 #define true 1
@@ -421,6 +424,7 @@ unsigned int data_numbers[300];     //Array zur speicherung von 300 DATA Zeilenn
 #define CTRLH	0x08
 #define CTRLS	0x13
 
+bool Graph_char = false;
 typedef short unsigned LINENUM;
 
 /***************************Basic-Befehle ********************************/
@@ -605,12 +609,12 @@ int logic_ergebnis[10];
 //-> bis zu 5 AND oder OR Vergleiche können in einer Zeile vorkommen
 
 struct stack_for_frame {
-  char frame_type;
-  int for_var;
-  float to_var;
-  float step;
-  char *current_line;
-  char *txtpos;
+  char frame_type; //1byte
+  int for_var;     //2byte
+  float to_var;    //4byte
+  float step;      //4byte
+  char *current_line; //1byte
+  char *txtpos;       //1byte
 };
 
 struct stack_gosub_frame {
@@ -618,6 +622,8 @@ struct stack_gosub_frame {
   char *current_line;
   char *txtpos;
 };
+
+#define User_Ram (RAMEND-STACK_SIZE-(26 * 27 * VAR_SIZE))
 
 const static char func_tab[] PROGMEM = {
   'P', 'E', 'E', 'K' + 0x80,
@@ -819,9 +825,7 @@ const static char relop_tab[] PROGMEM = {
 #define RELOP_UNKNOWN	13
 
 #define STACK_SIZE (sizeof(struct stack_for_frame)*26)   // 26 verschachtelte For-Next-Schleifen erlaubt (32bytes pro frame) 
-#define VAR_SIZE sizeof(float)                           // Größe des Variablenpuffers in bytes (26*26*4)
-//#define ARRAY_SIZE (sizeof(struct array_frame)*26*2)         // 26 numerische und 26 Stringarrays 
-
+#define VAR_SIZE sizeof(float)                           // Variablengrösse für float 4Bytes
 static char *stack_limit;
 static char *program_start;
 static char *program_end;
@@ -5574,9 +5578,9 @@ GFX.setBrushColor((bitRead(bc, 5) * 2 + bitRead(bc, 4)) * 64, (bitRead(bc, 3) * 
     c = *txtpos;
     expression_error = 0;
 
-    // make sure there are no quotes or spaces, search for valid characters
+    
     int i = 0;
-    while (*txtpos >= ' ' || *txtpos <= 'Z' || *txtpos >= 'a' || *txtpos <= 'z')//&& (*txtpos != '"'))
+    while (*txtpos >= char(32) && *txtpos <= char(255)) //gültige Zeichen von ASCII-Zeichen 32 - ASCII-Zeichen 126
     {
       if (*txtpos == '"') break; //Zeichenkettenende erreicht, dann raus
       if (*txtpos == NL) {      //Fehler, bei fehlenden Anführungszeichen
@@ -5733,7 +5737,7 @@ int h = 100;
     Terminal.print(Themes[Theme_state]);
     Terminal.enableCursor(true);
     tc.setCursorPos(1, 9);
-
+    //Terminal.println(RAMEND-STACK_SIZE-(26 * 27 * VAR_SIZE));
   }
 
 
@@ -5795,7 +5799,7 @@ int h = 100;
 
           if (Terminal.available() ) {
             c = Terminal.read();          //Standard-Tasteneingabe
-
+            
             switch (c) {
 
               case 0x03:       // ctrl+c        -> BREAK
@@ -5807,6 +5811,7 @@ int h = 100;
 
                 break;
             }
+            if(Graph_char && c!=13 && c!=32) return c + 121;   //alle Tasten außer Enter und Space umwandeln in Grafik-chars
             return c;
           }//if(Terminal.available)
 
@@ -6012,7 +6017,7 @@ inchar_loadfinish:
     word n_bytes;
     long adress = load_adress;
 
-    n_bytes = 56472 - int(variables_begin - program_end);
+    n_bytes = User_Ram - int(variables_begin - program_end);
 
     if (n_bytes < 10) {
       syntaxerror(no_prg_msg);
@@ -6414,6 +6419,16 @@ VGAController.setResolution(QVGA_320x240_60Hz);
         *vk = VirtualKey::VK_NONE;
       }
     };
+    PS2Controller.keyboard()-> onVirtualKey = [&](VirtualKey * vk, bool keyDown) {
+      if (*vk == VirtualKey::VK_F1) {
+        if (keyDown) {
+          Graph_char = !Graph_char;
+        }
+        *vk = VirtualKey::VK_NONE;
+      }
+    };
+
+
     //Serial.begin(kConsoleBaud);                                                           // open serial port
 
     // ein I2C-Interface definieren
@@ -8020,7 +8035,7 @@ nochmal:
       }
       else return c;          //Farbe des Pixels
     }
-    //-----------------------------------------Befehl GRID(x,y,x_zell,y_zell,x_pixel_step,y_pixelstep,frame_color,grid_color,scale,arrow,frame) ----------------------
+    //-----------------------------------------Befehl GRID(x,y,x_zell,y_zell,x_pixel_step,y_pixelstep,frame_color,grid_color,pixel_raster,scale,arrow,frame) ----------------------
     int make_grid(void) {
       int x_grid, y_grid, x_zell, y_zell, x_stp, y_stp;
       int i, a, gc, fc, pr, xdiff, ydiff, sc , arrow, frame;

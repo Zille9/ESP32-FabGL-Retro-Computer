@@ -475,8 +475,8 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("draws a Grid in variable size at x,y position");
       Terminal.println("with framecolor and gridcolor");
       Terminal.println("typ can be - RS, KT, XY, UI");
-      Terminal.println("opt -> pix_spacing, arrow, frame");
-      Terminal.println("EXAMPLE:GRID_XY(10,10,10,8,8,8,60,21,2,1,0)");
+      Terminal.println("opt -> pix_spacing, scale, arrow, frame");
+      Terminal.println("EXAMPLE:GRID_XY(10,10,10,8,8,8,60,21,2,1,0,0)");
       break;
     case 78:
       Terminal.println("TEXT(x,y,font,String$)");
