@@ -3,6 +3,7 @@ int File_Operations(void) {
   char c;
   char *teilArray[16];
   int i;
+  long ps;
   char *s;
   if (Test_char('_')) return 1;                       //Unterstrich für folgenden Befehlsbuchstaben
   c = spaces();                                       //Befehlsbuchstabe lesen
@@ -32,17 +33,25 @@ int File_Operations(void) {
       if (Test_char('R')) return 1;
       File_write();
       break;
+      
+    case 'P':                                         //FILE_PS ->set Pos in File
+      if (Test_char('S')) return 1;
+      if(Test_char('(')) return 1;
+      ps=long(get_value());
+      if(Test_char(')')) return 1;
+      if(ps<=File_size) File_pos=ps;
+      break;
 
     default:
       break;
   }
 
-
+return 0;
 }
 
 //--------------------------------------------- Befehl OPEN ---------------------------------------------------------------------------------------
 void file_rw_open(void) {
-  char c;
+  char c,File_function;
   int a = 1;
   get_value();                    //Dateiname in tempstring
 
@@ -72,12 +81,13 @@ void file_rw_open(void) {
     }
   }
 
-  if (File_function == 'W') {                                       //Dateien für Write-Operation immer im Appendmodus öffnen
+  if (File_function == 'W') {                                         //Dateien für Write-Operation immer im Append-Modus öffnen
     fp = SD.open( String(sd_pfad) + String(filestring), FILE_APPEND);
     File_size = fp.size();                                            //Dateigrösse merken
     fp.close();
     Datei_open = true;                                                //Datei-geöffnet marker
   }
+
   else if (File_function == 'R') {                                  //Dateimodus Lesen
     if ( !SD.exists(String(sd_pfad) + String(tempstring)))          //Datei nicht vorhanden
     {
@@ -118,6 +128,7 @@ void File_write(void) {
   }
   fp = SD.open( String(sd_pfad) + String(filestring), FILE_APPEND);
   File_size = fp.size();
+  //fp.seek(File_pos);                                            //Schreibposition setzen
 weiter:                                                         //Schreibschleife
 
   b = get_value();
@@ -167,7 +178,8 @@ weiter:                                                         //Schreibschleif
     goto weiter;                                          //solange wiederholen, bis kein komma mehr kommt
   }
   fp.write('\n');                                           //neue Zeile
-  File_size = fp.size();
+  File_size = fp.size();                                    //Dateigrösse merken
+  //File_pos = fp.position();                                 //Dateiposition merken
   fp.close();
   sd_ende();
 
