@@ -60,6 +60,17 @@ Die Ursprungsversion wurde durch folgende Funktionen erweitert
 -Startbildschirm
 ```
 
+![Commands](IMG/commands.png) 
+```
+-Basic-Befehle
+```
+
+![Functions](IMG/functions.JPG) 
+```
+-Basic -Funktionen
+```
+
+
 ![Programm Globus.Bas](IMG/globus.JPG)
 ```
 -Programm Globus.Bas
