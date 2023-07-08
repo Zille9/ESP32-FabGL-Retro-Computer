@@ -60,12 +60,12 @@ Die Ursprungsversion wurde durch folgende Funktionen erweitert
 -Startbildschirm
 ```
 
-![Commands](IMG/commands.png) 
+![Commands](IMG/Commands.PNG) 
 ```
 -Basic-Befehle
 ```
 
-![Functions](IMG/functions.JPG) 
+![Functions](IMG/Functions.PNG) 
 ```
 -Basic -Funktionen
 ```
