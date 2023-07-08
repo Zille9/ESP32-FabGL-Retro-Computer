@@ -367,10 +367,6 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("         c=FN A(12,5)");
       break;
     case 61:
-      Terminal.println("TRON(on/off)");
-      Terminal.println("Trace-Function TRON(1)=on, TRON(0)=off");
-      break;
-    case 62:
       Terminal.println("LED(S,Count,Pin,Typ) set Startparameter");
       Terminal.println("LED(B,0..255) Brightness");
       Terminal.println("LED(C) clear the Strip");
@@ -380,26 +376,26 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("LED(W,r,g,b,delay)->Wipe");
       Terminal.println("LED(T,r,g,b,delay)->Theatre");
       break;
-    case 63:
+    case 62:
       Terminal.println("EDIT Linenumber");
       Terminal.println("Lineeditor");
       break;
-    case 64:
+    case 63:
       Terminal.println("DOKE Memtype,Adress,Word");
-      Terminal.println("Save Word-Value Memory");
+      Terminal.println("Save Word-Value in Memory");
       Terminal.println("Memtype 0=Ram, 1=FRam, 2=EEProm");
       break;
-    case 65:
+    case 64:
       Terminal.println("BEEP(Note,Duration)");
       Terminal.println("BEEP(20..80,duration ms)");
       Terminal.println("BEEP without Parameters generat a System-beep");
       break;
-    case 66:
+    case 65:
       Terminal.println("DIM Var(dim,dim,dim)");
       Terminal.println("dimensioned arrays with max 3 Dimensions");
       Terminal.println("strings cannot be dimensioned");
       break;
-    case 67:
+    case 66:
       Terminal.println("OPT Func=Val");
       Terminal.println("Option saved in EEPROM");
       Terminal.println("Available Options are:");
@@ -412,20 +408,20 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("SDCARD=SCK,MISO,MOSI,CS - Pins");
       Terminal.println("PATH='Workpath' (must be in quotes)");
       break;
-    case 68:
+    case 67:
       Terminal.println("FPOKE Memtype,Adress,Val");
       Terminal.println("Save Floatvalue in Memory");
       Terminal.println("Memtype 0=Ram, 1=FRam, 2=EEProm");
       break;
-    case 69:
+    case 68:
       Terminal.println("MNT");
       Terminal.println("Mount SD-Card");
       break;
-    case 70:
+    case 69:
       Terminal.println("COM");
       Terminal.println("Serial-Function");
       break;
-    case 71:
+    case 70:
       Terminal.println("PIC_I(x,y,BMP-Filename)-Import BMP");
       Terminal.println("PIC_E(x,y,xx,yy,BMP-Filename)-Export");
       Terminal.println();
@@ -442,16 +438,16 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("Show Raw-Pic in FRAM (0..4)on x,y");
       Terminal.println("mode 0..1 changes the Background-color");
       break;
-    case 72:
+    case 71:
       Terminal.println("OPEN filename,mode");
       Terminal.println("open Filename,r or w");
       Terminal.println("Filename must be in qoutes");
       break;
-    case 73:
+    case 72:
       Terminal.println("CLOSE");
       Terminal.println("close the File");
       break;
-    case 74:
+    case 73:
       Terminal.println("FILE_WR val1,val2...");
       Terminal.println("writes values or strings in File");
       Terminal.println("EXAMPLE: 10 OPEN 'Neu.txt',W");
@@ -461,16 +457,16 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("FILE_RD val1,val2...");
       Terminal.println("reads values or strings from File");
       break;
-    case 75:
+    case 74:
       Terminal.println("TYPE Filename");
       Terminal.println("shows the content of a file");
       Terminal.println("Filename must be in quotes");
       break;
-    case 76:
+    case 75:
       Terminal.println("BLOAD Filename.Bin");
       Terminal.println("start binary-Program");
       break;
-    case 77:
+    case 76:
       Terminal.println("GRID_typ(x,y,x_zell,y_zell,x_pix,y_pix,fcol,gcol,<opt>)");
       Terminal.println("draws a Grid in variable size at x,y position");
       Terminal.println("with framecolor and gridcolor");
@@ -478,12 +474,23 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("opt -> pix_spacing, scale, arrow, frame");
       Terminal.println("EXAMPLE:GRID_XY(10,10,10,8,8,8,60,21,2,1,0,0)");
       break;
-    case 78:
+    case 77:
       Terminal.println("TEXT(x,y,font,String$)");
       Terminal.println("draws a String at x,y position");
       Terminal.println("EXAMPLE: TEXT(100,100,3,'Hello World')");
       break;
+    case 78:
+      Terminal.println("? val");
+      Terminal.println("has the same function as Print");
+      break;
     case 79:
+      Terminal.println("WINDOW(nr,x,y,xx,yy<,color>");
+      Terminal.println("creates a window nr=1..5");
+      Terminal.println("WINDOW without Parameters switch to Mainwindow");
+      Terminal.println("WINDOW(nr) switch to Window nr");
+      Terminal.println("color determines the border-color");
+      break;
+    case 80:
       Terminal.println("HELP");
       Terminal.println("without Parameters shows all Commands");
       Terminal.println("HELP Keyword shows Keyword-explanations");
