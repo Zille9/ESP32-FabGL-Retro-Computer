@@ -1,3 +1,38 @@
+// v1.70b:12.06.2023          -Befehle Load,Save und Start modifiziert, Save ohne Parameter speichert das im Ram befindliche Programm im FRAM
+//                            -Load ohne Parameter lädt das im FRAM befindliche Programm in den Arbeitsspeicher
+//                            -Start ohne Parameter lädt und startet ein im FRAM abgelegtes Programm
+//                            -Cursor wieder in blinkendes Viereck zurück geändert, der Unterstrich war in manchen Situationen schlecht zu erkennen
+//                            -Datei-Lese- und Schreibfunktionen fehlen noch, um zBsp.Sensordaten zu schreiben bzw. zu lesen
+//                            -OPEN ,FREAD, FWRITE, CLOSE wären mögliche Befehle, Serial-Funktionen müssen noch komplettiert werden
+//                            -begonnen, eine kurzhilfe für alle Befehle und Funktionen zu integrieren,.... soviele Baustellen :-|
+//                            -16461 Zeilen/sek.
+//
+// v1.69b:12.06.2023          -Font_8x8.h etwas geändert ->einige Grafiksymbole vom KC87 übernommen
+//                            -Logik-Auswertung AND und OR überarbeitet, scheint jetzt zu funktionieren
+//                            -tron-marker aktiviert sich ständig von selbst nach Fehlern oder Neustart von Programmen
+//                            -werde auf bool ändern, mal sehen, ob das hilft
+//
+// v1.68b:09.06.2023          -Fehler in Print-Routine behoben, bei Printausgaben, welche in der gleichen Zeile durch : getrennte Befehle enthielt, wurde das Semikolon wirkungslos
+//                            -jetzt werden alle Ausgaben nach einem Semikolon in der gleichen Zeile ausgeführt, erst ein NL (new Line) oder ein Print ohne ; führt zu einer neuen Zeile
+//                            -am einfachsten ist ein Print einzufügen, um die Ausgabe in einer neuen Zeile beginnen zu lassen.
+//                            -Unterprogramm get_value() geändert ->Fehlerausgabe entfernt, das führte zum Bsp. bei Input zum Programmabbruch, das ist ungewollt
+//                            -ausserdem wurde damit das Problem der doppelten Fehlerausgabe behoben
+//                            -Aussehen des Cursors geändert in Underline (m_emuState.cursorStyle= 3; in terminal.cpp)
+//                            -Fehler in den Auswertungen von AND u. OR entdeckt, es wird nur eine Bedingung ausgewertet
+//                            -mathematische Funktionen MAP und CONS (constrain) hinzugefügt
+//                            -18105 Zeilen/sek.
+//
+// v1.67b:01.06.2023          -Funktion GPIC(n) eingefügt PRINT GPIC(0)->Breite GPIC(1)->Höhe der letzten geladenen BMP-Datei
+//                            -Versuch einen SD-Loader zu integrieren, CP/M kann geladen werden und funktioniert, nur komm ich nicht mehr zum Basic zurück :-(
+//                            -in dieser Beziehung ist die Arduinowelt doof, alles muss geflasht werden :-(
+//                            -mal sehen, ob ich eine Lösung finde, wäre cool, andere Programme zu laden und wieder zum Basic zurückzukehren.
+//                            -18033 Zeilen/sek.// v1.66b:25.05.2023          -Skalierung funktioniert jetzt besser
+//                            -Routine verbessert, jetzt dauern auch sehr grosse Bilder nicht mehr ewig
+//                            -krumme Formate führen allerdings zu Verzerrungen, Bilder sollten im Verhältnis dem Bildschirmformat entsprechen
+//                            -Fehler in der Darstellungsroutine behoben, war das Bild kleiner als die Bildschirmauflösung, wurde das Bild nicht dargestellt
+//                            -Bildschirmauflösung wird jetzt berücksichtigt damit ist die Darstellung auch bei 400x300 korrekt
+//                            -18200 Zeilen/sek.
+//
 // v1.66b:25.05.2023          -Skalierung funktioniert jetzt besser
 //                            -Routine verbessert, jetzt dauern auch sehr grosse Bilder nicht mehr ewig
 //                            -krumme Formate führen allerdings zu Verzerrungen, Bilder sollten im Verhältnis dem Bildschirmformat entsprechen
