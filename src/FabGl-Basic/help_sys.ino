@@ -484,11 +484,12 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("has the same function as Print");
       break;
     case 79:
-      Terminal.println("WINDOW(nr,x,y,xx,yy<,color>");
+      Terminal.println("WINDOW(nr,x,y,xx,yy<,color,Title>");
       Terminal.println("creates a window nr=1..5");
       Terminal.println("WINDOW without Parameters switch to Mainwindow");
       Terminal.println("WINDOW(nr) switch to Window nr");
       Terminal.println("color determines the border-color");
+      Terminal.println("Title is the window title"); 
       break;
     case 80:
       Terminal.println("HELP");

@@ -44,25 +44,35 @@
 // April 2021
 //
 //
-#define BasicVersion "1.80b"
-#define BuiltTime "Built:08.07.2023"
+#define BasicVersion "1.81b"
+#define BuiltTime "Built:09.07.2023"
 #pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v1.81b:09.07.2023          -WINDOW-Befehl um die Möglichkeit einen Fenstertitel zu setzen ergänzt
+//                            -CLS entsprechend angepasst
+//                            -CLS-Scrolleffekt wieder deaktiviert, da die unterste Bildschirmzeile beim Scrolling nicht berücksichtigt wird
+//                            -Bildschirmausgabe weiter auf die Windowfunktion angepasst (Datei-Befehle, Memory_Dump)
+//                            -Variable Pencolor entfernt, führte zu unlogischen Farbreaktionen
+//                            -PEN-Befehl ändert nur temporär die Zeichenfarbe COL-Befehl ändert die Farben permanent
+//                            -Fehler in der list_out-Routine behoben, wenn eine Zeile genau eine Bildschirmbreite lang war, wurde kein Zeilenumbruch
+//                            -ausgelöst und die nächste Zeile überschrieb die vorherige auf dem Bildchirm
+//                            -16452 Zeilen/sek.
+//
 // v1.80b:08.07.2023          -WINDOW-komplett neu erstellt - ohne SetscrollRegion, sieht schon viel besser aus
 //                            -CLS-Befehl auf Scrolleffekt geändert, das sieht mehr Retro aus :-)
 //                            -fehlt noch die Speicherung der Cursorposition, momentan werden immer Initialwerte gesetzt, wenn das Fenster
 //                            -gewechselt wird
 //                            -Speicherung der Cursorposition erledigt, beim Fensterwechsel wird die alte Cursorposition in der nächsten Zeile gesetzt
 //                            -nicht ganz korrekt aber akzeptabel
-//                            -Hinweis: dei Cursortasten, Del und Ins sind im Fenster wirkungslos bzw. erzeugen Pseudo-char's, 
+//                            -Hinweis: die Cursortasten, Del und Ins sind im Fenster wirkungslos bzw. erzeugen Pseudo-char's,
 //                            -nur so konnte ein ESP-Absturz verhindert werden
+//                            -Taste F1 (Grafiksymbole on/off) schaltet zur optischen Signalisation die Scroll-LED ein und aus
 //
 // v1.79b:07.07.2023          -umfangreiche Änderungen der diversen Bildschirmausgaben, um die Window-Funktion zu verbessern
 //                            -Frame-Befehl wurde durch WINDOW ersetzt
 //                            -Syntax: WINDOW(nr,x,y,xx,yy<,color>) ->Koordinaten müssen als Zeichenkoordinaten eingegeben werden
 //                            -d.h. das x und y Positionen den Cursorpositionen entsprechen müssen (abhängig vom gewählten Font)
 //                            -noch nicht perfekt, Cursortasten,Entf und Einfg lassen den Cursor verschwinden und der ESP hängt sich auf??!
-//
 //
 // v1.78b:05.07.2023          -begonnen eine Window-Funktion im Retro-Style zu integrieren
 //                            -dafür wurde der vorläufige Befehl FRAME geschaffen
@@ -333,7 +343,7 @@ uint32_t bmp_width, bmp_height;
 // NOTE: Dieser Wert kann bei Verwendung anderer Librarys abweichen
 //#define kRamFileIO (1024)
 
-#define kRamSize  (RAMEND)// - kRamFileIO)
+#define kRamSize  RAMEND //- kRamFileIO)
 
 #define bool int
 #define true 1
@@ -347,8 +357,8 @@ uint32_t bmp_width, bmp_height;
 #define pgm_read_byte( A ) *(A)
 #endif
 
-#define STR_LEN 30
-#define STR_SIZE 26*STR_LEN             //Stringspeicher = Stringlänge 26*30 Zeichen (A..Z * 30 Zeichen)
+#define STR_LEN 40
+#define STR_SIZE 26*STR_LEN             //Stringspeicher = Stringlänge 26*40 Zeichen (A..Z * 40 Zeichen)
 
 //------------------------------ hier wird der Funktionsstring gespeichert --------------------------------------------
 #define FN_SIZE STR_LEN                 //Funktionsspeicher für benutzerdefinierte Funktionen mit bis zu vier Operatoren-> FN A(A,B,C,D)
@@ -359,7 +369,7 @@ static bool triggerRun = false;
 
 short int Vordergrund = 43;             //Standard-Vordergrundfarbe (wenn noch nichts im EEprom steht)
 short int Hintergrund = 18;             //Standard-Hintergrundfarbe (wenn noch nichts im EEprom steht)
-short int Pencolor = 0;                 //Standard-Stiftfarbe
+//short int Pencolor = 0;                 //Standard-Stiftfarbe
 short int fontsatz = 0;                 //Nummer des ausgewählten Fontsatzes
 short int user_vcolor = Vordergrund;    //User-Vordergrundfarbe
 short int user_bcolor = Hintergrund;    //User-Hintergrundfarbe
@@ -401,8 +411,10 @@ int Frame_col[6];
 int Cursor_x, Cursor_y;
 int Frame_vcol[6];
 int Frame_hcol[6];
+bool Frame_title[6];
+char Frame_ttext[6][STR_LEN]; //Fenster-Titel-String
 
-short int onoff = 1;            //Cursor status
+short int onoff = 1;          //Cursor status
 
 // these will select, at runtime, where IO happens through for load/save
 enum {
@@ -415,7 +427,7 @@ static char inStream = kStreamTerminal;
 static char outStream = kStreamTerminal;
 
 static char program[kRamSize];            //Basic-Programmspeicher
-static char Stringtable[STR_SIZE];        //Stringvariablen mit 1 Buchstaben -> 26*30 = 780 Bytes
+static char Stringtable[STR_SIZE];        //Stringvariablen mit 1 Buchstaben -> 26*40 = 1040 Bytes
 
 //------------------------------------- DEFN - FN ----------------------------------------------------------------------------------------------
 static char Fntable[26][FN_SIZE];         // bytes 40 String = 40*26 ->1040 bytes ->Funktionsstring-Array
@@ -1086,7 +1098,7 @@ void printnum(float num, int modes)   //Ausgabe als float
 
     case 1:                                           //Ausgabe als Binärzahl
       hexnum = num;
-      outchar('%');//Terminal.write('%');
+      outchar('%');
       cbuf = String(hexnum, BIN);
       cbuf.trim();
       cbuf.toCharArray(tempstring, cbuf.length() + 1);
@@ -1097,6 +1109,16 @@ void printnum(float num, int modes)   //Ausgabe als float
     case 2:                                           //Ausgabe als Hexadezimalzahl
       hexnum = num;
       outchar('#');
+      cbuf = String(hexnum, HEX);
+      cbuf.trim();
+      cbuf.toCharArray(tempstring, cbuf.length() + 1);
+      printmsg(tempstring, 0);
+      Zahlenformat = 0;
+      break;
+
+    case 3:                                           //Ausgabe als Hexadezimalzahl für Memory_dump ohne #
+      hexnum = num;
+      //outchar('#');
       cbuf = String(hexnum, HEX);
       cbuf.trim();
       cbuf.toCharArray(tempstring, cbuf.length() + 1);
@@ -1157,33 +1179,37 @@ static int Memory_Dump() {                       //DMP Speichertyp 0..2 <,Adress
   while (!ex) {
     for (int i = 1; i < ln; i++)
     {
-      if (adr < 0x1000)Terminal.write('0');
-      if (adr < 0x100)Terminal.write('0');
-      if (adr < 0x10)Terminal.write('0');
+      if (adr < 0x1000)outchar('0');
+      if (adr < 0x100)outchar('0');
+      if (adr < 0x10)outchar('0');
       n = adr;
-      Terminal.print(adr, HEX);
-      Terminal.write(' ');
+      printnum(adr, 3);                                 //Hexausgabe
+      //Terminal.print(adr, HEX);
+      outchar(' ');
 
       for (int f = 0; f < 8; f++) {                     //8 Speicherplätze lesen und anzeigen
         switch (was) {
           case 1:  //FRAM
             if (spi_fram.read8(of + n) < 16) Terminal.write('0');
-            Terminal.print(spi_fram.read8(of + n++), HEX);
+            printnum(spi_fram.read8(of + n++), 3);
+            //Terminal.print(spi_fram.read8(of + n++), HEX);
             if (x_weite > 39) Terminal.write(' ');                        //wenn genug Platz, dann Leerzeichen zwischen den Werten
             break;
           case 2:  //EEPROM
-            if (readEEPROM(EEprom_ADDR, n ) < 16) Terminal.write('0');
-            Terminal.print(readEEPROM(EEprom_ADDR, n++ ), HEX);
+            if (readEEPROM(EEprom_ADDR, n ) < 16) outchar('0');
+            printnum(readEEPROM(EEprom_ADDR, n++ ), 3);
+            //Terminal.print(readEEPROM(EEprom_ADDR, n++ ), HEX);
             if (x_weite > 39) Terminal.write(' ');
             break;
           default:  //interner RAM
-            if (program[int(n)] < 16)Terminal.write('0');
-            Terminal.print(program[int(n++)], HEX);
-            if (x_weite > 39) Terminal.write(' ');
+            if (program[int(n)] < 16) outchar('0');
+            printnum(program[int(n++)], 3);
+            //Terminal.print(program[int(n++)], HEX);
+            if (x_weite > 39) outchar(' ');
             break;
         }
       }
-      if (x_weite < 40) Terminal.write(' ');                             //wenn nicht genug Platz, dann nur ein Leerzeichen nach 8Bytes
+      if (x_weite < 40) outchar(' ');                             //wenn nicht genug Platz, dann nur ein Leerzeichen nach 8Bytes
 
 
       for (int i = 0; i < 8; i++) {
@@ -1200,11 +1226,12 @@ static int Memory_Dump() {                       //DMP Speichertyp 0..2 <,Adress
         }
 
         if (c > 31 && c < 127)
-          Terminal.write(c);
+          outchar(c);
         else
-          Terminal.write('.');
+          outchar('.');
       }
-      Terminal.println();
+      line_terminator();
+      //Terminal.println();
     }
 
     //Terminal.println("SPACE<Continue>/CTR+C<Exit>");
@@ -1233,7 +1260,8 @@ static unsigned short testnum(void)               // Überprüfung auf Zeilennum
 
 void printmsg(const char *msg, int nl)
 {
-  fbcolor(Vordergrund, Hintergrund);          //Themen-Farben setzen ist nötig, sonst fällt der Interpreter in die Terminalfarben zurück
+  fbcolor(Vordergrund, Hintergrund);                                //Themen-Farben setzen ist nötig, sonst fällt der Interpreter in die Terminalfarben zurück
+  if (Frame_nr) fbcolor(Frame_vcol[Frame_nr], Frame_hcol[Frame_nr]); //Wenn Fenster, dann Fensterfarben
   while ( pgm_read_byte( msg ) != 0 )
   {
     outchar( pgm_read_byte( msg++ ) );
@@ -1425,7 +1453,6 @@ void printline()
 
   list_line++;
   line_terminator();
-
 }
 
 //--------------------------------------------- Unterprogramm - RTC auslesen ----------------------------------------------------------------------
@@ -2219,7 +2246,8 @@ static float expr4(void)
 
       case FUNC_SPC:
         for (int i = 0; i < a; i++) {
-          Terminal.write(' ');
+          outchar(' ');
+          //Terminal.write(' ');
           //if(ser_marker) Serial1.write(' ');
         }
         tab_marker = true;
@@ -2597,9 +2625,9 @@ void list_out()
   // Find the line
   list_line = findline();
   while (list_line != program_end) {
-    if (ex == 1)                            //Abbruch, dann raus
+    if (ex == 1)                              //Abbruch, dann raus
       break;
-    printline();                            //Zeile ausgeben
+    printline();                              //Zeile ausgeben
     l++;
     if (!list_send) {
       if (l == 12) {                          //nach 12 Zeilen auf Tastatur warten
@@ -2608,6 +2636,7 @@ void list_out()
       }
     }
   }
+  line_terminator();
   warmstart();
   return;
 }
@@ -3224,8 +3253,7 @@ interpreteAtTxtpos:
       {
         printmsg(breakmsg, 0);
         linenum = *((LINENUM *)(current_line));
-        //printmsg((const char*)linenum,0);
-        Terminal.print(linenum);
+        printnum(linenum, 0);
         //if(ser_marker) Serial1.print(linenum);
       }
 
@@ -3275,6 +3303,7 @@ interpreteAtTxtpos:
       case KW_RUN:                                        // RUN
         clear_var();
         find_data_line();                                 //Data-Zeilen finden
+        del_window();                                     //Fensterparameter löschen
         current_line = program_start;                     //beginn mit erster Zeile
         sp = program + sizeof(program);
         goto execline;
@@ -3408,8 +3437,8 @@ interpreteAtTxtpos:
         }
         else {
           tc.setCursorPos(1, 1);
-          cmd_cls();
-          //GFX.clear();
+          //cmd_cls();
+          GFX.clear();
         }
         break;
 
@@ -3595,7 +3624,6 @@ interpreteAtTxtpos:
         logic_ergebnis[logic_counter++] = int(val);
         for (int i = 0; i < logic_counter + 1; i++)       //alle Ergebnisse einlesen und auswerten
         {
-          //Terminal.print(logic_ergebnis[i]);
           logica += logic_ergebnis[i];
         }
         val = logica;                                   //ist mindestens eine Bedingung erfüllt lautet das Ergebnis 0 ->war
@@ -3960,7 +3988,8 @@ forloop:
         struct stack_for_frame *f;
         if (sp + sizeof(struct stack_for_frame) < stack_limit) {
           printmsg(fornextmsg, 1);
-          printmsg((const char*)linenum, 0); //Terminal.print(linenum, DEC);
+          printnum(linenum, 0);
+
           //if(ser_marker) Serial1.print(linenum,DEC);
           warmstart();
           continue;
@@ -4160,7 +4189,7 @@ static int command_Print(void)
             else k = 2;
           }
           else  txtpos = tmptxtpos; //wenn nach AT keine Klammer kommt kann es sich um die Funktion ATN(x) handeln
-          //else k=2;
+
         }
         else {
           txtpos = tmptxtpos;
@@ -4401,7 +4430,7 @@ void cmd_new(void) {
   memset(program, 0, 1000);                                          //die ersten 1000 Bytes des Speichers löschen
   clear_var();                                                       //Variablen und Array-Tabelle löschen
   for (int i = 0x0; i < 0x7fff; i += 4) SPI_RAM_write(i, bytes, 4);   //Array-Bereich löschen
-
+  del_window();                                                       //Fensterparameter löschen
   print_info();                                                      //Start-Bildschirm anzeigen
 
 }
@@ -4687,14 +4716,14 @@ static int line_rec_circ(int circ_or_rect, int param)
     case 1:
       if (par[4] == 0) GFX.drawEllipse(par[0], par[1], par[2], par[3]);       //Circle circ x,y,xx,yy,fill=0
       else {
-        bcolor(Pencolor);
+        bcolor(Hintergrund);
         GFX.fillEllipse(par[0], par[1], par[2], par[3]);                   //Circle circ x,y,xx,yy,fill=1
       }
       break;
     case 2:
       if (par[4] == 0) GFX.drawRectangle(par[0], par[1], par[2], par[3]);     //Rectangle rect x,y,xx,yy,fill=0
       else {
-        bcolor(Pencolor);
+        bcolor(Hintergrund);
         GFX.fillRectangle(par[0], par[1], par[2], par[3]);                 //Rectangle rect x,y,xx,yy,fill=1
       }
       break;
@@ -4702,7 +4731,7 @@ static int line_rec_circ(int circ_or_rect, int param)
       GFX.drawLine(par[0], par[1], par[2], par[3]);                           //Line line x,y,xx,yy
       break;
   }
-  bcolor(Hintergrund);
+  //bcolor(Hintergrund);
   return 0;
 }
 
@@ -4914,13 +4943,16 @@ static int color(void)
   // Check that we are at the end of the statement
   if (*txtpos != NL && *txtpos != ':') return 1;
 
-  Pencolor = fc;
   Vordergrund = fc;
   Hintergrund = bc;
   fbcolor(fc, bc);
   if (!Frame_nr) {
     Frame_vcol[0] = Vordergrund;
     Frame_hcol[0] = Hintergrund;
+  }
+  else {
+    Frame_vcol[Frame_nr] = Vordergrund;
+    Frame_hcol[Frame_nr] = Hintergrund;
   }
   return 0;
 }
@@ -4954,7 +4986,8 @@ static int set_pen(void)
   short int pc, pw;
 
   expression_error = 0;                         //Pen-Farbe
-  Vordergrund = int(get_value());
+  pc = int(get_value());
+
   if (expression_error) return 1;
 
   if (*txtpos == ',')                             //wurde die PEN-Weite angegeben?
@@ -4969,7 +5002,7 @@ static int set_pen(void)
   // Check that we are at the end of the statement
   else if (*txtpos != NL && *txtpos != ':') return 1;
 
-  fcolor(Vordergrund);
+  fcolor(pc);
   return 0;
 
 }
@@ -5456,7 +5489,8 @@ void break_program(void)
   {
     linenum = *((LINENUM *)(current_line));
     //printmsg((const char*)linenum,0);
-    Terminal.print(linenum);
+    printnum(linenum, 0);
+    //Terminal.print(linenum);
   }
   line_terminator();
   warmstart();
@@ -5566,9 +5600,9 @@ static void outchar(char c)
         y_pos = tc.getCursorRow();
         if (y_pos > (Frame_yy[Frame_nr] / y_char[fontsatz]) - 1) {
           y_pos -= 1;
-          Terminal.enableCursor(false);
+
           move_up(Frame_nr);
-          Terminal.enableCursor(onoff);
+
         }
         tc.setCursorPos(Frame_curx[Frame_nr], y_pos);
         return;
@@ -5580,6 +5614,7 @@ static void outchar(char c)
 //----------------------------------------------- Fensterinhalt eine Zeile nach oben scrollen ------------------------------------------------------
 void move_up(int nr) {
   int vx, vy, bx, by, cx, cy;
+  Terminal.enableCursor(false);
   vx = Frame_x[nr] + x_char[fontsatz];
   vy = Frame_y[nr] + y_char[fontsatz] + y_char[fontsatz];
   bx = Frame_x[nr] + x_char[fontsatz];
@@ -5587,16 +5622,16 @@ void move_up(int nr) {
   cx = Frame_xx[nr] - Frame_x[nr];
   cy = Frame_yy[nr] - Frame_y[nr] - y_char[fontsatz] - y_char[fontsatz];
   GFX.copyRect(vx, vy, bx, by, cx, cy);
-
+  Terminal.enableCursor(onoff);
 }
 //------------------------------------------------ CLS im Fenster ---------------------------------------------------------------------------------
 void win_cls(int nr) {
   int zeilen;
   Terminal.enableCursor(false);
-  zeilen = (Frame_yy[nr] - Frame_y[nr]) / y_char[fontsatz];
-  for (int i; i < zeilen; i++) {
-    move_up(nr);
-    //delay(20);
+  GFX.fillRectangle(Frame_x[nr] + 1, Frame_y[nr] + 1, Frame_xx[nr] - 1, Frame_yy[nr] - 1);
+  if (Frame_title[nr]) {
+    strcpy(tempstring, Frame_ttext[nr]);
+    drawing_text(fontsatz, Frame_x[nr] + x_char[fontsatz], Frame_y[nr] - 3);
   }
   win_set_cursor(nr);
   Terminal.enableCursor(onoff);
@@ -5698,9 +5733,6 @@ static int save_file()
 {
 
   char c;
-  int tm;
-  //tm = Frame_nr;                                                    //Fensternummer merken
-  //Frame_nr = 0;                                                     //Fensterfunktion ausser Kraft setzen
 
   expression_error = 0;
   get_value();                                                      //in tempstring steht der Dateiname
@@ -5712,7 +5744,6 @@ static int save_file()
   // remove the old file if it exists
   if ( SD.exists( String(sd_pfad) + String(tempstring))) {          //Datei existiert schon, überschreiben?
     printmsg("File exist, overwrite? (y/n)", 0);
-    //Terminal.print("File exist, overwrite? (y/n)");
     while (1)
     {
       c = wait_key(false);                                               //Ja/Nein?
@@ -5721,12 +5752,12 @@ static int save_file()
     }
     if (c == 'y') {
       SD.remove( String(sd_pfad) + String(tempstring));             //ja, Datei löschen
-      Terminal.write(c);
+      outchar(c);
     }
     else
     {
-      outchar(c);//Terminal.write(c);                                            //nein gedrückt, Abbruch
-      line_terminator();//Terminal.println();
+      outchar(c);                                                   //nein gedrückt, Abbruch
+      line_terminator();
       sd_ende();                                                    //SD-Card unmount
       warmstart();
       return 0;
@@ -5738,8 +5769,6 @@ static int save_file()
   fp = SD.open( String(sd_pfad) + String(tempstring), FILE_WRITE);  //Datei wird zum Schreiben geöffnet
   if (!fp) {                                                        //Fehler?
     printmsg("Open File-Error!", 1);
-
-    //Terminal.println("Open File-Error!");
   }
   outStream = kStreamFile;
 
@@ -5752,9 +5781,8 @@ static int save_file()
   outStream = kStreamTerminal;                                      // zurück zum standard output, Datei schließen
 
   fp.close();
-  //Frame_nr = tm;                                                    //Fensterfunktion wieder setzen
 
-  line_terminator();//Terminal.println();
+  line_terminator();
   sd_ende();                                                        //SD-Card unmount
   warmstart();
   return 0;
@@ -5834,7 +5862,6 @@ static int cmd_delFiles(void)
   // Datei löschen, wenn sie existiert
   if ( SD.exists(String(sd_pfad) + String(tempstring))) {
     printmsg("delete File? (y/n)", 0);
-    //Terminal.print("delete File? (y/n)");
     while (1)
     {
       c = wait_key(false);
@@ -5843,9 +5870,7 @@ static int cmd_delFiles(void)
     }
     if (c == 'y') {
       SD.remove( String(sd_pfad) + String(tempstring));
-      //printmsg((const char*)c,0);
       outchar(c);
-      //Terminal.write(c);
     }
   }
   else n = 1;
@@ -5945,13 +5970,11 @@ void cmd_Dir(void)
   int Dateien = 0;
   const char* tmp;
   String buf;
-
-  //if(Frame_nr) win_set_cursor(0);                           //sind Fenster gesetzt?, dann Hauptfenster setzen
+  float t_mp;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
 
   File dir = SD.open(String(sd_pfad));
-
   dir.seek(0);
 
   while ( !ex ) {
@@ -5979,9 +6002,7 @@ void cmd_Dir(void)
         for ( int i = strlen( entry.name()) ; i < 15 ; i++ ) {
           printmsg(spacemsg, 0);
         }
-        buf = String(int(entry.size()), DEC);
-        buf.toCharArray(tempstring, buf.length() + 1);
-        printmsg(tempstring, 0); //Terminal.print(int(entry.size()), DEC);
+        printnum(int(entry.size()), Zahlenformat);
         Dateien++;
       }
     }
@@ -5994,20 +6015,19 @@ void cmd_Dir(void)
       if (wait_key(true) == 3) ex = 1;
       ln = 1;
     }
+
   }
   line_terminator();
   printmsg(indentmsg, 0);
-  if (!Frame_nr) {
-    buf = String(Dateien, DEC);
-    buf.toCharArray(tempstring, buf.length() + 1);
-    printmsg(tempstring, 0); //Terminal.print(Dateien, DEC);
-    printmsg(" Files on SD-Card", 1);
-    printmsg(indentmsg, 0);
+  printnum(Dateien, Zahlenformat);
+  printmsg(" Files on SD-Card", 1);
+  printmsg("  Total space: ", 0);
+  printnum(SD.totalBytes() / (1024 * 1024), Zahlenformat);
+  printmsg("MB", 1);
+  printmsg("  Used  space: ", 0);
+  printnum(SD.usedBytes() / (1024 * 1024), Zahlenformat);
+  printmsg("MB", 1);
 
-    Terminal.printf("Total space: %lluMB\r\n", SD.totalBytes() / (1024 * 1024));
-    printmsg(indentmsg, 0);
-    Terminal.printf("Used  space: %lluMB\r\n", SD.usedBytes() / (1024 * 1024));
-  }
   dir.close();
   sd_ende();                                             //SD-Card unmount
 }
@@ -6015,14 +6035,20 @@ void cmd_Dir(void)
 //--------------------------------------------- RENAME - Befehl REN(Filename_old,Filename_new) ----------------------------------------------------
 
 void renameFile(fs::FS &fs, const char * path1, const char * path2) {
-  Terminal.printf("Renaming file %s to %s\n", path1, path2);
+  //Terminal.printf("Renaming file %s to %s\n", path1, path2);
+  printmsg("Renaming file ", 0);
+  printmsg(path1, 0);
+  printmsg("to ", 0);
+  printmsg(path2, 0);
   line_terminator();
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
 
   if (fs.rename(path1, path2)) {
-    Terminal.println("File renamed");
+    printmsg("File renamed", 1);
+    //Terminal.println("File renamed");
   } else {
-    Terminal.println("Rename failed");
+    printmsg("Rename failed", 1);
+    //Terminal.println("Rename failed");
   }
   sd_ende();                                             //SD-Card unmount
 }
@@ -6089,7 +6115,7 @@ void setup()
     //################ Farbschema aus dem EEPROM lesen ############################
     Vordergrund = EEPROM.read(0) ;   //512 Byte Werte im EEPROM speicherbar
     Hintergrund = EEPROM.read(1);
-    Pencolor = Vordergrund;
+    //Pencolor = Vordergrund;
     user_vcolor = Vordergrund;    //User-Vordergrundfarbe merken
     user_bcolor = Hintergrund;    //User-Hintergrundfarbe merken
     //#############################################################################
@@ -6175,8 +6201,8 @@ VGAController.setResolution(QVGA_320x240_60Hz);
     else if (*vk == VirtualKey::VK_F1) {                      //Grafiksymbole on/off
       if (keyDown) {
         Graph_char = !Graph_char;
-        PS2Controller.keyboard()->setLEDs(false,false,Graph_char); 
- 
+        PS2Controller.keyboard()->setLEDs(false, false, Graph_char);
+
         //if (Graph_char) Terminal.print("Graph ON");
         //else Terminal.print("Graph OFF");
         //Terminal.print("OK>");
@@ -6713,7 +6739,6 @@ nochmal:
       case 'M':
         if (Test_char(',')) return 1;
         md = get_value();                  //Modus
-        //Terminal.print(md);
         if (Test_char(',')) return 1;
         cnt = get_value();                //2.Parameter
         if (md == 1) rainbow(cnt);              //Rainbow
@@ -7445,7 +7470,8 @@ nochmal:
     spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
     // remove the old file if it exists
     if ( SD.exists( String(sd_pfad) + String(tempstring))) {
-      Terminal.print("File exist, overwrite? (y/n)");
+      printmsg("File exist, overwrite? (y/n)", 0);
+
       while (1)
       {
         k = wait_key(false);
@@ -7454,12 +7480,13 @@ nochmal:
       }
       if (k == 'y') {
         SD.remove( String(sd_pfad) + String(tempstring));
-        Terminal.print(k);
+        outchar(k);
+
       }
       else
       {
-        Terminal.print(k);
-        line_terminator();//Terminal.println();
+        outchar(k);
+        line_terminator();
         sd_ende();                                             //SD-Card unmount
         warmstart();
         return 0;
@@ -7588,7 +7615,7 @@ nochmal:
     spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
     // remove the old file if it exists
     if ( SD.exists( String(sd_pfad) + String(tempstring))) {
-      Terminal.print("File exist, overwrite? (y/n)");
+      printmsg("File exist, overwrite? (y/n)", 0);
       while (1)
       {
         k = wait_key(false);
@@ -7597,12 +7624,12 @@ nochmal:
       }
       if (k == 'y') {
         SD.remove( String(sd_pfad) + String(tempstring));
-        Terminal.print(k);
+        outchar(k);
       }
       else
       {
-        Terminal.print(k);
-        line_terminator();//Terminal.println();
+        outchar(k);
+        line_terminator();
         sd_ende();                                             //SD-Card unmount
         warmstart();
         return 0;
@@ -8158,8 +8185,15 @@ nochmal:
     Frame_nr = nr;                                       //setze aktuelles Fenster
     if (*txtpos == ')') {
       txtpos++;
+      Terminal.enableCursor(false);                     //Cursor ausschalten um Fehldarstellungen zu verhindern
       make_win(nr, Frame_col[nr]);                      //fenster neu zeichnen
+      fbcolor(Frame_vcol[nr], Frame_hcol[nr]);          //Vordergrund und Hintergrundfarbe des Fensters setzen
+      if (Frame_title[nr]) {
+        strcpy(tempstring, Frame_ttext[nr]);
+        drawing_text(fontsatz, Frame_x[nr] + x_char[fontsatz], Frame_y[nr] - 3);
+      }
       tc.setCursorPos(Frame_curtmpx[nr], Frame_curtmpy[nr]);  //Cursorposition setzen
+      Terminal.enableCursor(onoff);
       return 0;
     }
 
@@ -8190,6 +8224,13 @@ nochmal:
     if (*txtpos == ',') {
       txtpos++;
       Frame_col[nr] = get_value();                                    //optional Farbe
+
+      if (*txtpos == ',') {
+        txtpos++;
+        get_value();                                                  //eventueller Fenstertitel
+        Frame_title[nr] = true;
+        strcpy(Frame_ttext[nr], tempstring);
+      }
     }
     if (Test_char(')')) return 1;
 
@@ -8197,6 +8238,11 @@ nochmal:
     Frame_hcol[nr] = Hintergrund;
 
     make_win(nr, Frame_col[Frame_nr]);                                //Fenster erstellen
+    fbcolor(Frame_vcol[nr], Frame_hcol[nr]);                          //Vordergrund und Hintergrundfarbe des Fensters setzen
+    if (Frame_title[nr]) {
+      drawing_text(fontsatz, Frame_x[nr] + x_char[fontsatz], Frame_y[nr] - (y_char[fontsatz]/2)+1);
+    }
+
     win_dimension(nr);                                                //Cursorposition errechnen
     win_set_cursor(Frame_nr);                                         //Cursor setzen
 
@@ -8225,7 +8271,23 @@ nochmal:
     tc.setCursorPos(Frame_curx[nr], Frame_cury[nr]);
   }
 
-
+  void del_window(void) {
+    for (int i = 1; i < 6; i++) {
+      Frame_x[i]        = 0;
+      Frame_y[i]        = 0;
+      Frame_xx[i]       = 0;
+      Frame_yy[i]       = 0;
+      Frame_curx[i]     = 0;              //X-Cursor Initialwert
+      Frame_curtmpx[i]  = 0;              //X-Cursor temporärer Wert
+      Frame_curtmpy[i]  = 0;              //Y-Cursor temporärer Wert
+      Frame_cury[i]     = 0;              //Y-Cursor Initialwert
+      Frame_col[i]      = 0;
+      Frame_vcol[i]     = Vordergrund;
+      Frame_hcol[i]     = Hintergrund;
+      Frame_title[i]    = false;
+      memset(Frame_ttext[i], '\0', sizeof(Frame_ttext[i]));  //Fenster-Titel-String
+    }
+  }
   //--------------------------------------------- Utility-Funktionstasten -----------------------------------------------------------------
   void char_out(int lo, int hi) {
     int z = 0;
@@ -8264,7 +8326,6 @@ nochmal:
         Terminal.println();
       }
     }
-    //fabgl::FONT_8x8.data[8]=0x13;
     fbcolor(Vordergrund, Hintergrund);
     Terminal.println();
     Terminal.print("OK>");
