@@ -255,9 +255,12 @@ int File_line(char * vals) {
   float value;
   float *var;
   char *st;
-  int tmp, stmp, svar, i, o;
+  int tmp, stmp, svar, i, o,var_pos, array_art;
   char c;
   String dbuf;
+  word arr_adr;
+
+  
   o = 0;
 
   if (*txtpos < 'A' || *txtpos > 'Z')                                     //erster Variablenbuchstabe
@@ -266,6 +269,7 @@ int File_line(char * vals) {
     return 1;
   }
 
+  var_pos = *txtpos - 'A';
   var = (float *)variables_begin + *txtpos - 'A';
   stmp = (int) (*txtpos - 'A') * STR_LEN;                                 //Strings nur als einbuchstabige Variablen erlaubt, deshalb Variablenadresse sichern
   txtpos++;
@@ -278,35 +282,70 @@ int File_line(char * vals) {
   //------------------------------------------------------------------------------------------------------------------------------------------------------------
   while (*txtpos >= 'A' && *txtpos <= 'Z') txtpos++;  //so sind auch lange Variablennamen möglich ->siehe auch expr4()
   //------------------------------------------------------------------------------------------------------------------------------------------------------------
+  if (*txtpos == '(') {
+    txtpos++;
+    expression_error = 0;
+    arr_adr = rw_array(var_pos, VAR_TBL);                                  //numerische Array? Adresse im Zahlen-Arrayfeld
+    if (expression_error) return 1;                                        //Fehler? dann zurück
+    array_art = 1;
+  }
 
   if (spaces() == '$')
   { //String?
     txtpos++;
+    if (*txtpos == '(') {                                                 //kommt eine Klammer vor, muss es sich um ein Array handeln
+      txtpos++;
+      expression_error = 0;
+      arr_adr = rw_array(var_pos, STR_TBL);                               //String_array?, Adresse im String-Arrayfeld
+      if (expression_error) return 1;                                     //Fehler? dann zurück
+      array_art = 2;
+    }
     i = 0;
     while (1)
     {
       c = vals[o++];
       if (c == '\0' || c == NL || c == ';' ) {
-        Stringtable[stmp + i] = '\0';                                   //Nullterminator setzen
+        if (array_art == 2) {
+          SPI_RAM_write8(arr_adr + i, '\0');
+        }
+        else {
+          Stringtable[stmp][i] = '\0';                                   //Nullterminator setzen
+        }
         break;
       }
       else {
         if (i < STR_LEN) {
-          Stringtable[stmp + i++] = c;
+          if (array_art == 2) {
+            SPI_RAM_write8(arr_adr + i++, c);
+          }
+          else {
+            Stringtable[stmp][i++] = c;
+          }
         }
         else {
-          Stringtable[stmp + i] = '\0';
+          if (array_art == 2) {
+            SPI_RAM_write8(arr_adr + i, '\0');
+            break;
+          }
+          Stringtable[stmp][i] = '\0';
+          break;
         }
       }
     }
 
     return 0;
-  }
+  }//String?
   else
   {
     dbuf = String(vals);
     value =  dbuf.toFloat();
     string_marker = false;
+  }
+  
+    if (array_art == 1) {
+    byte* bytes = (byte*)&value;                            //float nach byte-array umwandeln
+    SPI_RAM_write(arr_adr, bytes, 4);
+    return 0;
   }
   *var = value;
   return 0;

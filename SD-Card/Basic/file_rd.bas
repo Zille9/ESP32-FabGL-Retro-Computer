@@ -1,11 +1,8 @@
 10 CLS
-15 DIM A(255),B(255)
-20 OPEN "/neu.txt",R
-30 FILE_RD A$,A,B
-35 A(I)=A:B(I)=B
-40 PRINT A$;" ";A;" ";B;"-";A(I);" ";B(I)
-45 I=I+1
-50 IF FILE_PS<FILE_SZ THEN GOTO 30
-55 FILE_PS(20);
-60 CLOSE
-
+15 DIM A$(255),A(255),B(255)
+20 OPEN "/neu.txt",R
+30 FILE_RD A$(I),A(I),B(I)
+40 PRINT A$(I);" ";A(I);" ";B(I)
+45 I=I+1
+50 IF I<255 THEN GOTO 30
+60 CLOSE
