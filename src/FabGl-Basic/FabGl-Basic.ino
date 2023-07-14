@@ -48,10 +48,16 @@
 #define BuiltTime "Built:11.07.2023"
 #pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
-// v1.82b:11.07.2023          -DATA-Verarbeitung auf Arrays ausgeweitet
-//                            -FILE_RD auf Arrays ausgeweitet
+// v1.82b:11.07.2023          -DATA-Verarbeitung auf Arrays erweitert
+//                            -FILE_RD auf Arrays erweitert
 //                            -Fehler in Array-Dimensionierung behoben, Array-Felder wurden zu gross berechnet
-//                            -17103 Zeilen/sek.
+//                            -Fehler in der ELSE Verarbeitung entdeckt, bei dem Versuch, die Else-Anweisung in der gleichen Zeile zu bearbeiten
+//                            -wurden auch die nach nicht erfolgreicher IF-Verarbeitung stehende Befehle ausgeführt, 
+//                            -was manche Programme nicht ausführbar machte, ELSE erst mal wieder in den Urzustand versetzt (nächste Zeile)
+//                            -Routine line_terminator geändert, jetzt erfolgt erst ein Carrige-Return und dann ein Next-Line
+//                            -war vorher umgekehrt, as führte dazu, das in gespeicherten Programmen zwischen den Zeilen immer eine Leerzeile
+//                            -eingefügt war, jetzt wird Zeile für Zeile korrekt geschrieben
+//                            -17205 Zeilen/sek.
 //
 // v1.81b:09.07.2023          -WINDOW-Befehl um die Möglichkeit einen Fenstertitel zu setzen ergänzt
 //                            -CLS entsprechend angepasst
@@ -2806,6 +2812,7 @@ static float data_get(void)
   int tmp, stmp, svar, i,var_pos, array_art ;
   char c;
   word arr_adr;
+  array_art = 0;
 
   if (current_dataline <= num_of_datalines)                //DATA-Zeile gültig?
   {
@@ -2899,10 +2906,12 @@ static float data_get(void)
   
   
   if (array_art == 1) {
+    //if(Test_char(')')) return 1;
     byte* bytes = (byte*)&value;                            //float nach byte-array umwandeln
     SPI_RAM_write(arr_adr, bytes, 4);
     return 0;
   }
+  
   *var = value;
   return 0;
 }
@@ -3358,9 +3367,10 @@ interpreteAtTxtpos:
         {
           else_marker = true;
           val = 1;                                        //Für den Fall, das es kein AND OR gibt (einfaches IF)
-          while(*txtpos!=':' && *txtpos != NL)
-            txtpos++;
-          break;//goto run_next_statement;                        //die ELSE Bedingung muss in der nächsten Zeile stehen
+          //while(*txtpos!=':' && *txtpos != NL)
+          //  txtpos++;
+          //break;
+          goto run_next_statement;                        //die ELSE Bedingung muss in der nächsten Zeile stehen
         }
 
       case KW_ON:                                         //ON (GOTO/GOSUB)
@@ -7020,7 +7030,7 @@ nochmal:
         p_data[4] = y;
         p_data[5] = z;
         SPI_RAM_write(ort, p_data, 6);
-        Var_Neu_Platz += grenze;// * len);
+        Var_Neu_Platz += grenze;//* len);
       }
 
       if (*txtpos != ',') return 0;                              //kein weiteres dim
