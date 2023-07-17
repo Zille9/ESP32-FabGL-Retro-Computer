@@ -44,19 +44,29 @@
 // April 2021
 //
 //
-#define BasicVersion "1.82b"
-#define BuiltTime "Built:11.07.2023"
+#define BasicVersion "1.83b"
+#define BuiltTime "15.07.2023"
 #pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v1.83b:15.07.2023          -cmd_new mit setzen des Hauptfesters ergänzt, nach einem NEW wurden die Fensterparameter zwar gelöscht aber nicht das
+//                            -Hauptfenster gesetzt, dadurch hing der Cursor in der linken oberen Ecke fest
+//                            -Move_up-Subroutine etwas erweitert, jetzt wird nach dem Kopieren des Fensterinhaltes die letzte Zeile gelöscht,
+//                            -das war nötig, weil sonst eventuell existierender Text in der letzten Zeile immer wieder mitkopiert wurde
+//                            -Startbildschirm mit der Anzeige von BuiltTime ergänzt
+//                            -list_out Anzahl der Ausgabezeilen nun abhängig vom gewählten Font
+//                            -list_out um den Parameter bis zu welcher Zeile ausgegeben werden soll, erweitert (LIST 10,50 - Ausgabe Zeile 10 bis 50)
+//                            -
+//
 // v1.82b:11.07.2023          -DATA-Verarbeitung auf Arrays erweitert
 //                            -FILE_RD auf Arrays erweitert
 //                            -Fehler in Array-Dimensionierung behoben, Array-Felder wurden zu gross berechnet
 //                            -Fehler in der ELSE Verarbeitung entdeckt, bei dem Versuch, die Else-Anweisung in der gleichen Zeile zu bearbeiten
 //                            -wurden auch die nach nicht erfolgreicher IF-Verarbeitung stehende Befehle ausgeführt, 
 //                            -was manche Programme nicht ausführbar machte, ELSE erst mal wieder in den Urzustand versetzt (nächste Zeile)
-//                            -Routine line_terminator geändert, jetzt erfolgt erst ein Carrige-Return und dann ein Next-Line
-//                            -war vorher umgekehrt, as führte dazu, das in gespeicherten Programmen zwischen den Zeilen immer eine Leerzeile
+//                            -Routine line_terminator geändert, jetzt erfolgt erst ein Carrige-Return und dann ein Next-Line,
+//                            -war vorher umgekehrt, das führte dazu, das in gespeicherten Programmen zwischen den Zeilen immer eine Leerzeile
 //                            -eingefügt war, jetzt wird Zeile für Zeile korrekt geschrieben
+//                            -Anzahl der Ausgabezeilen bei Memory_Dump und DIR ist jetzt vom verwendeten Font abhängig
 //                            -17205 Zeilen/sek.
 //
 // v1.81b:09.07.2023          -WINDOW-Befehl um die Möglichkeit einen Fenstertitel zu setzen ergänzt
@@ -404,7 +414,7 @@ static char inStream = kStreamTerminal;
 static char outStream = kStreamTerminal;
 
 static char program[kRamSize];            //Basic-Programmspeicher
-static char Stringtable[26][STR_LEN];        //Stringvariablen mit 1 Buchstaben -> 26*40 = 1040 Bytes
+static char Stringtable[STR_SIZE];        //Stringvariablen mit 1 Buchstaben -> 26*40 = 1040 Bytes
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 //------------------------------------- DEFN - FN -------------------------------------------------------------------------------------------------
@@ -1097,29 +1107,13 @@ void printnum(float num, int modes)   //Ausgabe als float
   }//switch(modes)
 }
 
-/***************************************************************************/
-static void pushb(char b)
-{
-  sp--;
-  *sp = b;
-}
-
-/***************************************************************************/
-static char popb()
-{
-  char b;
-  b = *sp;
-  sp++;
-  return b;
-}
-
 //#######################################################################################################################################
 //--------------------------------------------- DUMP - Befehl ---------------------------------------------------------------------------
 //#######################################################################################################################################
 
 static int Memory_Dump() {                       //DMP Speichertyp 0..2 <,Adresse>
   int ex = 0, c, was;
-  int ln = 11;                                   //Anzahl Zeilen
+  int ln = (VGAController.getScreenHeight() / y_char[fontsatz])-3;   //Anzahl Zeilen abhängig vom Fontsatz
   //if (Frame_nr) win_set_cursor(0);               //sind Fenster gesetzt?, dann Hauptfenster setzen
   int x_weite = VGAController.getScreenWidth() / x_char[fontsatz];
 
@@ -1381,7 +1375,7 @@ static void toUppercaseBuffer(void)
 
 //--------------------------------------------- Unterprogramm - Zeile ausgeben (Bildschirm oder Datei) --------------------------------------------
 
-void printline()
+int printline(void)
 { int digits = 0;
   int num;
   LINENUM line_num;
@@ -1391,19 +1385,7 @@ void printline()
 
   num = line_num;
 
-  do {
-    pushb(num % 10 + '0');
-    num = num / 10;
-    digits++;
-  }
-  while (num > 0);
-
-  while (digits > 0)
-  {
-    outchar(popb());
-    digits--;
-  }
-  //PrintUnum-Ersatz
+  printnum(num,0);
 
   outchar(' ');
   while (*list_line != NL)
@@ -1414,6 +1396,7 @@ void printline()
 
   list_line++;
   line_terminator();
+  return line_num;
 }
 
 //--------------------------------------------- Unterprogramm - RTC auslesen ----------------------------------------------------------------------
@@ -1626,7 +1609,7 @@ static float expr4(void)
             c = spi_fram.read8(v_adr + i);//readEEPROM(FRam_ADDR, v_adr + i );
           }
           else {                                                        //normaler String
-            c = Stringtable[stmp][i];
+            c = Stringtable[stmp + i];
           }
 
           if (i < STR_LEN)
@@ -1641,7 +1624,7 @@ static float expr4(void)
               tempstring[i] = spi_fram.read8(v_adr + i);//readEEPROM(FRam_ADDR, v_adr + i );
             }
             else {
-              tempstring[i] = Stringtable[stmp][i];                    //normaler String
+              tempstring[i] = Stringtable[stmp + i];                    //normaler String
             }
 
             i++;
@@ -2447,7 +2430,6 @@ static float expr2(void)
 static float get_value(void)
 {
   float a, b;
-  unsigned long c;
 
   expression_error = 0;
 
@@ -2459,7 +2441,7 @@ static float get_value(void)
   scantable(relop_tab);
   if (table_index == RELOP_UNKNOWN)
     return a;
-
+  
   switch (table_index)
   {
     case RELOP_GE:
@@ -2583,24 +2565,32 @@ static int set_prezision(void)
 void list_out()
 {
   int l = 0;
-  int ex = 0;
-  linenum = testnum(); // Retuns 0 if no line found.
-  // Should be EOL
-  if (txtpos[0] != NL)
+  int bis, num;
+  bool b_bis = false;
+  
+  linenum = testnum();                                                    // gibt 0 zurück, wenn keine Zeilennummer angegeben wird
+
+  if(*txtpos==','){                                                       // optionaler Wert bis zu welcher Zeile ausgegeben werden soll
+    txtpos++;
+    bis = get_value();
+    b_bis = true;
+  }
+  
+  if (txtpos[0] != NL)                                                    //List darf nur im Kommandomodus benutzt werden
   {
     syntaxerror(syntaxmsg);
     return;
   }
 
-  // Find the line
-  list_line = findline();
+  list_line = findline();                                                 // Finde Zeile
   while (list_line != program_end) {
-    if (ex == 1)                              //Abbruch, dann raus
-      break;
-    printline();                              //Zeile ausgeben
+
+    num = printline();                                                    //Zeile ausgeben
+    if(num >= bis && b_bis) break;                                        //Zeile bis zu der ausgegeben werden soll erreicht?
     l++;
     if (!list_send) {
-      if (l == 12) {                          //nach 12 Zeilen auf Tastatur warten
+      if(l == (VGAController.getScreenHeight() / y_char[fontsatz])-8)     //Anzahl Zeilen abhängig vom gewählten Font, auf Taste warten
+      {  
         l = 0;
         if (wait_key(true) == 3) break;
       }
@@ -2761,16 +2751,16 @@ inputagain:
       {
         c = tempstring[i];
         if (c == '\0') {
-          Stringtable[stmp][i] = '\0';                                   //Nullterminator setzen
+          Stringtable[stmp + i] = '\0';                                   //Nullterminator setzen
           break;
         }
         else {
           if (i < STR_LEN) {
-            Stringtable[stmp][i++] = c;
+            Stringtable[stmp + i++] = c;
           }
           else
           {
-            Stringtable[stmp][i] = '\0';
+            Stringtable[stmp + i] = '\0';
             break;
           }
 
@@ -2808,8 +2798,7 @@ static float data_get(void)
 {
   float value;
   float *var;
-  char *st;
-  int tmp, stmp, svar, i,var_pos, array_art ;
+  int tmp, stmp, i,var_pos, array_art ;
   char c;
   word arr_adr;
   array_art = 0;
@@ -2875,7 +2864,7 @@ static float data_get(void)
           SPI_RAM_write8(arr_adr + i, '\0');
         }
         else {
-          Stringtable[stmp][i] = '\0';                                   //Nullterminator setzen
+          Stringtable[stmp + i] = '\0';                                   //Nullterminator setzen
         }
         break;
       }
@@ -2884,14 +2873,14 @@ static float data_get(void)
           if (array_art == 2) {
             SPI_RAM_write8(arr_adr + i++, c);
           }
-          else Stringtable[stmp][i++] = c;
+          else Stringtable[stmp + i++] = c;
         }
         else {
            if (array_art == 2) {
             SPI_RAM_write8(arr_adr + i, '\0');
             break;
           }
-          Stringtable[stmp][i] = '\0';
+          Stringtable[stmp + i] = '\0';
           break;
         }
 
@@ -2933,17 +2922,13 @@ static char data_spaces(void) {
 
 static float data_expr(void)
 {
-  float a = 0;
-  float b = 0;
-  float c = 0;
   unsigned long t = 0;
   unsigned long f = 0;
   char g = 0;
   int pointmarker = 0;
   int i;
-  bool quota = false;
-  String cbuf, dbuf;
-  char *st;
+  String cbuf;
+
   data_spaces();
   datapointer++;                            //DATA-Zeiger erhöhen
 
@@ -4145,8 +4130,9 @@ gosub_return:
 //#######################################################################################################################################
 static int command_Print(void)
 {
-  int k = 0, at = 0, sm = 0;
-  int xp, yp, tx, ty;
+  int k = 0;
+  int xp, yp;
+  
   while (!k)
   { char c = spaces();
 
@@ -4276,8 +4262,8 @@ static float var_get(void)
 {
   float value;
   float *var;
-  char *st;
-  int tmp, stmp, svar, i, var_pos, array_art ;
+  //char *st;
+  int tmp, stmp, i, var_pos, array_art ;
   char c;
   word arr_adr;
 
@@ -4333,7 +4319,7 @@ static float var_get(void)
           SPI_RAM_write8(arr_adr + i, '\0');
         }
         else {
-          Stringtable[stmp][i] = '\0';                                   //Nullterminator setzen
+          Stringtable[stmp + i] = '\0';                                   //Nullterminator setzen
         }
         break;
       }
@@ -4342,7 +4328,7 @@ static float var_get(void)
           if (array_art == 2) {
             SPI_RAM_write8(arr_adr + i++, c);
           }
-          else Stringtable[stmp][i++] = c;
+          else Stringtable[stmp + i++] = c;
         }
         else {
           if (array_art == 2) {
@@ -4350,7 +4336,7 @@ static float var_get(void)
             break;
           }
           else {
-            Stringtable[stmp][i] = '\0';
+            Stringtable[stmp + i] = '\0';
             break;
           }
         }
@@ -4409,7 +4395,6 @@ float rw_array(int num, word table) {
   if (table == VAR_TBL) len = sizeof (float);                        //Eintragslänge bei float 4
   else if (table == STR_TBL) len = STR_LEN;
 
-
   //Dimensionswerte aus dem FRAM lesen und mit Eingabe vergleichen
   spi_fram.read(ort, p_data, 6);
   //readBuffer(FRam_ADDR, ort, 6, p_data);
@@ -4460,14 +4445,15 @@ void cmd_new(void) {
   byte* bytes = (byte*)&w_ert;
   program_start = program;
   program_end = program_start;
-  sp = program + sizeof(program);                                    // Needed for printnum
-  stack_limit = program + sizeof(program) - STACK_SIZE;// - ARRAY_SIZE;
-  variables_begin = stack_limit - (26 * 27 * VAR_SIZE) ;             //26*27 (2)Buchstaben als Variablen
-  memset(program, 0, 1000);                                          //die ersten 1000 Bytes des Speichers löschen
-  clear_var();                                                       //Variablen und Array-Tabelle löschen
+  sp = program + sizeof(program);                                     // Needed for printnum
+  stack_limit = program + sizeof(program) - STACK_SIZE;               // - ARRAY_SIZE;
+  variables_begin = stack_limit - (26 * 27 * VAR_SIZE) ;              //26*27 (2)Buchstaben als Variablen
+  memset(program, 0, 1000);                                           //die ersten 1000 Bytes des Speichers löschen
+  clear_var();                                                        //Variablen und Array-Tabelle löschen
   for (int i = 0x0; i < 0x7fff; i += 4) SPI_RAM_write(i, bytes, 4);   //Array-Bereich löschen
   del_window();                                                       //Fensterparameter löschen
-  print_info();                                                      //Start-Bildschirm anzeigen
+  Frame_nr=0;                                                         //Hauptfenster setzen
+  print_info();                                                       //Start-Bildschirm anzeigen
 
 }
 
@@ -4477,7 +4463,7 @@ void cmd_new(void) {
 
 static int set_theme(int value)
 {
-  int fn;
+  //int fn;
 
   switch (value)
   {
@@ -4514,7 +4500,7 @@ static int set_theme(int value)
     case 5: //KC87
       Vordergrund = 63;
       Hintergrund = 0;
-      set_font(16);
+      set_font(22);
       break;
 
     case 6: //KC 85
@@ -4584,12 +4570,10 @@ static int Test_char(char az)
 
 static int poke(int fn)             //POKE WAS,ADRESSE,WERT
 {
-  byte value;
-  unsigned long address;
-  int was, weite;
-  unsigned long wert;
-  byte p_data[2];
+  unsigned long address, wert;
   float w_ert;
+  int was, weite;
+  byte value, p_data[2];
 
   was = abs(get_value());                                       //Speicherort 0..2 ->0-RAM, 1-FRAM, 2-EEPROM
   if (was > 2) was = 2;
@@ -4669,8 +4653,8 @@ next:
 
 static int set_style(void)
 {
-  int st, mst;
-  bool tmst;
+  int st;
+  
 again:
   expression_error = 0;
   st = abs(int(get_value()));         //nur ganze Zahlen
@@ -4709,8 +4693,8 @@ again:
 
 static int scroll_xy(void)
 {
-  short int i, par[6];
-  i = 0;
+  short int par[6];
+  
   expression_error = 0;
   par[0] = get_value();
   if (expression_error) return 1;
@@ -4807,8 +4791,8 @@ static int draws(void)
 //#######################################################################################################################################
 static int sprite(char cm) {
   short int cnt;
-  String myString, abuf;
-  short int nr, i, par[8];
+  String abuf;
+  short int nr, par[8];
 
   if (Test_char(',')) return 1;
   switch (cm) {
@@ -4828,19 +4812,19 @@ static int sprite(char cm) {
       nr = get_value();                                  //Sprite-Nr
       if (expression_error) return 1;
       if (Test_char(',')) return 1;
-      for (i = 1; i < 4; i++)
+      for (int i = 1; i < 4; i++)
       {
         expression_error = 0;
         par[i] = get_value();                             //Frame
         if (expression_error) return 1;
         if (Test_char(',')) return 1;
       }
-      //par[3]=farbe des Sprites
+      //par[3]=farbe des Sprites r,g,b
       par[4] = (bitRead(par[3], 5) * 2 + bitRead(par[3], 4)) * 64;
       par[5] = (bitRead(par[3], 3) * 2 + bitRead(par[3], 2)) * 64;
       par[6] = (bitRead(par[3], 1) * 2 + bitRead(par[3], 0)) * 64;
 
-      i = get_value(); //String_quoted_read();
+      get_value();                                      //String in tempstring;
       break;
 
     case 'S':
@@ -4850,7 +4834,7 @@ static int sprite(char cm) {
       if (Test_char(',')) return 1;
       String_quoted_read();
       if (Test_char(',')) return 1;
-      for (i = 1; i < 3; i++)
+      for (int i = 1; i < 3; i++)
       {
         expression_error = 0;
         par[i] = get_value();
@@ -4867,8 +4851,8 @@ static int sprite(char cm) {
 
   switch (cm) {
     case 'C':
-      myString = "\e_GSPRITECOUNT" + String(cnt, DEC) + "$";
-      Terminal.print(myString);
+      //myString = "\e_GSPRITECOUNT" + String(cnt, DEC) + "$";
+      Terminal.print("\e_GSPRITECOUNT" + String(cnt, DEC) + "$");
       //Terminal.print(String(cnt, DEC) + "$");
       break;
     case 'D':
@@ -4890,7 +4874,7 @@ static int sprite(char cm) {
 //----------------------------------------------------- SND-Befehl ----------------------------------------------------------------------
 //#######################################################################################################################################
 static int Sound(void) {
-  short int  nr, i, par[7];
+  short int  par[7];
 
   /*
        Sequence:
@@ -4913,7 +4897,7 @@ static int Sound(void) {
   */
   if (Test_char('(')) return 1;                           //Klammer-auf vorhanden?
 
-  for (i = 1; i < 5; i++)
+  for (int i = 1; i < 5; i++)
   {
     expression_error = 0;
     par[i] = get_value();
@@ -5162,7 +5146,7 @@ static char print_quoted_string(void)
 
 static int set_pulse(void)
 {
-  int p, x, y, pl, i;
+  int p, x, y, pl;
   if (Test_char('(')) return 1;
 
   expression_error = 0;
@@ -5203,7 +5187,7 @@ static int set_pulse(void)
 
   if (*txtpos != NL && *txtpos != ':') return 1;
 
-  for (i = 0; i < pl; i++) {                    //Anzahl pl-Impulse
+  for (int i = 0; i < pl; i++) {                    //Anzahl pl-Impulse
     digitalWrite(p, HIGH);                      //setze Port - High
     delay(x);                                   //Pause x
     digitalWrite(p, LOW);                       //Low
@@ -5326,6 +5310,7 @@ static int cursor_onoff(void)
 }
 
 //--------------------------------------------- CLS mit Scrolleffekt ------------------------------------------------------------------------------
+/*
 void cmd_cls(void) {
   int t = VGAController.getScreenHeight();
 
@@ -5333,7 +5318,7 @@ void cmd_cls(void) {
     GFX.scroll(0, -1);
   }
 }
-
+*/
 //#######################################################################################################################################
 //--------------------------------------------- POS - Befehl --------------------------------------------------------------------------------------
 //#######################################################################################################################################
@@ -5482,7 +5467,8 @@ void set_font(int fnt) {
 
 void print_info()
 { int c, d, e, f;
-
+  String built;
+  
   int y_pos = VGAController.getScreenHeight() / y_char[fontsatz];
   int x_pos = VGAController.getScreenWidth() / x_char[fontsatz];
 
@@ -5518,7 +5504,9 @@ int h = 100;
   GFX.drawLine(100 - h, 7 + (2 * y_char[fontsatz]), 219 + h, 7 + (2 * y_char[fontsatz]));
 
   fcolor(Vordergrund);
-
+  strcpy(tempstring,BuiltTime);
+  drawing_text(15, 278, 1);
+  
   tc.setCursorPos((x_pos - 26) / 2, 1);
   Terminal.write("Basic32+ V");
   Terminal.write(BasicVersion);
@@ -5571,9 +5559,7 @@ void break_program(void)
   if (current_line != NULL)
   {
     linenum = *((LINENUM *)(current_line));
-    //printmsg((const char*)linenum,0);
     printnum(linenum, 0);
-    //Terminal.print(linenum);
   }
   line_terminator();
   warmstart();
@@ -5658,8 +5644,6 @@ inchar_loadfinish:
 static void outchar(char c)
 {
   int x_pos, y_pos;
-  int vx, vy, bx, by, cx, cy;
-
 
   if ( inhibitOutput ) return;
 
@@ -5669,7 +5653,7 @@ static void outchar(char c)
   }
   else {
     if (ser_marker && list_send) Serial1.write(c);       //User-Seriellschnittstelle
-    else if (Frame_nr) {                                                    //Fenster gesetzt?
+    else if (Frame_nr) {                                 //************************** im Fenster schreiben ******************
 
       x_pos = tc.getCursorCol();
       y_pos = tc.getCursorRow();
@@ -5696,7 +5680,7 @@ static void outchar(char c)
         tc.setCursorPos(Frame_curx[Frame_nr], y_pos);
         return;
       }
-    }
+    }                                                    //************************** im Fenster schreiben ******************
     Terminal.write(c);                                   //auf FabGl VGA-Terminal schreiben----------------------------------
   }
 }
@@ -5758,7 +5742,6 @@ static int initSD( void )
 
 void sd_ende(void) {
   spiSD.end();                                              //SD-Card unmount
-  //spiSD.setClockDivider(SPI_CLOCK_DIV4);
   spi_fram.begin(3);                                        //FRAM aktivieren
 
 }
@@ -5776,7 +5759,7 @@ static int load_file(void)
 
   // lade BAS-Datei in den Speicher
 
-  bool a_st = false;
+  //bool a_st = false;
 
   expression_error = 0;
   get_value();                                              //in tempstring steht der Dateiname
@@ -6058,9 +6041,6 @@ void cmd_Dir(void)
 { int ln = 1;
   int ex = 0;
   int Dateien = 0;
-  const char* tmp;
-  String buf;
-  float t_mp;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
 
@@ -6087,21 +6067,18 @@ void cmd_Dir(void)
       printmsg(dirextmsg, 0);
     }
     else {
-      //if (!Frame_nr) {
-      // file ending
       for ( int i = strlen( entry.name()) ; i < 15 ; i++ ) {
         printmsg(spacemsg, 0);
       }
       printnum(int(entry.size()), Zahlenformat);
-      //}
       Dateien++;
     }
     line_terminator();
     entry.close();
     ln++;
 
-    if (ln == 16)
-    { //nach 15 Zeilen auf Tastatur warten ->SPACE,ENTER=weiter, CTRL+C=EXIT
+    if (ln == (VGAController.getScreenHeight() / y_char[fontsatz])-3)
+    { //nach ln Zeilen auf Tastatur warten ->SPACE,ENTER=weiter, CTRL+C=EXIT
       if (wait_key(true) == 3) ex = 1;
       ln = 1;
     }
@@ -6340,7 +6317,7 @@ VGAController.setResolution(QVGA_320x240_60Hz);
 Akku_timer = timerBegin(0, 80, true);
 timerAttachInterrupt(Akku_timer, &onTimer, true);
 timerAlarmWrite(Akku_timer, 60000000, true);         //ca.60sek bis Interrupt ausgelöst wird
-timerAlarmEnable(Akku_timer); //wenn alles fertig aufgebaut ist, diese Zeile aktivieren
+timerAlarmEnable(Akku_timer);                        //Interrupt-Routine
 #endif
 //-------------------------------------------------------------------------------------------------------------------
 
@@ -6774,8 +6751,6 @@ nochmal:
 
   static int LED_Set(void) {
 
-    //strip.setBrightness(LED_BRIGHTNESS);
-
     char c;
     int n, first, cnt, md;
     uint8_t r, g, b;
@@ -6886,12 +6861,7 @@ nochmal:
   //############################################### Zeileneditor ##########################################################################
   //#######################################################################################################################################
   void Editor(int lnr) {
-
-    int l = 0;
-    int ln = 0;
-    int dez = 0;
     
-
     linenum = lnr;
     list_line = findline();
 
@@ -6917,7 +6887,7 @@ nochmal:
 
   //-------------------------------------------- zu editierende Zeile in den Puffer schreiben -----------------------------------------------
   void edit_getline()
-  { int digits = 0;
+  { 
     int num, i;
     LINENUM line_num;
 
@@ -6926,18 +6896,8 @@ nochmal:
     num = line_num;
 
     i = 0;
-    do {
-      pushb(num % 10 + '0');
-      num = num / 10;
-      digits++;
-    }
-    while (num > 0);
 
-    while (digits > 0)
-    {
-      outchar(popb());
-      digits--;
-    }
+    printnum(num,0);
     outchar(' ');
     
     while (*list_line != NL)
@@ -7049,6 +7009,7 @@ nochmal:
     scantable(options);                                                  //Optionstabelle lesen
     char fu = table_index;
     int i, adr;
+    
     if (Test_char('=')) return 1;                                        //nach der Option kommt ein '='
 
     switch (fu) {
@@ -8326,8 +8287,7 @@ nochmal:
       return 0;
     }
 
-    if (Test_char(',')) return 1;                             //Fenster erstellen
-
+    if (Test_char(',')) return 1;
     a = get_value();
     Frame_x[nr] = abs(a * x_char[fontsatz]);
     if (Frame_x[nr] > vh) Frame_xx[nr] = vh;
@@ -8338,14 +8298,14 @@ nochmal:
     Frame_y[nr] = abs(a * y_char[fontsatz]);
     if (Frame_y[nr] > vv ) Frame_y[nr] = vv;
 
-    if (Test_char(',')) return 1;
-
+    if (Test_char(',')) return 1;                             //Fenster erstellen
+    
     a = get_value();
     Frame_xx[nr] = abs(a * x_char[fontsatz]);
     if (Frame_xx[nr] > vh) Frame_xx[nr] = vh;
 
     if (Test_char(',')) return 1;
-
+    
     a = get_value();
     Frame_yy[nr] = abs(a * y_char[fontsatz]);
     if (Frame_yy[nr] > vv ) Frame_y[nr] = vv;
@@ -8367,6 +8327,7 @@ nochmal:
     Frame_hcol[nr] = Hintergrund;
 
     make_win(nr, Frame_col[Frame_nr]);                                   //Fenster erstellen
+    win_cls(nr);                                                         //Fensterinhalt löschen
     fbcolor(Frame_vcol[nr], Frame_hcol[nr]);                             //Vordergrund und Hintergrundfarbe des Fensters setzen
     if (Frame_title[nr]) {
       drawing_text(fontsatz, Frame_x[nr] + x_char[fontsatz], Frame_y[nr] - (y_char[fontsatz] / 2) + 1);
@@ -8427,21 +8388,24 @@ nochmal:
 //----------------------------------------------- Window-Fensterinhalt eine Zeile nach oben scrollen ------------------------------------
 void move_up(int nr) {
   int vx, vy, bx, by, cx, cy;
-  Terminal.enableCursor(false);
+  fbcolor(Frame_vcol[nr], Frame_hcol[nr]);                                                                //Fensterfarben setzen
+  Terminal.enableCursor(false);                                                                           //Cursor abschalten
   vx = Frame_x[nr] + x_char[fontsatz];
   vy = Frame_y[nr] + y_char[fontsatz] + y_char[fontsatz];
   bx = Frame_x[nr] + x_char[fontsatz];
   by = Frame_y[nr] + y_char[fontsatz];
   cx = Frame_xx[nr] - Frame_x[nr];
   cy = Frame_yy[nr] - Frame_y[nr] - y_char[fontsatz] - y_char[fontsatz];
-  GFX.copyRect(vx, vy, bx, by, cx, cy);
-  Terminal.enableCursor(onoff);
+  GFX.copyRect(vx, vy, bx, by, cx, cy);                                                                   //Bereich 2.Zeile bis letzte Zeile eine Zeile höher kopieren
+  GFX.fillRectangle(Frame_x[nr]+1, Frame_yy[nr] - y_char[fontsatz], Frame_xx[nr]-1, Frame_yy[nr]-1);      //letzte Zeile löschen
+  Terminal.enableCursor(onoff);                                                                           //Cursor wieder in vorherigen Zustand versetzen
 }
 
 //------------------------------------------------ CLS im Window ------------------------------------------------------------------------
 
 void win_cls(int nr) {
   int zeilen;
+  fbcolor(Frame_vcol[nr], Frame_hcol[nr]);
   Terminal.enableCursor(false);                                                             //Cursor abschalten um Fehldarstellungen zu verhindern
   GFX.fillRectangle(Frame_x[nr] + 1, Frame_y[nr] + 1, Frame_xx[nr] - 1, Frame_yy[nr] - 1);  //Fensterbereich innerhalb des Rahmens löschen
   if (Frame_title[nr]) {                                                                    //Titel vorhanden?
@@ -8489,6 +8453,7 @@ void win_cls(int nr) {
         line_terminator();
       }
     }
+    fbcolor(Vordergrund, Hintergrund);
     line_terminator();
     printmsg("OK>", 0);
   }
