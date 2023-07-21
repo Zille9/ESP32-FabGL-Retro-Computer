@@ -6050,39 +6050,36 @@ void cmd_Dir(void)
   int wd = GFX.getWidth() / x_char[fontsatz];
   int Dateien = 0;
 
-  spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+  spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         
 
   File dir = SD.open(String(sd_pfad));
-  dir.seek(0);
+  dir.seek(0);                                                  //zum Verzeichnis-Anfang
 
   while ( !ex ) {
-    File entry = dir.openNextFile();
-    if ( !entry ) {
+    File entry = dir.openNextFile();                            //nächsten Eintrag holen
+    if ( !entry ) {                                             //kein Eintrag mehr, dann abbruch
       entry.close();
       break;
     }
-
-    // common header
     printmsg(spacemsg, 0);
-    printmsg(entry.name(), 0);
+    printmsg(entry.name(), 0);                                  //Datei- oder Verzeichnisname ausgeben
 
     if ( entry.isDirectory() ) {
       printmsg(slashmsg, 0);
 
-      for ( int i = strlen( entry.name()) ; i < 17 ; i++ ) {
+      for ( int i = strlen( entry.name()) ; i < 17 ; i++ ) {    //abhängig von der Stringlänge, Leerzeichen ausgeben
         printmsg(spacemsg, 0);
       }
-      printmsg(dirextmsg, 0);
+      printmsg(dirextmsg, 0);                                   //'dir' ausgeben
     }
     else {
-      for ( int i = strlen( entry.name()) ; i < 17 ; i++ ) {
+      for ( int i = strlen( entry.name()) ; i < 17 ; i++ ) {    //abhängig von der Stringlänge, Leerzeichen ausgeben
         printmsg(spacemsg, 0);
       }
-      printnum(int(entry.size()), Zahlenformat);
+      printnum(int(entry.size()), Zahlenformat);                //Dateigrösse ausgeben
       Dateien++;
-      cbuf = String(entry.size());
-      cbuf.toCharArray(tempstring, cbuf.length()+1);
-      for ( int i = strlen(tempstring) ; i < 8 ; i++ ) {
+      itoa(entry.size(),tempstring,10);                         //Dateigrösse in String umwandeln
+      for ( int i = strlen(tempstring) ; i < 8 ; i++ ) {        //abhängig von der Stringlänge, Leerzeichen ausgeben
         printmsg(spacemsg, 0);
       }
       time_t t= entry.getLastWrite();                           //Datei-Zeitstempel lesen
