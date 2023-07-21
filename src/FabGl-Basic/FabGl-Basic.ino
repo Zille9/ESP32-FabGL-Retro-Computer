@@ -44,10 +44,16 @@
 // April 2021
 //
 //
-#define BasicVersion "1.83b"
-#define BuiltTime "15.07.2023"
+#define BasicVersion "1.84b"
+#define BuiltTime "18.07.2023"
 #pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v1.84b:18.07.2023          -Blinkfrequenz des Cursors in fabglconf.h auf 200ms gesetzt
+//                            -Befehl FILL zum füllen unregelmässiger Formen begonnen
+//                            -ESP32Time.h hinzugefügt, mit dessen Hilfe jetzt der Datei-Zeitstempel beim Speichern hinzugefügt wird
+//                            -cmd_dir - Routine mit der Ausgabe des Datei-Zeitstempels erweitert
+//                            -16275 Zeilen/sek.
+//                            
 // v1.83b:15.07.2023          -cmd_new mit setzen des Hauptfesters ergänzt, nach einem NEW wurden die Fensterparameter zwar gelöscht aber nicht das
 //                            -Hauptfenster gesetzt, dadurch hing der Cursor in der linken oberen Ecke fest
 //                            -Move_up-Subroutine etwas erweitert, jetzt wird nach dem Kopieren des Fensterinhaltes die letzte Zeile gelöscht,
@@ -55,7 +61,7 @@
 //                            -Startbildschirm mit der Anzeige von BuiltTime ergänzt
 //                            -list_out Anzahl der Ausgabezeilen nun abhängig vom gewählten Font
 //                            -list_out um den Parameter bis zu welcher Zeile ausgegeben werden soll, erweitert (LIST 10,50 - Ausgabe Zeile 10 bis 50)
-//                            -
+//                            -16305 Zeilen/sek.
 //
 // v1.82b:11.07.2023          -DATA-Verarbeitung auf Arrays erweitert
 //                            -FILE_RD auf Arrays erweitert
@@ -218,7 +224,8 @@ unsigned int noteTable []  PROGMEM = {16350, 17320, 18350, 19450, 20600, 21830, 
 #include <SD.h>
 #include <SPI.h>
 #include <Update.h>
-
+#include <ESP32Time.h> 
+ESP32Time e_rtc(0);  // offset in seconds GMT+1
 //-------------------------------------- Verwendung der SD-Karte ----------------------------------------------------------------------------------
 //SPI CLASS FOR REDEFINED SPI PINS !
 SPIClass spiSD(HSPI);
@@ -234,10 +241,10 @@ byte SD_SET   = 44;      // -steht 44 im EEprom-Platz 10, dann sind die Werte im
 //---------------------------------------- Konfiguration FRAM -------------------------------------------------------------------------------------
 
 #include "Adafruit_FRAM_SPI.h"
-byte FRAM_CS  = 0;//13;       //SPI_FRAM 512kB CS-Pin
-word FRAM_OFFSET = 0x8000;    //Offset für Poke-Anweisungen, um zu verhindern, das in den Array-Bereich gepoked wird
-word FRAM_PIC_OFFSET = 0x12C04; //Platz pro Bildschirm im Speicher
-long load_adress = 0x70000;   //hier kann ein Basicprogramm abgelegt werden (Eingabe: LOAD oder SAVE ohne Parameter)
+byte FRAM_CS  = 0;//13;             //SPI_FRAM 512kB CS-Pin
+word FRAM_OFFSET      = 0x8000;     //Offset für Poke-Anweisungen, um zu verhindern, das in den Array-Bereich gepoked wird
+word FRAM_PIC_OFFSET  = 0x12C04;    //Platz pro Bildschirm im Speicher
+long load_adress      = 0x70000;    //hier kann ein Basicprogramm abgelegt werden (Eingabe: LOAD oder SAVE ohne Parameter)
 
 Adafruit_FRAM_SPI spi_fram = Adafruit_FRAM_SPI(kSD_CLK, kSD_MISO, kSD_MOSI, FRAM_CS);
 
@@ -554,7 +561,7 @@ const static char keywords[] PROGMEM = {
   'T', 'E', 'X', 'T' + 0x80,
   '?' + 0x80,
   'W', 'I', 'N', 'D', 'O', 'W' + 0x80,
-  //'C', 'H', 'A', 'R' + 0x80,
+  'F', 'I', 'L', 'L' + 0x80,
   'H', 'E', 'L', 'P' + 0x80,
   0
 };
@@ -642,7 +649,7 @@ enum {
   KW_TEXT,
   KW_PRINTING,
   KW_WINDOW,
-  //KW_CHAR,    //80
+  KW_FILL,    //80
   KW_HELP,    //81
   KW_DEFAULT  //82/* hier ist das Ende */
 };
@@ -901,7 +908,6 @@ static const char breakmsg[]         PROGMEM = "Break! in Line:";
 static const char breaks[]           PROGMEM = "Break!";
 static const char datamsg[]          PROGMEM = "Out of DATA Error!";            //6
 static const char invalidmsg[]       PROGMEM = "Invalid comparison!";           //7
-static const char indentmsg[]        PROGMEM = "  ";
 static const char sderrormsg[]       PROGMEM = "SD card error.";                //8
 static const char sdfilemsg[]        PROGMEM = "SD file error.";                //9
 static const char dirextmsg[]        PROGMEM = "(dir)";
@@ -1411,6 +1417,7 @@ void getdatetime()
   Datum[1] = now.month();
   Datum[2] = now.year();
   Datum[3] = now.dayOfTheWeek();
+  e_rtc.setTime(Zeit[2], Zeit[1], Zeit[0], Datum[0], Datum[1], Datum[2]);
 }
 
 //--------------------------------------------- Unterprogramm - Hexadezimalzahl in Dezimalzahl konvertieren ---------------------------------------
@@ -2537,6 +2544,8 @@ static int set_TimeDate(void)
     }
   }
   rtc.adjust(DateTime(tagzeit[2], tagzeit[1], tagzeit[0], tagzeit[3], tagzeit[4], tagzeit[5]));
+  e_rtc.setTime(tagzeit[5], tagzeit[4], tagzeit[3], tagzeit[1], tagzeit[2], tagzeit[3]);
+  
   return 0;
 }
 
@@ -3591,7 +3600,6 @@ interpreteAtTxtpos:
           linenum = get_value();
           for (int i = 0; i <= (num_of_datalines - 1); i++)           //scannen, ob Zeilennummer existiert, wenn ja, übernehmen
           {
-            //Terminal.print(data_numbers[i],DEC);
             if (data_numbers[i] == linenum)
             {
               datapointer = 0;                                       //datapointer zurücksetzen
@@ -3889,12 +3897,12 @@ interpreteAtTxtpos:
         if (win())
           continue;
         break;
-/*
-      case KW_CHAR:
-        if (draw_char())
+
+      case KW_FILL:
+        if (fill_area())
           continue;
         break;
-*/
+
       case KW_HELP:
         if (*txtpos == NL) show_help();
         else show_help_name();
@@ -5759,8 +5767,6 @@ static int load_file(void)
 
   // lade BAS-Datei in den Speicher
 
-  //bool a_st = false;
-
   expression_error = 0;
   get_value();                                              //in tempstring steht der Dateiname
 
@@ -5798,7 +5804,7 @@ static int save_file()
   if (expression_error) return 1;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
-
+  
   // remove the old file if it exists
   if ( SD.exists( String(sd_pfad) + String(tempstring))) {          //Datei existiert schon, überschreiben?
     printmsg("File exist, overwrite? (y/n)", 0);
@@ -6040,6 +6046,8 @@ static int cmd_mkdir(int mod)
 void cmd_Dir(void)
 { int ln = 1;
   int ex = 0;
+  String cbuf;
+  int wd = GFX.getWidth() / x_char[fontsatz];
   int Dateien = 0;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
@@ -6055,37 +6063,60 @@ void cmd_Dir(void)
     }
 
     // common header
-    printmsg(indentmsg, 0);
+    printmsg(spacemsg, 0);
     printmsg(entry.name(), 0);
 
     if ( entry.isDirectory() ) {
       printmsg(slashmsg, 0);
 
-      for ( int i = strlen( entry.name()) ; i < 15 ; i++ ) {
+      for ( int i = strlen( entry.name()) ; i < 17 ; i++ ) {
         printmsg(spacemsg, 0);
       }
       printmsg(dirextmsg, 0);
     }
     else {
-      for ( int i = strlen( entry.name()) ; i < 15 ; i++ ) {
+      for ( int i = strlen( entry.name()) ; i < 17 ; i++ ) {
         printmsg(spacemsg, 0);
       }
       printnum(int(entry.size()), Zahlenformat);
       Dateien++;
+      cbuf = String(entry.size());
+      cbuf.toCharArray(tempstring, cbuf.length()+1);
+      for ( int i = strlen(tempstring) ; i < 8 ; i++ ) {
+        printmsg(spacemsg, 0);
+      }
+      time_t t= entry.getLastWrite();                           //Datei-Zeitstempel lesen
+      struct tm * tmstruct = localtime(&t);
+      if(tmstruct->tm_mday < 10) outchar('0');                  //führende Null bei Werten < 10
+      printnum(tmstruct->tm_mday,0);                            //Tag ausgeben
+      outchar('.');
+      if(tmstruct->tm_mon < 10) outchar('0');                   //führende Null bei Werten < 10
+      printnum(tmstruct->tm_mon,0);                             //Monat ausgeben
+      outchar('.');
+      printnum(((tmstruct->tm_year)+1900),0);                   //Jahr ausgeben
+      if(wd > 40){                                              //bei Terminalbreite > 40 zusätzlich Zeit anzeigen
+        outchar(' ');
+        if(tmstruct->tm_hour < 10) outchar('0');                //Stunde ausgeben
+        printnum(tmstruct->tm_hour,0);
+        outchar(':');
+        if(tmstruct->tm_min < 10) outchar('0');                 //Minute ausgeben
+        printnum(tmstruct->tm_min,0);
+      }
+      
     }
     line_terminator();
     entry.close();
     ln++;
 
-    if (ln == (VGAController.getScreenHeight() / y_char[fontsatz])-3)
-    { //nach ln Zeilen auf Tastatur warten ->SPACE,ENTER=weiter, CTRL+C=EXIT
-      if (wait_key(true) == 3) ex = 1;
+    if (ln == (VGAController.getScreenHeight() / y_char[fontsatz])-3)  //Ausgabezeilen abhängig vom gewählten Fontsatz
+    { 
+      if (wait_key(true) == 3) ex = 1;                          //nach ln Zeilen auf Tastatur warten ->SPACE,ENTER=weiter, CTRL+C=EXIT
       ln = 1;
     }
 
   }
   line_terminator();
-  printmsg(indentmsg, 0);
+  printmsg(spacemsg, 0);
   printnum(Dateien, Zahlenformat);
   printmsg(" Files on SD-Card", 1);
   printmsg("  Total space: ", 0);
@@ -6310,7 +6341,8 @@ VGAController.setResolution(QVGA_320x240_60Hz);
   myI2C.begin(SDA_RTC, SCL_RTC, 400000); //400kHz
 
   rtc.begin(&myI2C);
-
+  getdatetime();                                              //ESP32-interne Uhr stellen für Datei-Zeitstempel
+  //e_rtc.setTime(30, 24, 15, 17, 1, 2021);                   //nur zum Test
 
   //-------------------------------- Akku-Überwachung per Timer0-Interrupt --------------------------------------------
 #ifdef Akkualarm_enabled
@@ -6322,6 +6354,8 @@ timerAlarmEnable(Akku_timer);                        //Interrupt-Routine
 //-------------------------------------------------------------------------------------------------------------------
 
 }
+
+
 
 //#######################################################################################################################################
 //################################################## HCSR04 Ultraschall-Sensor ##########################################################
@@ -7791,128 +7825,8 @@ nochmal:
   }
   //#######################################################################################################################################
 
-  /*
-      //------------------------------------------ Befehl Fill --------------------------------------------------------------------------------------
-      int fill_area(void) {
-        int xx, yy, xl, xr, yo, yu, x, y, c, lbuf[3], rbuf[3], cl, cr;
-        bool d, l, r, o, u, xl_m, xr_m = false;
+  
 
-        x = get_value();
-        if (Test_char(',')) return 1;
-        y = get_value();
-        if (Test_char(',')) return 1;
-        c = get_value();
-        fcolor(c);
-        xl = xr = x;
-        yy = y;
-        d = false;
-
-        while (!d) {
-          if (!Test_pixel(xl, yy, 0)) {
-            if (xl > -1 && xl < GFX.getWidth() && y > -1) {
-              GFX.setPixel(xl, yy);
-              xl--;
-            }
-            else xl_m = true;
-          }
-          else {                        //rand links detektiert
-            xl_m = true;
-          }
-
-          if (!Test_pixel(xr, yy, 0)) {
-            if (xr > -1 && xr < GFX.getWidth() && y > -1) {
-              GFX.setPixel(xr, yy);
-              xr++;
-            }
-            else xr_m = true;
-
-          }
-          else {                        //rand rechts detektiert
-            xr_m = true;
-          }
-
-          if (xr_m && xl_m)
-          { //rand links und rechts erreicht dann eine Zeile höher
-            if (!Test_pixel(x, yy - 1, 0))
-            {
-              yy--;
-              xr_m = false;
-              xl_m = false;
-              xr = xl = x;
-            }
-            else {
-              d = true;
-            }
-          }
-
-        }
-        xl = xr = x;
-        yy = y;
-        d = false;
-
-        while (!d) {
-          if (!Test_pixel(xl, yy, 0)) {
-            if (xl > -1 && xl < GFX.getWidth() && yy < GFX.getHeight()) {
-              GFX.setPixel(xl, yy);
-              xl--;
-            }
-            else xl_m = true;
-
-          }
-          else {                        //rand links detektiert
-            xl_m = true;
-          }
-
-          if (!Test_pixel(xr, yy, 0)) {
-            if (xr > -1 && xr < GFX.getWidth() && yy < GFX.getHeight()){
-              GFX.setPixel(xr, yy);
-              xr++;
-            }
-            else xr_m = true;
-
-          }
-          else {                        //rand rechts detektiert
-            xr_m = true;
-          }
-
-          if (xr_m && xl_m)
-          { //rand links und rechts erreicht dann eine Zeile höher
-            if (!Test_pixel(x, yy + 1, 0))
-            {
-              yy++;
-              xr_m = false;
-              xl_m = false;
-              xr = xl = x;
-            }
-            else {
-              d = true;
-            }
-          }
-
-        }
-        fcolor(Vordergrund);
-        return 0;
-      }
-  */
-  //------------------------------------------------- Prüfe, ob Pixel gesetzt ist --------------------------------------------------------------
-  //->modes=0 - test Pixel gesetzt(1) oder nicht(0); modes=1 gibt die Farbe des Pixels zurück
-
-  int Test_pixel(int x, int y, bool modes) {
-    int buf[3], c;
-    if (x > -1 && x < GFX.getWidth() && y > -1 && y < GFX.getHeight()) {
-      buf[0] = GFX.getPixel(x, y).R;
-      buf[1] = GFX.getPixel(x, y).G;
-      buf[2] = GFX.getPixel(x, y).B;
-    }
-    c = (buf[2] / 85) + ((buf[1] / 85) << 2) + ((buf[0] / 85) << 4);
-    if (!modes) {
-      if (c == Hintergrund) //einzelne Farbanteile in 64-Farbwert zurückwandeln
-        return 0;           //Pixel nicht gesetzt
-      else
-        return 1;           //Pixel gesetzt
-    }
-    else return c;          //Farbe des Pixels
-  }
   //#######################################################################################################################################
   //-----------------------------------------Befehl GRID_typ(x,y,x_zell,y_zell,x_pixel_step,y_pixelstep,frame_color,grid_color,pixel_raster,scale,arrow,frame) ----------------------
   //#######################################################################################################################################
@@ -8150,6 +8064,7 @@ nochmal:
   {
     switch (fnt) {
       case 0:
+        //GFX.drawTextWithEllipsis(&fabgl::FONT_8x8, x_text, y_text, tempstring, 200);
         GFX.drawText(&fabgl::FONT_8x8, x_text, y_text, tempstring);
         break;
       case 1:
@@ -8232,7 +8147,7 @@ nochmal:
 
   }
   //#######################################################################################################################################
-  //------------------------------------------------ Befehl WIN(nr,x,y,xx,yy,color) -----------------------------------------------
+  //------------------------------------------------ Befehl WIN(nr,x,y,xx,yy,color) -------------------------------------------------------
   //#######################################################################################################################################
 
   int win(void) {
@@ -8485,4 +8400,140 @@ void win_cls(int nr) {
     fbcolor(Vordergrund, Hintergrund);
     line_terminator();
     printmsg("OK>", 0);
+  }
+//***************************************************** Testbereich - Fill *****************************************************************
+      //------------------------------------------ Befehl Fill --------------------------------------------------------------------------------------
+      int fill_area(void) {
+        int xx, yy, xl, xr, yo, yu, x, y, c, lbuf[3], rbuf[3], cl, cr;
+        bool d, l, r, o, u, xl_m, xr_m = false;
+
+        x = get_value();
+        if (Test_char(',')) return 1;
+        y = get_value();
+        if (Test_char(',')) return 1;
+        c = get_value();
+        fcolor(c);
+        xl = x;
+        xr = x;
+        yo = y;
+        yu = y;
+        d = false;
+
+        while (!d) {
+          if (Test_pixel(xl, yo, 1) == Hintergrund) {         //hat Pixel die Hintergrundfarbe?
+            if (xl >= 0 && xl < GFX.getWidth() && y >= 0) {   //innerhalb der Grenzen bleiben
+              GFX.setPixel(xl, yo);                           //dann setze Pixel
+              xl--;                                           //ein Pixel nach links
+            }
+            else xl_m = true;                                 //ausserhalb der Grenzen - abbruch
+          }
+          else {                                              //Pixel gesetzt = rand links detektiert - abbruch
+            xl_m = true;
+          }
+
+          if (Test_pixel(xr, yy, 1) == Hintergrund) {                       //hat Pixel die Hintergrundfarbe?
+            if (xr >= 0 && xr < GFX.getWidth() && y >= 0) {   //innerhalb der Grenzen bleiben
+              GFX.setPixel(xr, yo);                           //dann setze Pixel
+              xr++;                                           //ein Pixxel nach rechts
+            }
+            else xr_m = true;                                 //Grenzen erreicht, dann abbruch
+
+          }
+          else {                                              //rand rechts detektiert, dann abbruch
+            xr_m = true;
+          }
+
+          if (xr_m && xl_m)                                   //Grenzen rechtss und links erreicht
+          { 
+            if (Test_pixel(x, yo - 1, 1) == Hintergrund)      //test Pixel eine Zeile höher
+            {
+              yo--;                                           //eine Zeile höher
+              xr_m = false;                                   //rechten Grenzmarker zurücksetzen
+              xl_m = false;                                   //linken Grenzmarker zurücksetzen
+              
+              //x = xr - xl ;                                 //mitte neu errechnen
+              xr = x;
+              xl = x;
+            }
+            else {
+              d = true;
+            }
+          }
+          
+
+        }
+        //x = xr - 1 - xl - 1;
+        xl = x;
+        xr = x;
+        yu = y;
+        d = false;
+
+        while (!d) {
+          if (Test_pixel(xl, yu, 1) == Hintergrund) {
+            if (xl >= 0 && xl < GFX.getWidth() && yu < GFX.getHeight()) {
+              GFX.setPixel(xl, yu);
+              xl--;
+            }
+            else xl_m = true;
+
+          }
+          else {                        //rand links detektiert
+            xl_m = true;
+          }
+
+          if (Test_pixel(xr, yu, 1) == Hintergrund) {
+            if (xr >= 0 && xr < GFX.getWidth() && yu < GFX.getHeight()){
+              GFX.setPixel(xr, yu);
+              xr++;
+            }
+            else xr_m = true;
+
+          }
+          else {                        //rand rechts detektiert
+            xr_m = true;
+          }
+
+          if (xr_m && xl_m)
+          { //rand links und rechts erreicht dann eine Zeile tiefer
+            if (Test_pixel(x, yu + 1, 1) == Hintergrund)
+            {
+              yu++;
+              xr_m = false;
+              xl_m = false;
+              //x = xr - 1 - xl -1;
+              xr = x;
+              xl = x;
+            }
+            else {
+              d = true;
+            }
+          }
+
+        }
+        fcolor(Vordergrund);
+        return 0;
+      }
+
+
+
+
+  
+  //------------------------------------------------- Prüfe, ob Pixel gesetzt ist --------------------------------------------------------------
+  //->modes=0 - test Pixel gesetzt(1) oder nicht(0); modes=1 gibt die Farbe des Pixels zurück
+
+  int Test_pixel(int x, int y, bool modes) {
+    int buf[3], c;
+    if (x >= 0 && x < GFX.getWidth() && y >= 0 && y < GFX.getHeight()) {
+      buf[0] = GFX.getPixel(x, y).R;
+      buf[1] = GFX.getPixel(x, y).G;
+      buf[2] = GFX.getPixel(x, y).B;
+    }
+    c = (buf[2] / 85) + ((buf[1] / 85) << 2) + ((buf[0] / 85) << 4);
+    if (!modes) {
+      if (c == Hintergrund) //einzelne Farbanteile in 64-Farbwert zurückwandeln
+        return 0;           //Pixel nicht gesetzt
+      else
+        return 1;           //Pixel gesetzt
+    }
+    else return c;          //Farbe des Pixels
   }
