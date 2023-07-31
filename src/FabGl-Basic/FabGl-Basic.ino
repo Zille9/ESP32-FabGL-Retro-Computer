@@ -268,7 +268,7 @@ bool twire = false;
 uint32_t delayMS;
 
 //-------------------------------- BMP180-Sensor---------------------------------------------------------------------------------------------------
-#include <Adafruit_Sensor.h>
+//#include <Adafruit_Sensor.h>
 #include <Adafruit_BMP085.h>
 // Store an instance of the BMP180 sensor.
 Adafruit_BMP085 bmp;
