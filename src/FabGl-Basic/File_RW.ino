@@ -309,7 +309,7 @@ int File_line(char * vals) {
           SPI_RAM_write8(arr_adr + i, '\0');
         }
         else {
-          Stringtable[stmp][i] = '\0';                                   //Nullterminator setzen
+          Stringtable[stmp + i] = '\0';                                   //Nullterminator setzen
         }
         break;
       }
@@ -319,7 +319,7 @@ int File_line(char * vals) {
             SPI_RAM_write8(arr_adr + i++, c);
           }
           else {
-            Stringtable[stmp][i++] = c;
+            Stringtable[stmp + i++] = c;
           }
         }
         else {
@@ -327,7 +327,7 @@ int File_line(char * vals) {
             SPI_RAM_write8(arr_adr + i, '\0');
             break;
           }
-          Stringtable[stmp][i] = '\0';
+          Stringtable[stmp + i] = '\0';
           break;
         }
       }
