@@ -12,7 +12,7 @@
 //      VGA Hsync and Vsync to ESP32 pins 23 and 15                                                                                               //
 //      SD-Card 14, 16, 17, 13 (SCK, MISO, MOSI, CS)    ESP32-Eigenboard                                                                          //
 //      SD-Card 14, 2, 12, 13 (SCK, MISO, MOSI, CS)     TTGO                                                                                      //
-//      FRAM-Board 14, 16, 17, 0 (SCK, MISO, MOSI, CS)  512kB FRAM am SD-SPI-BUS                                                                  //
+//      FRAM-Board 14, 16, 17, 0 (SCK, MISO, MOSI, CS)  512kB FRAM am SD-SPI-BUS                                                                //
 //                                                                                                                                                //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -44,16 +44,38 @@
 // April 2021
 //
 //
-#define BasicVersion "1.84b"
-#define BuiltTime "18.07.2023"
+#define BasicVersion "1.87b"
+#define BuiltTime "08.08.2023"
 #pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v1.87b:08.08.2013          -erste MIDI-Funktionalität integriert
+//                            -der Sound-Befehl wird für die interne Ausgabe von Tönen benutzt, die ursprüngliche Routine wurde deaktiviert
+//                            -Syntax: SND_N 0,45,127,100 -> Chan,Note,Velocity,Duration
+//                            -die Angabe von Duration (Dauer) muss noch geändert werden, damit mehrere Noten gleichzeitig erklingen können
+//                            -16329 Zeilen/sek.
+//
+// v1.86b:07.08.2013          -Beginn der Einbindung des Adafruit VS1053 Boards für MIDI-Funktionalität, um die Soundfunktionen aufzupeppen
+//                            -2GM-Soundbänke + 2Drumkit-Bänke
+//                            -Pan-Funktion, Reverb-Effekt, Pitch-Funktion, Polyfonie bis zu 64 Stimmen
+//                            -erste Trockentest's sind vielversprechend
+//                            -ein neues Board wird eine zusätzliche MIDI-IN-Buchse besitzen, um das Modul auch von außen mit einem
+//                            -MIDI-Keyboard spielen zu können
+//                            -ebenfalls geplant ist ein MIDI-Player, der MIDI-Dateien von SD-Karte abspielt
+//                            -wenn alles funktioniert, wird der ursprüngliche Sound-Befehl überflüssig
+//
+// v1.85b:31.07.2023          -Umstellung Arduino IDE auf 2.x, scheint jetzt zu funktionieren.....
+//                            -Fehlerbehandlung funktioniert nicht mehr, Fehler führen zu einer "Syntax Error!" Dauerschleife ???
+//                            -erst mal wieder auf 1.06 zurück-geswitcht :-( ärgerlich.
+//                            -Neue Idee: als Soundmodul ein GM-Modul (VS1053 hat MIDI inkl. Midi-Instrumente on board)
+//                            -Ansteuerung über MIDI-Befehle, möglich auch über Optokoppler von außen :-)
+//                            -16413 Zeilen/sek.
+//
 // v1.84b:18.07.2023          -Blinkfrequenz des Cursors in fabglconf.h auf 200ms gesetzt
 //                            -Befehl FILL zum füllen unregelmässiger Formen begonnen
 //                            -ESP32Time.h hinzugefügt, mit dessen Hilfe jetzt der Datei-Zeitstempel beim Speichern hinzugefügt wird
 //                            -cmd_dir - Routine mit der Ausgabe des Datei-Zeitstempels erweitert
 //                            -16275 Zeilen/sek.
-//                            
+//
 // v1.83b:15.07.2023          -cmd_new mit setzen des Hauptfesters ergänzt, nach einem NEW wurden die Fensterparameter zwar gelöscht aber nicht das
 //                            -Hauptfenster gesetzt, dadurch hing der Cursor in der linken oberen Ecke fest
 //                            -Move_up-Subroutine etwas erweitert, jetzt wird nach dem Kopieren des Fensterinhaltes die letzte Zeile gelöscht,
@@ -67,7 +89,7 @@
 //                            -FILE_RD auf Arrays erweitert
 //                            -Fehler in Array-Dimensionierung behoben, Array-Felder wurden zu gross berechnet
 //                            -Fehler in der ELSE Verarbeitung entdeckt, bei dem Versuch, die Else-Anweisung in der gleichen Zeile zu bearbeiten
-//                            -wurden auch die nach nicht erfolgreicher IF-Verarbeitung stehende Befehle ausgeführt, 
+//                            -wurden auch die nach nicht erfolgreicher IF-Verarbeitung stehende Befehle ausgeführt,
 //                            -was manche Programme nicht ausführbar machte, ELSE erst mal wieder in den Urzustand versetzt (nächste Zeile)
 //                            -Routine line_terminator geändert, jetzt erfolgt erst ein Carrige-Return und dann ein Next-Line,
 //                            -war vorher umgekehrt, das führte dazu, das in gespeicherten Programmen zwischen den Zeilen immer eine Leerzeile
@@ -97,80 +119,6 @@
 //                            -nur so konnte ein ESP-Absturz verhindert werden
 //                            -Taste F1 (Grafiksymbole on/off) schaltet zur optischen Signalisation die Scroll-LED ein und aus
 //
-// v1.79b:07.07.2023          -umfangreiche Änderungen der diversen Bildschirmausgaben, um die Window-Funktion zu verbessern
-//                            -Frame-Befehl wurde durch WINDOW ersetzt
-//                            -Syntax: WINDOW(nr,x,y,xx,yy<,color,Titel>) ->Koordinaten müssen als Zeichenkoordinaten eingegeben werden
-//                            -d.h. das x und y Positionen den Cursorpositionen entsprechen müssen (abhängig vom gewählten Font)
-//                            -noch nicht perfekt, Cursortasten,Entf und Einfg lassen den Cursor verschwinden und der ESP hängt sich auf??!
-//
-// v1.78b:05.07.2023          -begonnen eine Window-Funktion im Retro-Style zu integrieren
-//                            -dafür wurde der vorläufige Befehl FRAME geschaffen
-//                            -erste Tests sehen schon vielversprechend aus
-//                            -nur die diversen Fonts machen die Sache etwas komplizierter
-//                            -Ausgaben funktionieren über Outchar, Cls-Befehl berücksichtigt jetzt das Fenster indem sich der Cursor befindet
-//                            -Scrolling bei Zeilenumbruch funktioniert ebenfalls
-//                            -Der Befehl WIN (oder Window) wird die Funktion, wenn fertig, übernehmen.
-//                            -16563 Zeilen/sek.
-//
-// v1.77b:04.07.2023          -FILE_PS(val) hinzugefügt um die Position innerhalb einer geöffneten Datei zu setzen
-//                            -dies funktioniert nur im Lesemodus (FILE_RD!!!)
-//                            -Code etwas zusammengefasst
-//                            -help_sys muss noch um WIN ergänzt werden
-//                            -15072 Zeilen/sek.
-//
-// v1.76b:03.07.2023          -diverse Tools auf Funktionstasten gelegt
-//                            -Grafiksymbole auf F1
-//                            -Befehlt TRON/TROFF auf F2 - dadurch Tron-Befehl eingespart
-//                            -Ausgabe Char-Codes auf F3(32-127) und F4(128-255)
-//                            -Farbcode-Tabelle auf F5
-//                            -? als alternative zu Print hinzugefügt
-//                            -semincolon - Bearbeitung weiter korrigiert, war noch nicht ganz korrekt aber jetzt sollte es passen
-//                            -mit dem Befehl WIN(x,y,xx,yy) kann die Scrollregion für den Scrollbefehl eingestellt werden
-//                            -mal sehen, ob das brauchbar ist ->dies ist keine Window-Funktion, da die Textausgabe unberührt bleibt
-//                            -VGA16-Programmteile entfernt - es gibt nur noch 64 Farben
-//                            -15822 Zeilen/sek.
-//
-// v1.75b:30.06.2023          -Befehl GRID geschaffen ->erzeugt ein Rasterfeld variabler Grösse
-//                            -GRID(x,y,x_zellen,y_zellen,x_pixelbreite,y_pixelhöhe,rahmen_farbe,grid_farbe,skala,pfeile,rahmen)
-//                            -Befehl TEXT für pixelgenaue Textausgaben ->TEXT(x,y,Zeichenkette)
-//                            -Funktionstaste F1 schaltet in den Grafiksymbol-Modus, so sind die Grafiksymbole im font_8x8 über die Tastatur erreichbar
-//                            -Stringverarbeitung angepasst und korrigiert, normale Strings konnten keine Leerzeichen als String aufnehmen
-//                            -Programm Hanoi.Bas mit Grafiksymbolen und etwas Farbe aufgehübscht
-//                            -15945 Zeilen/sek.
-//
-// v1.74b:29.06.2023          -Befehl FWRITE und FREAD zusammengefasst in FILE_WR und FILE_RD ->Helpsystem angepasst
-//                            -FILE_RD funktionsfähig ->FILE_RD A$,A,B - Typprüfung muss selbst übernommen werden
-//                            -Übergabe an Arrays zur Zeit noch nicht möglich nur über Umweg->A$(3)=A$, A(1,2)=A
-//                            -der Versuch, Basic im Unterverzeichnis arbeiten zu lassen funktioniert zwar aber die Geschwindigkeit von Dateioperationen
-//                            -bricht brutal ein - beim Programm FILE_RD.BAS ca. um den Faktor 10
-//                            -man sollte Basic also im Root-Verzeichnis arbeiten lassen
-//                            -FILE-Funktionen ausgelagert ->FILE_RW.ino
-//                            -DIM erweitert, jetzt sind verkettete Dimensionierungen möglich ->DIM a$(3),S(8),T(7)
-//                            -16470 Zeilen/sek.
-//
-// v1.73b:24.06.2023          -Befehl BLOAD"Filename.bin" zum Laden von Binärdateien integriert
-//                            -HELP Funktion optisch etwas verbessert
-//                            -RUN-CPM als funktionsfähige (sehr schnelle) CP/M Emulation entdeckt - Dateiaustausch einfacher (Unterverzeichnisse auf SD-Card als Laufwerke)
-//                            -Rückkehrroutine in RUN-CPM integriert->der Befehl Exit unter RUN-CPM stoppt den Emulator und lädt wieder das Basic32 :-)
-//                            -Rückkehrroutine ausgelagert (updater.ino)
-//                            -EEPROM und FRAM-Routinen ausgelagert (Memory_RW.ino)
-//                            -OPT-Befehl erweitert OPT PATH="Workdir" speichert das Arbeitsverzeichnis im EEPROM und setzt den Pfad beim Initialisieren der SD-Karte
-//                            -16755 Zeilen/sek.
-//
-// v1.72b:22.06.2023          -Befehl Type zum Betrachten von Text- oder Basic-Dateien auf dem Bildschirm
-//                            -hatte sich als notwendig herausgestellt für die Schaffung der Befehle FWRITE und FREAD
-//                            -LOAD Befehl erweitert LOAD"Filename.BAS",1 startet das Programm sofort (gleiche Funktion wie Start"Filename.BAS")
-//                            -PRINT Befehl korrigiert die Zeile : For I=1 to 20:print i,:next i führte dazu,das das Komma wirkungslos war
-//                            -Marker semicolon jetzt für , und ; aktiv
-//                            -Akku-Überwachung als Option definiert (#define Akkualarm_enabled)
-//                            -Start-Prozedur überarbeitet, wurde ein frischer ESP geflasht, konnte es vorkommen, das Vorder-und Hintergrundfarbe gleich waren
-//                            -dadurch war der Startbildschirm unsichtbar, jetzt werden beim Erststart Standardwerte gesetzt
-//                            -16275 Zeilen/sek.
-//
-// v1.71b:20.06.2023          -Kurzhilfe in help_sys.h ausgelagert
-//                            -Kurzhilfe soweit fertig und funktionstüchtig
-//                            -Befehl FWRITE zum schreiben von numerischen Werten und Strings funktionsfähig
-//                            -der Befehl TYPE zum anzeigen von Dateiinhalten auf dem Bildschirm wäre noch hilfreich
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Feature option configuration...
@@ -216,6 +164,49 @@ byte y_char[]      PROGMEM = {8, 8, 8, 14, 20, 14, 14, 16, 16, 14, 14, 14, 16, 1
 //------------------------------------------------------------- Soundgenerator ----------------------------------------------------------------------------
 unsigned int noteTable []  PROGMEM = {16350, 17320, 18350, 19450, 20600, 21830, 23120, 24500, 25960, 27500, 29140, 30870}; //Notentabelle für Soundausgabe
 //------------------------------------------------------------- Soundgenerator ----------------------------------------------------------------------------
+//------------------------------------------------------- MIDI-Funktionen -------------------------------------------------------------------------
+
+#define MIDI_Baud 31250
+#define VS1053_MIDI Serial2
+//#include <MD_MIDIFile.h>
+
+#define MIDI_NOTE_ON  0x90
+#define MIDI_NOTE_OFF 0x80
+#define MIDI_CHAN_MSG 0xB0
+#define MIDI_CHAN_BANK 0x00
+#define MIDI_CHAN_VOLUME 0x07
+#define MIDI_CHAN_PAN 0x0A
+#define MIDI_CHAN_PITCH 0xE0
+#define MIDI_EFFECT_CNTRL 0x0C
+#define MIDI_EFFECT_LEVEL 0x5B
+#define MIDI_CHAN_PROGRAM 0xC0
+
+#define MIDI_BANK_DEFAULT 0x00
+#define MIDI_BANK_DRUMS1 0x78
+#define MIDI_BANK_DRUMS2 0x7F
+#define MIDI_BANK_MELODY 0x79
+//SDFAT  MIDI_SD;
+//MD_MIDIFile SMF;
+
+// Define constants for MIDI channel voice message IDs
+const uint8_t NOTE_OFF = 0x80;    // note on
+const uint8_t NOTE_ON = 0x90;     // note off. NOTE_ON with velocity 0 is same as NOTE_OFF
+const uint8_t POLY_KEY = 0xa0;    // polyphonic key press
+const uint8_t CTL_CHANGE = 0xb0;  // control change
+const uint8_t PROG_CHANGE = 0xc0; // program change
+const uint8_t CHAN_PRESS = 0xd0;  // channel pressure
+const uint8_t PITCH_BEND = 0xe0;  // pitch bend
+
+// Define constants for MIDI channel control special channel numbers
+const uint8_t CH_RESET_ALL = 0x79;    // reset all controllers
+const uint8_t CH_LOCAL_CTL = 0x7a;    // local control
+const uint8_t CH_ALL_NOTE_OFF = 0x7b; // all notes off
+const uint8_t CH_OMNI_OFF = 0x7c;     // omni mode off
+const uint8_t CH_OMNI_ON = 0x7d;      // omni mode on
+const uint8_t CH_MONO_ON = 0x7e;      // mono mode on (Poly off)
+const uint8_t CH_POLY_ON = 0x7f;      // poly mode on (Omni off)
+
+//------------------------------------------------------- MIDI-Funktionen -------------------------------------------------------------------------
 
 #define RAMEND 60928//----------------------------------- RAM increment for ESP32 ----------------------------------------------------------------- 
 
@@ -223,9 +214,8 @@ unsigned int noteTable []  PROGMEM = {16350, 17320, 18350, 19450, 20600, 21830, 
 #include "FS.h"
 #include <SD.h>
 #include <SPI.h>
-#include <Update.h>
-#include <ESP32Time.h> 
-ESP32Time e_rtc(0);  // offset in seconds GMT+1
+//#include <SdFat.h>
+
 //-------------------------------------- Verwendung der SD-Karte ----------------------------------------------------------------------------------
 //SPI CLASS FOR REDEFINED SPI PINS !
 SPIClass spiSD(HSPI);
@@ -238,9 +228,73 @@ byte SD_SET   = 44;      // -steht 44 im EEprom-Platz 10, dann sind die Werte im
 
 #define kSD_Fail  0      //Fehler-Marker
 #define kSD_OK    1      //OK-Marker
-//---------------------------------------- Konfiguration FRAM -------------------------------------------------------------------------------------
+File fp;
 
+//------------------------------------- OTA-Update-Lib --------------------------------------------------------------------------------------------
+#include <Update.h>
+
+//------------------------------------- ESP32-Time-Lib fuer Datei-zeitstempel ---------------------------------------------------------------------
+#include <ESP32Time.h>
+ESP32Time e_rtc(0);  // offset in seconds GMT+1
+
+//------------------------------------- Mathematische Funktionen fuer printnum --------------------------------------------------------------------
+#include "MathHelpers.h"
+
+//------------------------------------- SPI-FRAM-Lib ----------------------------------------------------------------------------------------------
 #include "Adafruit_FRAM_SPI.h"
+
+// ------------------------------ Dallas Temp-Sensor ----------------------------------------------------------------------------------------------
+#include <OneWire.h>
+#include <DallasTemperature.h>
+bool twire = false;
+
+//--------------------------------- DHT-Sensor ----------------------------------------------------------------------------------------------------
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <DHT_U.h>
+uint32_t delayMS;
+
+//-------------------------------- BMP180-Sensor---------------------------------------------------------------------------------------------------
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BMP085.h>
+// Store an instance of the BMP180 sensor.
+Adafruit_BMP085 bmp;
+// Store the current sea level pressure at your location in Pascals.
+float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA;
+
+// -------------------------- EEPROM Routinen für Parameter-Speicherung ---------------------------------------------------------------------------
+#include <EEPROM.h>
+#define EEPROM_SIZE 512  //2048 byte lesen/speichern
+
+//---------------------------- EEPROM o.FRAM-Chip I2C-Adressen ------------------------------------------------------------------------------------
+short int EEprom_ADDR = 0x57;
+
+// ---------------------------- W2812-seriell LED-Treiber -----------------------------------------------------------------------------------------
+#include <Adafruit_NeoPixel.h>
+unsigned int LED_COUNT      = 255;
+unsigned int LED_PIN        = 2;
+unsigned int LED_BRIGHTNESS = 50;
+unsigned int LED_TYP        = 2;
+Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);                //WS2812
+
+//------------------------------ MCP23017 IO-Expander ---------------------------------------------------------------------------------------------
+#include <Adafruit_MCP23X17.h>   //Adafruit MCP23xx Treiber
+Adafruit_MCP23X17 mcp;
+short int MCP23017_ADDR = 0x20 ; //Adresse 32 (0x20) für eingebauten MCP23017
+bool mcp_start_marker = false;
+//------------------------------ I2C Library ------------------------------------------------------------------------------------------------------
+#include <Wire.h>           // for I2C 
+#include "RTClib.h"         //to show time
+TwoWire myI2C = TwoWire(0); //eigenen I2C-Bus erstellen
+RTC_DS3231 rtc;
+//-------------------------------------- LCD-Treiber ----------------------------------------------------------------------------------------------
+#include "HD44780_LCD_PCF8574.h"
+#define DISPLAY_DELAY_INIT 50 // mS
+int LCD_SPALTEN, LCD_ZEILEN, LCD_ADRESSE, LCD_NACHKOMMA;
+bool LCD_start_marker = false;
+bool LCD_Backlight = true;
+
+//---------------------------------------- Konfiguration FRAM -------------------------------------------------------------------------------------
 byte FRAM_CS  = 0;//13;             //SPI_FRAM 512kB CS-Pin
 word FRAM_OFFSET      = 0x8000;     //Offset für Poke-Anweisungen, um zu verhindern, das in den Array-Bereich gepoked wird
 word FRAM_PIC_OFFSET  = 0x12C04;    //Platz pro Bildschirm im Speicher
@@ -256,58 +310,6 @@ bool list_send = false;
 bool serout_marker = false;
 #define SERIAL_SIZE_RX 1024
 
-// ------------------------------ Dallas Temp-Sensor ----------------------------------------------------------------------------------------------
-#include <OneWire.h>
-#include <DallasTemperature.h>
-bool twire = false;
-
-//--------------------------------- DHT-Sensor ----------------------------------------------------------------------------------------------------
-#include <Adafruit_Sensor.h>
-#include <DHT.h>
-#include <DHT_U.h>
-uint32_t delayMS;
-
-//-------------------------------- BMP180-Sensor---------------------------------------------------------------------------------------------------
-//#include <Adafruit_Sensor.h>
-#include <Adafruit_BMP085.h>
-// Store an instance of the BMP180 sensor.
-Adafruit_BMP085 bmp;
-
-// Store the current sea level pressure at your location in Pascals.
-float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA;
-
-// -------------------------- EEPROM Routinen für Parameter-Speicherung ---------------------------------------------------------------------------
-#include <EEPROM.h>
-#define EEPROM_SIZE 512  //2048 byte lesen/speichern
-
-// ---------------------------- W2812-seriell LED-Treiber -----------------------------------------------------------------------------------------
-#include <Adafruit_NeoPixel.h>
-unsigned int LED_COUNT      = 255;
-unsigned int LED_PIN        = 2;
-unsigned int LED_BRIGHTNESS = 50;
-unsigned int LED_TYP        = 2;
-Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);                //WS2812
-
-//------------------------------ MCP23017 IO-Expander ---------------------------------------------------------------------------------------------
-#include <Adafruit_MCP23X17.h>   //Adafruit MCP23xx Treiber
-Adafruit_MCP23X17 mcp;
-short int MCP23017_ADDR = 0x20 ; //Adresse 32 (0x20) für eingebauten MCP23017
-bool mcp_start_marker = false;
-
-//---------------------------- EEPROM o.FRAM-Chip I2C-Adressen ------------------------------------------------------------------------------------
-short int EEprom_ADDR = 0x50;
-
-File fp;
-
-#include <Wire.h>           // for I2C 
-#include "RTClib.h"         //to show time
-TwoWire myI2C = TwoWire(0); //eigenen I2C-Bus erstellen
-RTC_DS3231 rtc;
-
-
-#include "MathHelpers.h"
-
-
 //diese Konstellation funktioniert mit ESP-Eigenboard und RTC-Modul oder 27 und 26 für die Freigabe des Seriellports
 byte IIC_SET = 55;      // -steht 55 im EEprom-Platz 13, dann sind die Werte im EEprom gültig
 // dies ist die Standard-Konfiguration
@@ -319,12 +321,6 @@ byte KEY_SET = 66;      //-steht 66 im EEprom Platz 15, dann Nummer des Keyboard
 byte THEME_SET = 77;    //-steht 77 im EEPROM Platz 17, dann setze das gespeicherte Theme
 byte PATH_SET = 88;     //-steht 88 im EEPROM Platz 19, dann setze Arbeits-Pfad
 
-//-------------------------------------- LCD-Treiber ----------------------------------------------------------------------------------------------
-#include "HD44780_LCD_PCF8574.h"
-#define DISPLAY_DELAY_INIT 50 // mS
-int LCD_SPALTEN, LCD_ZEILEN, LCD_ADRESSE, LCD_NACHKOMMA;
-bool LCD_start_marker = false;
-bool LCD_Backlight = true;
 
 //------------------------------------- Akku-Überwachung ------------------------------------------------------------------------------------------
 #define Batt_Pin 39
@@ -486,7 +482,7 @@ const static char keywords[] PROGMEM = {
   'R', 'U', 'N' + 0x80,
   'S', 'A', 'V', 'E' + 0x80,
   'N', 'E', 'X', 'T' + 0x80,
-  'R', 'E', 'N' + 0x80,               //--
+  'R', 'E', 'N' + 0x80,
   'I', 'F' + 0x80,
   'G', 'O', 'T', 'O' + 0x80,
   'G', 'O', 'S', 'U', 'B' + 0x80,
@@ -501,7 +497,7 @@ const static char keywords[] PROGMEM = {
   'P', 'O', 'S' + 0x80,
   'C', 'O', 'L' + 0x80,
   'P', 'S', 'E', 'T' + 0x80,
-  'C', 'I', 'R', 'C' + 0x80,        //--
+  'C', 'I', 'R', 'C' + 0x80,
   'L', 'I', 'N', 'E' + 0x80,
   'R', 'E', 'C', 'T' + 0x80,
   'F', 'O', 'N', 'T' + 0x80,
@@ -541,7 +537,6 @@ const static char keywords[] PROGMEM = {
   'M', 'K', 'D' + 0x80,
   'R', 'M', 'D' + 0x80,
   'D', 'E', 'F', 'N' + 0x80,
-  //'T', 'R', 'O', 'N' + 0x80,
   'L', 'E', 'D' + 0x80,
   'E', 'D', 'I', 'T' + 0x80,
   'D', 'O', 'K', 'E' + 0x80,
@@ -561,7 +556,7 @@ const static char keywords[] PROGMEM = {
   'T', 'E', 'X', 'T' + 0x80,
   '?' + 0x80,
   'W', 'I', 'N', 'D', 'O', 'W' + 0x80,
-  'F', 'I', 'L', 'L' + 0x80,
+  'M', 'I', 'D', 'I' + 0x80,
   'H', 'E', 'L', 'P' + 0x80,
   0
 };
@@ -605,7 +600,7 @@ enum {
   KW_STYLE,
   KW_SCROLL,
   KW_START,
-  KW_THEME,   //-------->Option
+  KW_THEME,
   KW_DATA,
   KW_READ,
   KW_RESTORE,
@@ -649,7 +644,7 @@ enum {
   KW_TEXT,
   KW_PRINTING,
   KW_WINDOW,
-  KW_FILL,    //80
+  KW_MIDI,    //80
   KW_HELP,    //81
   KW_DEFAULT  //82/* hier ist das Ende */
 };
@@ -664,10 +659,10 @@ int logic_ergebnis[10];
 //-> bis zu 5 AND oder OR Vergleiche können in einer Zeile vorkommen
 
 struct stack_for_frame {
-  char frame_type; //1byte
-  int for_var;     //2byte
-  float to_var;    //4byte
-  float step;      //4byte
+  char frame_type;    //1byte
+  int for_var;        //2byte
+  float to_var;       //4byte
+  float step;         //4byte
   char *current_line; //1byte
   char *txtpos;       //1byte
 };
@@ -1119,9 +1114,11 @@ void printnum(float num, int modes)   //Ausgabe als float
 
 static int Memory_Dump() {                       //DMP Speichertyp 0..2 <,Adresse>
   int ex = 0, c, was;
-  int ln = (VGAController.getScreenHeight() / y_char[fontsatz])-3;   //Anzahl Zeilen abhängig vom Fontsatz
+  int ln = (VGAController.getScreenHeight() / y_char[fontsatz]) - 3; //Anzahl Zeilen abhängig vom Fontsatz
   //if (Frame_nr) win_set_cursor(0);               //sind Fenster gesetzt?, dann Hauptfenster setzen
   int x_weite = VGAController.getScreenWidth() / x_char[fontsatz];
+
+  byte rdbyte[8];
 
   word of = FRAM_OFFSET;
   long n;
@@ -1391,7 +1388,7 @@ int printline(void)
 
   num = line_num;
 
-  printnum(num,0);
+  printnum(num, 0);
 
   outchar(' ');
   while (*list_line != NL)
@@ -2448,7 +2445,7 @@ static float get_value(void)
   scantable(relop_tab);
   if (table_index == RELOP_UNKNOWN)
     return a;
-  
+
   switch (table_index)
   {
     case RELOP_GE:
@@ -2545,7 +2542,7 @@ static int set_TimeDate(void)
   }
   rtc.adjust(DateTime(tagzeit[2], tagzeit[1], tagzeit[0], tagzeit[3], tagzeit[4], tagzeit[5]));
   e_rtc.setTime(tagzeit[5], tagzeit[4], tagzeit[3], tagzeit[1], tagzeit[2], tagzeit[3]);
-  
+
   return 0;
 }
 
@@ -2576,15 +2573,15 @@ void list_out()
   int l = 0;
   int bis, num;
   bool b_bis = false;
-  
+
   linenum = testnum();                                                    // gibt 0 zurück, wenn keine Zeilennummer angegeben wird
 
-  if(*txtpos==','){                                                       // optionaler Wert bis zu welcher Zeile ausgegeben werden soll
+  if (*txtpos == ',') {                                                   // optionaler Wert bis zu welcher Zeile ausgegeben werden soll
     txtpos++;
     bis = get_value();
     b_bis = true;
   }
-  
+
   if (txtpos[0] != NL)                                                    //List darf nur im Kommandomodus benutzt werden
   {
     syntaxerror(syntaxmsg);
@@ -2595,11 +2592,11 @@ void list_out()
   while (list_line != program_end) {
 
     num = printline();                                                    //Zeile ausgeben
-    if(num >= bis && b_bis) break;                                        //Zeile bis zu der ausgegeben werden soll erreicht?
+    if (num >= bis && b_bis) break;                                       //Zeile bis zu der ausgegeben werden soll erreicht?
     l++;
     if (!list_send) {
-      if(l == (VGAController.getScreenHeight() / y_char[fontsatz])-8)     //Anzahl Zeilen abhängig vom gewählten Font, auf Taste warten
-      {  
+      if (l == (VGAController.getScreenHeight() / y_char[fontsatz]) - 8)  //Anzahl Zeilen abhängig vom gewählten Font, auf Taste warten
+      {
         l = 0;
         if (wait_key(true) == 3) break;
       }
@@ -2807,7 +2804,7 @@ static float data_get(void)
 {
   float value;
   float *var;
-  int tmp, stmp, i,var_pos, array_art ;
+  int tmp, stmp, i, var_pos, array_art ;
   char c;
   word arr_adr;
   array_art = 0;
@@ -2885,7 +2882,7 @@ static float data_get(void)
           else Stringtable[stmp + i++] = c;
         }
         else {
-           if (array_art == 2) {
+          if (array_art == 2) {
             SPI_RAM_write8(arr_adr + i, '\0');
             break;
           }
@@ -2895,21 +2892,21 @@ static float data_get(void)
 
       }
     }
-  
+
     return 0;
   }//String
-  
+
   spaces();
   value = data_expr();
-  
-  
+
+
   if (array_art == 1) {
     //if(Test_char(')')) return 1;
     byte* bytes = (byte*)&value;                            //float nach byte-array umwandeln
     SPI_RAM_write(arr_adr, bytes, 4);
     return 0;
   }
-  
+
   *var = value;
   return 0;
 }
@@ -3183,7 +3180,7 @@ int insert_line() {
     }
     program_end = newEnd;
   }
-
+  return 0;
 }
 
 
@@ -3296,7 +3293,9 @@ interpreteAtTxtpos:
           continue;
         }
 
-        load_file();
+        if (load_file()) {
+          continue;
+        }
         string_marker = false;
         if (*txtpos == ',') {
           txtpos++;
@@ -3309,6 +3308,7 @@ interpreteAtTxtpos:
       case KW_NEW:                                        // NEW
         cmd_new();
         continue;
+        break;
 
       case KW_RUN:                                        // RUN
         clear_var();
@@ -3354,18 +3354,15 @@ interpreteAtTxtpos:
         logic_ergebnis[logic_counter++] = int(val);       //Ergebnis in Puffer speichern und logicmarker hochzählen
         if (val != 0) {
           val = 0;                                        //für den Fall, das kein AND,OR vorkommt
-          
           break;
         }
         else
         {
           else_marker = true;
           val = 1;                                        //Für den Fall, das es kein AND OR gibt (einfaches IF)
-          //while(*txtpos!=':' && *txtpos != NL)
-          //  txtpos++;
-          //break;
           goto run_next_statement;                        //die ELSE Bedingung muss in der nächsten Zeile stehen
         }
+        break;
 
       case KW_ON:                                         //ON (GOTO/GOSUB)
         ongosub = 0;
@@ -3388,7 +3385,7 @@ interpreteAtTxtpos:
 
           if (a < 0 || a > 65535)
           {
-            syntaxerror(syntaxmsg);
+            //syntaxerror(syntaxmsg);
             continue;
           }
         }
@@ -3399,6 +3396,7 @@ interpreteAtTxtpos:
 
         current_line = findline();
         goto execline;
+        break;
 
       case KW_RETURN:                                     // RETURN
         goto gosub_return;
@@ -3410,6 +3408,7 @@ interpreteAtTxtpos:
 
       case KW_FOR:
         goto forloop;
+        break;
 
       case KW_INPUT:
         if (input()) continue;
@@ -3500,6 +3499,7 @@ interpreteAtTxtpos:
       case KW_END:
         current_line = program_end;
         goto execline;
+        break;
 
       case KW_CLEAR:
         clear_var();
@@ -3559,7 +3559,9 @@ interpreteAtTxtpos:
           goto execline;
           break;
         }
-        load_file();
+        if (load_file()) {
+          continue;
+        }
         continue;
         break;
 
@@ -3701,7 +3703,7 @@ interpreteAtTxtpos:
 
       case KW_DRAW:
         if (draws()) {
-          syntaxerror(syntaxmsg);
+          //syntaxerror(syntaxmsg);
           continue;
         }
         break;
@@ -3712,7 +3714,7 @@ interpreteAtTxtpos:
         if (pa == 'C' || pa == 'D' || pa == 'S') {
           txtpos++;
           if (sprite(pa)) {
-            syntaxerror(syntaxmsg);
+            //syntaxerror(syntaxmsg);
             continue;
           }
         }
@@ -3728,15 +3730,17 @@ interpreteAtTxtpos:
         break;
 
       case KW_PULSE:                  //PULSE(PORT,MS)
+
         if (set_pulse()) {
-          syntaxerror(syntaxmsg);
+          //  syntaxerror(syntaxmsg);
           continue;
         }
         break;
 
       case KW_PEN:
+
         if (set_pen()) {
-          syntaxerror(syntaxmsg);
+          //  syntaxerror(syntaxmsg);
           continue;
         }
         break;
@@ -3744,7 +3748,7 @@ interpreteAtTxtpos:
 
       case KW_LCD:
         if (LCD_Set()) {
-          syntaxerror(syntaxmsg);
+          //syntaxerror(syntaxmsg);
           continue;
         }
         break;
@@ -3809,7 +3813,7 @@ interpreteAtTxtpos:
 
       case KW_LED:
         if (LED_Set()) {
-          syntaxerror(syntaxmsg);
+          //syntaxerror(syntaxmsg);
           continue;
         }
         break;
@@ -3898,8 +3902,8 @@ interpreteAtTxtpos:
           continue;
         break;
 
-      case KW_FILL:
-        if (fill_area())
+      case KW_MIDI:
+        if (midi_player())
           continue;
         break;
 
@@ -3949,6 +3953,7 @@ execline:
 
 forloop:
     {
+
       //char var, c, d;
       float initial, step, to_var;
       int var, c, d, z;
@@ -3998,7 +4003,7 @@ forloop:
       if (c != NL && c != ':')
       {
         syntaxerror(syntaxmsg);
-        continue;//
+        continue;
       }
 
       if (!expression_error && (*txtpos == NL || *txtpos == ':'))
@@ -4026,9 +4031,11 @@ forloop:
         f->current_line = current_line;
         goto run_next_statement;
       }
+
     }
-    syntaxerror(syntaxmsg);
-    continue;
+
+    //syntaxerror(syntaxmsg);
+    //continue;
 
 
 next:
@@ -4120,7 +4127,7 @@ gosub_return:
     // Didn't find the variable we've been looking for
 
     syntaxerror(syntaxmsg);
-    continue;
+    //continue;
 
   }//while(1)
 } //Basic_interpreter
@@ -4140,7 +4147,7 @@ static int command_Print(void)
 {
   int k = 0;
   int xp, yp;
-  
+
   while (!k)
   { char c = spaces();
 
@@ -4424,19 +4431,19 @@ float rw_array(int num, word table) {
 //--------------------------------------------- Variablen löschen ---------------------------------------------------------------------------------
 
 void clear_var()
-{ 
+{
   float w_ert = 0;
   byte* bytes = (byte*)&w_ert;
-  
-  memset(tempstring,'\0',sizeof(tempstring));
-  
+
+  memset(tempstring, '\0', sizeof(tempstring));
+
   for (int i = 0; i < VAR_SIZE * 26 * 27; i++)                    //Variablen löschen
   {
     variables_begin[i] = 0;
   }
   //for (int i = 0; i < 26; i++)                              //Strings löschen
   //{
-    memset(Stringtable, '\0', sizeof(Stringtable));
+  memset(Stringtable, '\0', sizeof(Stringtable));
   //}
   for (int i = 0x7e00; i < 0x7fff; i += 4) SPI_RAM_write(i, bytes, 4);   //Array-Tabelle löschen
   Var_Neu_Platz = 0;                                              //Array-Zeiger zurücksetzen
@@ -4460,7 +4467,7 @@ void cmd_new(void) {
   clear_var();                                                        //Variablen und Array-Tabelle löschen
   for (int i = 0x0; i < 0x7fff; i += 4) SPI_RAM_write(i, bytes, 4);   //Array-Bereich löschen
   del_window();                                                       //Fensterparameter löschen
-  Frame_nr=0;                                                         //Hauptfenster setzen
+  Frame_nr = 0;                                                       //Hauptfenster setzen
   print_info();                                                       //Start-Bildschirm anzeigen
 
 }
@@ -4662,7 +4669,7 @@ next:
 static int set_style(void)
 {
   int st;
-  
+
 again:
   expression_error = 0;
   st = abs(int(get_value()));         //nur ganze Zahlen
@@ -4702,7 +4709,7 @@ again:
 static int scroll_xy(void)
 {
   short int par[6];
-  
+
   expression_error = 0;
   par[0] = get_value();
   if (expression_error) return 1;
@@ -4883,7 +4890,57 @@ static int sprite(char cm) {
 //#######################################################################################################################################
 static int Sound(void) {
   short int  par[7];
+  char c;
+  if (Test_char('_')) return 1;                           //Klammer-auf vorhanden?
+  c = *txtpos;
+  expression_error = 0;
+  txtpos++;
+  switch (c) {
+    case 'N':
+      for (int i = 1; i < 5; i++)
+      {
+        expression_error = 0;
+        par[i] = int(get_value());
+        if (expression_error) return 1;
+        if (i < 4) {
+          if (Test_char(',')) return 1;
+        }
+      }
+      midiNoteOn(par[1], par[2], par[3]);
+      delay(par[4]);
+      midiNoteOff(par[1], par[2], par[3]);
+      break;
 
+    case 'C':
+      for (int i = 1; i < 4; i++)
+      {
+        expression_error = 0;
+        par[i] = int(get_value());
+        if (expression_error) return 1;
+        if (i < 3) {
+          if (Test_char(',')) return 1;
+        }
+      }
+      midiChannelMessage(par[1], par[2], par[3]);
+      break;
+
+    case 'I':
+      expression_error = 0;
+      par[1] = int(get_value());
+      if (Test_char(',')) return 1;
+      par[2] = int(get_value());
+      midiSetInstrument(par[1], par[2]);
+      break;
+      
+    case 'R':
+      VS1053_MIDI.write(0xff);
+      break;
+        
+    default:
+      break;
+
+  }
+  //Sound(Chan,note,vel,duration)
   /*
        Sequence:
       SND(waveform,frequency,duration,volume)
@@ -4903,23 +4960,15 @@ static int Sound(void) {
       volume:
           volume (min is 0, max is 127)  snd(waveform,freq,duration,vol)
   */
-  if (Test_char('(')) return 1;                           //Klammer-auf vorhanden?
+  //if (Test_char('(')) return 1;                           //Klammer-auf vorhanden?
 
-  for (int i = 1; i < 5; i++)
-  {
-    expression_error = 0;
-    par[i] = get_value();
-    if (expression_error) return 1;
-    if (i < 4) {
-      if (Test_char(',')) return 1;
-    }
-  }
-  if (par[1] > 5)   par[1] = 5;
-  if (par[4] > 127) par[4] = 127;
-  par[2] = NoteToFreq(par[2]);
+
+  //if (par[1] > 5)   par[1] = 5;
+  //if (par[4] > 127) par[4] = 127;
+  //par[2] = NoteToFreq(par[2]);
   //Terminal.write("\e_S0;800;1000;100$");
-  Terminal.print("\e_S" + String(par[1], DEC) + ";" + String(par[2], DEC) + ";" + String(par[3], DEC) + ";" + String(par[4], DEC) + "$");
-  if (Test_char(')')) return 1;                           //Klammer-zu vorhanden?
+  //Terminal.print("\e_S" + String(par[1], DEC) + ";" + String(par[2], DEC) + ";" + String(par[3], DEC) + ";" + String(par[4], DEC) + "$");
+  //if (Test_char(')')) return 1;                           //Klammer-zu vorhanden?
 
   // Check that we are at the end of the statement
   if (*txtpos != NL && *txtpos != ':' )  return 1;
@@ -5319,13 +5368,13 @@ static int cursor_onoff(void)
 
 //--------------------------------------------- CLS mit Scrolleffekt ------------------------------------------------------------------------------
 /*
-void cmd_cls(void) {
+  void cmd_cls(void) {
   int t = VGAController.getScreenHeight();
 
   for (int i = 0; i < (t+1); i++) {
     GFX.scroll(0, -1);
   }
-}
+  }
 */
 //#######################################################################################################################################
 //--------------------------------------------- POS - Befehl --------------------------------------------------------------------------------------
@@ -5476,7 +5525,7 @@ void set_font(int fnt) {
 void print_info()
 { int c, d, e, f;
   String built;
-  
+
   int y_pos = VGAController.getScreenHeight() / y_char[fontsatz];
   int x_pos = VGAController.getScreenWidth() / x_char[fontsatz];
 
@@ -5512,9 +5561,9 @@ int h = 100;
   GFX.drawLine(100 - h, 7 + (2 * y_char[fontsatz]), 219 + h, 7 + (2 * y_char[fontsatz]));
 
   fcolor(Vordergrund);
-  strcpy(tempstring,BuiltTime);
+  strcpy(tempstring, BuiltTime);
   drawing_text(15, 278, 1);
-  
+
   tc.setCursorPos((x_pos - 26) / 2, 1);
   Terminal.write("Basic32+ V");
   Terminal.write(BasicVersion);
@@ -5607,7 +5656,8 @@ static int inchar()
 
       while (1)
       {
-
+        //if(Serial.available()){
+        //  c=Serial.read();
         if (Terminal.available() ) {
           c = Terminal.read();          //Standard-Tasteneingabe
 
@@ -5661,6 +5711,7 @@ static void outchar(char c)
   }
   else {
     if (ser_marker && list_send) Serial1.write(c);       //User-Seriellschnittstelle
+
     else if (Frame_nr) {                                 //************************** im Fenster schreiben ******************
 
       x_pos = tc.getCursorCol();
@@ -5690,6 +5741,7 @@ static void outchar(char c)
       }
     }                                                    //************************** im Fenster schreiben ******************
     Terminal.write(c);                                   //auf FabGl VGA-Terminal schreiben----------------------------------
+    //Serial.write(c);
   }
 }
 
@@ -5770,7 +5822,7 @@ static int load_file(void)
   expression_error = 0;
   get_value();                                              //in tempstring steht der Dateiname
 
-  if (expression_error) return 1;
+  if (expression_error) return expression_error;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
 
@@ -5778,6 +5830,8 @@ static int load_file(void)
   {
     syntaxerror(sdfilemsg);                                 //Datei nicht vorhanden -> Fehlerausgabe
     sd_ende();
+    expression_error = 1;
+    return expression_error;
   }
   else {
     fp = SD.open(String(sd_pfad) + String(tempstring));     //Datei zum Laden öffnen
@@ -5786,7 +5840,7 @@ static int load_file(void)
   }
 
   warmstart();
-  return 0;
+  return expression_error;
 }
 
 //#######################################################################################################################################
@@ -5804,7 +5858,7 @@ static int save_file()
   if (expression_error) return 1;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
-  
+
   // remove the old file if it exists
   if ( SD.exists( String(sd_pfad) + String(tempstring))) {          //Datei existiert schon, überschreiben?
     printmsg("File exist, overwrite? (y/n)", 0);
@@ -6050,7 +6104,7 @@ void cmd_Dir(void)
   int wd = GFX.getWidth() / x_char[fontsatz];
   int Dateien = 0;
 
-  spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         
+  spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
 
   File dir = SD.open(String(sd_pfad));
   dir.seek(0);                                                  //zum Verzeichnis-Anfang
@@ -6078,35 +6132,35 @@ void cmd_Dir(void)
       }
       printnum(int(entry.size()), Zahlenformat);                //Dateigrösse ausgeben
       Dateien++;
-      itoa(entry.size(),tempstring,10);                         //Dateigrösse in String umwandeln
+      itoa(entry.size(), tempstring, 10);                       //Dateigrösse in String umwandeln
       for ( int i = strlen(tempstring) ; i < 8 ; i++ ) {        //abhängig von der Stringlänge, Leerzeichen ausgeben
         printmsg(spacemsg, 0);
       }
-      time_t t= entry.getLastWrite();                           //Datei-Zeitstempel lesen
+      time_t t = entry.getLastWrite();                          //Datei-Zeitstempel lesen
       struct tm * tmstruct = localtime(&t);
-      if(tmstruct->tm_mday < 10) outchar('0');                  //führende Null bei Werten < 10
-      printnum(tmstruct->tm_mday,0);                            //Tag ausgeben
+      if (tmstruct->tm_mday < 10) outchar('0');                 //führende Null bei Werten < 10
+      printnum(tmstruct->tm_mday, 0);                           //Tag ausgeben
       outchar('.');
-      if(tmstruct->tm_mon < 10) outchar('0');                   //führende Null bei Werten < 10
-      printnum(tmstruct->tm_mon,0);                             //Monat ausgeben
+      if (tmstruct->tm_mon < 10) outchar('0');                  //führende Null bei Werten < 10
+      printnum(tmstruct->tm_mon, 0);                            //Monat ausgeben
       outchar('.');
-      printnum(((tmstruct->tm_year)+1900),0);                   //Jahr ausgeben
-      if(wd > 40){                                              //bei Terminalbreite > 40 zusätzlich Zeit anzeigen
+      printnum(((tmstruct->tm_year) + 1900), 0);                //Jahr ausgeben
+      if (wd > 40) {                                            //bei Terminalbreite > 40 zusätzlich Zeit anzeigen
         outchar(' ');
-        if(tmstruct->tm_hour < 10) outchar('0');                //Stunde ausgeben
-        printnum(tmstruct->tm_hour,0);
+        if (tmstruct->tm_hour < 10) outchar('0');               //Stunde ausgeben
+        printnum(tmstruct->tm_hour, 0);
         outchar(':');
-        if(tmstruct->tm_min < 10) outchar('0');                 //Minute ausgeben
-        printnum(tmstruct->tm_min,0);
+        if (tmstruct->tm_min < 10) outchar('0');                //Minute ausgeben
+        printnum(tmstruct->tm_min, 0);
       }
-      
+
     }
     line_terminator();
     entry.close();
     ln++;
 
-    if (ln == (VGAController.getScreenHeight() / y_char[fontsatz])-3)  //Ausgabezeilen abhängig vom gewählten Fontsatz
-    { 
+    if (ln == (VGAController.getScreenHeight() / y_char[fontsatz]) - 3) //Ausgabezeilen abhängig vom gewählten Fontsatz
+    {
       if (wait_key(true) == 3) ex = 1;                          //nach ln Zeilen auf Tastatur warten ->SPACE,ENTER=weiter, CTRL+C=EXIT
       ln = 1;
     }
@@ -6282,6 +6336,8 @@ VGAController.setResolution(QVGA_320x240_60Hz);
   Terminal.begin(&VGAController);
   Terminal.connectLocally();                                                           // für Terminal Komandos
 
+  //Serial.begin(115200);
+
   set_font(fontsatz);                                                                  // Fontsatz laden (1 Byte)
   Terminal.enableCursor(true);
   fbcolor(Vordergrund, Hintergrund);
@@ -6339,7 +6395,15 @@ VGAController.setResolution(QVGA_320x240_60Hz);
 
   rtc.begin(&myI2C);
   getdatetime();                                              //ESP32-interne Uhr stellen für Datei-Zeitstempel
-  //e_rtc.setTime(30, 24, 15, 17, 1, 2021);                   //nur zum Test
+
+  //-------------------------------- Soundmodul MIDI-Schnittstelle ----------------------------------------------------
+  VS1053_MIDI.begin(MIDI_Baud, SERIAL_8N1, -1, 25); // MIDI uses a 'strange baud rate'
+  delay(200);
+  midiSetChannelBank(0, MIDI_BANK_MELODY);
+  midiSetChannelVolume(0, 127);
+  //  midiSetReverbType(0, 1);
+  //  midiSetReverbLevel(0,127);
+  midiSetInstrument(0, 1); //
 
   //-------------------------------- Akku-Überwachung per Timer0-Interrupt --------------------------------------------
 #ifdef Akkualarm_enabled
@@ -6892,7 +6956,7 @@ nochmal:
   //############################################### Zeileneditor ##########################################################################
   //#######################################################################################################################################
   void Editor(int lnr) {
-    
+
     linenum = lnr;
     list_line = findline();
 
@@ -6914,11 +6978,11 @@ nochmal:
     insert_line();                             //aktualisierte Zeile in Speicher einfügen
 
   }
-  
+
 
   //-------------------------------------------- zu editierende Zeile in den Puffer schreiben -----------------------------------------------
   void edit_getline()
-  { 
+  {
     int num, i;
     LINENUM line_num;
 
@@ -6928,15 +6992,15 @@ nochmal:
 
     i = 0;
 
-    printnum(num,0);
+    printnum(num, 0);
     outchar(' ');
-    
+
     while (*list_line != NL)
     {
       tempstring[i] = *list_line;
       list_line++;
       i++;
-      
+
     }
     tempstring[i] = '\0';
 
@@ -7040,7 +7104,7 @@ nochmal:
     scantable(options);                                                  //Optionstabelle lesen
     char fu = table_index;
     int i, adr;
-    
+
     if (Test_char('=')) return 1;                                        //nach der Option kommt ein '='
 
     switch (fu) {
@@ -7822,7 +7886,7 @@ nochmal:
   }
   //#######################################################################################################################################
 
-  
+
 
   //#######################################################################################################################################
   //-----------------------------------------Befehl GRID_typ(x,y,x_zell,y_zell,x_pixel_step,y_pixelstep,frame_color,grid_color,pixel_raster,scale,arrow,frame) ----------------------
@@ -8175,10 +8239,10 @@ nochmal:
       syntaxerror(valmsg);
       return 1;
     }
-    
+
     if (nr > 5) nr = 5;
     Frame_nr = nr;                                            //setze aktuelles Fenster
-    if (*txtpos == ')') {                                     
+    if (*txtpos == ')') {
       txtpos++;
 
       if (nr == 0) {                                          //Window(0) setzt ebenfalls das Hauptfenster
@@ -8211,18 +8275,18 @@ nochmal:
     if (Frame_y[nr] > vv ) Frame_y[nr] = vv;
 
     if (Test_char(',')) return 1;                             //Fenster erstellen
-    
+
     a = get_value();
     Frame_xx[nr] = abs(a * x_char[fontsatz]);
     if (Frame_xx[nr] > vh) Frame_xx[nr] = vh;
 
     if (Test_char(',')) return 1;
-    
+
     a = get_value();
     Frame_yy[nr] = abs(a * y_char[fontsatz]);
     if (Frame_yy[nr] > vv ) Frame_y[nr] = vv;
 
-    if (*txtpos == ',') {                                                //optionale Werte 
+    if (*txtpos == ',') {                                                //optionale Werte
       txtpos++;
       Frame_col[nr] = get_value();                                       //optionale Rahmen-Farbe
 
@@ -8252,7 +8316,7 @@ nochmal:
 
   }
 
-//----------------------------------------------- Window-Cursor-Initialwerte errechnen --------------------------------------------------
+  //----------------------------------------------- Window-Cursor-Initialwerte errechnen --------------------------------------------------
 
   void win_dimension(int nr)                                            //Cursor-Initial-Koordinaten errechnen
   {
@@ -8260,7 +8324,7 @@ nochmal:
     Frame_cury[nr] = (Frame_y[nr] / y_char[fontsatz]) + 2;
   }
 
-//----------------------------------------------- Window-Rahmen erstellen ---------------------------------------------------------------
+  //----------------------------------------------- Window-Rahmen erstellen ---------------------------------------------------------------
   void make_win(int nr, int col) {                                      //Fensterrahmen erstellen
     if (col > -1) {                                                     //Werte > -1 erzeugen einen farbigen Rahmen, -1=Rahmen unsichtbar
       fcolor(col);
@@ -8269,7 +8333,7 @@ nochmal:
     }
   }
 
-//----------------------------------------------- Window-Cursor setzen ------------------------------------------------------------------
+  //----------------------------------------------- Window-Cursor setzen ------------------------------------------------------------------
 
   void win_set_cursor(int nr) {                                         //Cursor im Fenster setzen
     fbcolor(Frame_vcol[nr], Frame_hcol[nr]);
@@ -8278,7 +8342,7 @@ nochmal:
     tc.setCursorPos(Frame_curx[nr], Frame_cury[nr]);
   }
 
-//----------------------------------------------- Window-Parameter löschen --------------------------------------------------------------
+  //----------------------------------------------- Window-Parameter löschen --------------------------------------------------------------
   void del_window(void) {                                             //Fensterparameter löschen
     for (int i = 1; i < 6; i++) {
       Frame_x[i]        = 0;
@@ -8297,52 +8361,37 @@ nochmal:
     }
   }
 
-//----------------------------------------------- Window-Fensterinhalt eine Zeile nach oben scrollen ------------------------------------
-void move_up(int nr) {
-  int vx, vy, bx, by, cx, cy;
-  fbcolor(Frame_vcol[nr], Frame_hcol[nr]);                                                                //Fensterfarben setzen
-  Terminal.enableCursor(false);                                                                           //Cursor abschalten
-  vx = Frame_x[nr] + x_char[fontsatz];
-  vy = Frame_y[nr] + y_char[fontsatz] + y_char[fontsatz];
-  bx = Frame_x[nr] + x_char[fontsatz];
-  by = Frame_y[nr] + y_char[fontsatz];
-  cx = Frame_xx[nr] - Frame_x[nr];
-  cy = Frame_yy[nr] - Frame_y[nr] - y_char[fontsatz] - y_char[fontsatz];
-  GFX.copyRect(vx, vy, bx, by, cx, cy);                                                                   //Bereich 2.Zeile bis letzte Zeile eine Zeile höher kopieren
-  GFX.fillRectangle(Frame_x[nr]+1, Frame_yy[nr] - y_char[fontsatz], Frame_xx[nr]-1, Frame_yy[nr]-1);      //letzte Zeile löschen
-  Terminal.enableCursor(onoff);                                                                           //Cursor wieder in vorherigen Zustand versetzen
-}
-
-//------------------------------------------------ CLS im Window ------------------------------------------------------------------------
-
-void win_cls(int nr) {
-  int zeilen;
-  fbcolor(Frame_vcol[nr], Frame_hcol[nr]);
-  Terminal.enableCursor(false);                                                             //Cursor abschalten um Fehldarstellungen zu verhindern
-  GFX.fillRectangle(Frame_x[nr] + 1, Frame_y[nr] + 1, Frame_xx[nr] - 1, Frame_yy[nr] - 1);  //Fensterbereich innerhalb des Rahmens löschen
-  if (Frame_title[nr]) {                                                                    //Titel vorhanden?
-    strcpy(tempstring, Frame_ttext[nr]);                                                    //Titeltext nach tempstring kopieren
-    drawing_text(fontsatz, Frame_x[nr] + x_char[fontsatz], Frame_y[nr] - 3);                //Titeltext ausgeben
+  //----------------------------------------------- Window-Fensterinhalt eine Zeile nach oben scrollen ------------------------------------
+  void move_up(int nr) {
+    int vx, vy, bx, by, cx, cy;
+    fbcolor(Frame_vcol[nr], Frame_hcol[nr]);                                                                //Fensterfarben setzen
+    Terminal.enableCursor(false);                                                                           //Cursor abschalten
+    vx = Frame_x[nr] + x_char[fontsatz];
+    vy = Frame_y[nr] + y_char[fontsatz] + y_char[fontsatz];
+    bx = Frame_x[nr] + x_char[fontsatz];
+    by = Frame_y[nr] + y_char[fontsatz];
+    cx = Frame_xx[nr] - Frame_x[nr];
+    cy = Frame_yy[nr] - Frame_y[nr] - y_char[fontsatz] - y_char[fontsatz];
+    GFX.copyRect(vx, vy, bx, by, cx, cy);                                                                   //Bereich 2.Zeile bis letzte Zeile eine Zeile höher kopieren
+    GFX.fillRectangle(Frame_x[nr] + 1, Frame_yy[nr] - y_char[fontsatz], Frame_xx[nr] - 1, Frame_yy[nr] - 1); //letzte Zeile löschen
+    Terminal.enableCursor(onoff);                                                                           //Cursor wieder in vorherigen Zustand versetzen
   }
-  win_set_cursor(nr);                                                                       //initial Cursorposition im Fenster setzen
-  Terminal.enableCursor(onoff);                                                             //Cursor wieder setzen
-}
-/*
-  int draw_char(void) {
-    int x, y, xx, yy;
-    if (Test_char('(')) return 1;
-    x = get_value() * x_char[fontsatz];
-    if (Test_char(',')) return 1;
-    y = get_value() * y_char[fontsatz];
-    if (Test_char(',')) return 1;
-    fnt = get_value() * x_char[fontsatz];;
-    if (Test_char(',')) return 1;
-    c = get_value();                                  //Char
-    if (Test_char(')')) return 1;
-    GFX.drawText(x, y, xx, yy);
-    return 0;
+
+  //------------------------------------------------ CLS im Window ------------------------------------------------------------------------
+
+  void win_cls(int nr) {
+    int zeilen;
+    fbcolor(Frame_vcol[nr], Frame_hcol[nr]);
+    Terminal.enableCursor(false);                                                             //Cursor abschalten um Fehldarstellungen zu verhindern
+    GFX.fillRectangle(Frame_x[nr] + 1, Frame_y[nr] + 1, Frame_xx[nr] - 1, Frame_yy[nr] - 1);  //Fensterbereich innerhalb des Rahmens löschen
+    if (Frame_title[nr]) {                                                                    //Titel vorhanden?
+      strcpy(tempstring, Frame_ttext[nr]);                                                    //Titeltext nach tempstring kopieren
+      drawing_text(fontsatz, Frame_x[nr] + x_char[fontsatz], Frame_y[nr] - 3);                //Titeltext ausgeben
+    }
+    win_set_cursor(nr);                                                                       //initial Cursorposition im Fenster setzen
+    Terminal.enableCursor(onoff);                                                             //Cursor wieder setzen
   }
-*/
+
   //#######################################################################################################################################
   //--------------------------------------------- Utility-Funktionstasten -----------------------------------------------------------------
   //#######################################################################################################################################
@@ -8398,123 +8447,124 @@ void win_cls(int nr) {
     line_terminator();
     printmsg("OK>", 0);
   }
-//***************************************************** Testbereich - Fill *****************************************************************
-      //------------------------------------------ Befehl Fill --------------------------------------------------------------------------------------
-      int fill_area(void) {
-        int xx, yy, xl, xr, yo, yu, x, y, c, lbuf[3], rbuf[3], cl, cr;
-        bool d, l, r, o, u, xl_m, xr_m = false;
+  //***************************************************** Testbereich - Fill *****************************************************************
+  /*
+        //------------------------------------------ Befehl Fill --------------------------------------------------------------------------------------
+        int fill_area(void) {
+          int xx, yy, xl, xr, yo, yu, x, y, c, lbuf[3], rbuf[3], cl, cr;
+          bool d, l, r, o, u, xl_m, xr_m = false;
 
-        x = get_value();
-        if (Test_char(',')) return 1;
-        y = get_value();
-        if (Test_char(',')) return 1;
-        c = get_value();
-        fcolor(c);
-        xl = x;
-        xr = x;
-        yo = y;
-        yu = y;
-        d = false;
+          x = get_value();
+          if (Test_char(',')) return 1;
+          y = get_value();
+          if (Test_char(',')) return 1;
+          c = get_value();
+          fcolor(c);
+          xl = x;
+          xr = x;
+          yo = y;
+          yu = y;
+          d = false;
 
-        while (!d) {
-          if (Test_pixel(xl, yo, 1) == Hintergrund) {         //hat Pixel die Hintergrundfarbe?
-            if (xl >= 0 && xl < GFX.getWidth() && y >= 0) {   //innerhalb der Grenzen bleiben
-              GFX.setPixel(xl, yo);                           //dann setze Pixel
-              xl--;                                           //ein Pixel nach links
+          while (!d) {
+            if (Test_pixel(xl, yo, 1) == Hintergrund) {         //hat Pixel die Hintergrundfarbe?
+              if (xl >= 0 && xl < GFX.getWidth() && y >= 0) {   //innerhalb der Grenzen bleiben
+                GFX.setPixel(xl, yo);                           //dann setze Pixel
+                xl--;                                           //ein Pixel nach links
+              }
+              else xl_m = true;                                 //ausserhalb der Grenzen - abbruch
             }
-            else xl_m = true;                                 //ausserhalb der Grenzen - abbruch
-          }
-          else {                                              //Pixel gesetzt = rand links detektiert - abbruch
-            xl_m = true;
-          }
-
-          if (Test_pixel(xr, yy, 1) == Hintergrund) {                       //hat Pixel die Hintergrundfarbe?
-            if (xr >= 0 && xr < GFX.getWidth() && y >= 0) {   //innerhalb der Grenzen bleiben
-              GFX.setPixel(xr, yo);                           //dann setze Pixel
-              xr++;                                           //ein Pixxel nach rechts
+            else {                                              //Pixel gesetzt = rand links detektiert - abbruch
+              xl_m = true;
             }
-            else xr_m = true;                                 //Grenzen erreicht, dann abbruch
 
-          }
-          else {                                              //rand rechts detektiert, dann abbruch
-            xr_m = true;
-          }
+            if (Test_pixel(xr, yy, 1) == Hintergrund) {                       //hat Pixel die Hintergrundfarbe?
+              if (xr >= 0 && xr < GFX.getWidth() && y >= 0) {   //innerhalb der Grenzen bleiben
+                GFX.setPixel(xr, yo);                           //dann setze Pixel
+                xr++;                                           //ein Pixxel nach rechts
+              }
+              else xr_m = true;                                 //Grenzen erreicht, dann abbruch
 
-          if (xr_m && xl_m)                                   //Grenzen rechtss und links erreicht
-          { 
-            if (Test_pixel(x, yo - 1, 1) == Hintergrund)      //test Pixel eine Zeile höher
+            }
+            else {                                              //rand rechts detektiert, dann abbruch
+              xr_m = true;
+            }
+
+            if (xr_m && xl_m)                                   //Grenzen rechtss und links erreicht
             {
-              yo--;                                           //eine Zeile höher
-              xr_m = false;                                   //rechten Grenzmarker zurücksetzen
-              xl_m = false;                                   //linken Grenzmarker zurücksetzen
-              
-              //x = xr - xl ;                                 //mitte neu errechnen
-              xr = x;
-              xl = x;
-            }
-            else {
-              d = true;
-            }
-          }
-          
+              if (Test_pixel(x, yo - 1, 1) == Hintergrund)      //test Pixel eine Zeile höher
+              {
+                yo--;                                           //eine Zeile höher
+                xr_m = false;                                   //rechten Grenzmarker zurücksetzen
+                xl_m = false;                                   //linken Grenzmarker zurücksetzen
 
+                //x = xr - xl ;                                 //mitte neu errechnen
+                xr = x;
+                xl = x;
+              }
+              else {
+                d = true;
+              }
+            }
+
+
+          }
+          //x = xr - 1 - xl - 1;
+          xl = x;
+          xr = x;
+          yu = y;
+          d = false;
+
+          while (!d) {
+            if (Test_pixel(xl, yu, 1) == Hintergrund) {
+              if (xl >= 0 && xl < GFX.getWidth() && yu < GFX.getHeight()) {
+                GFX.setPixel(xl, yu);
+                xl--;
+              }
+              else xl_m = true;
+
+            }
+            else {                        //rand links detektiert
+              xl_m = true;
+            }
+
+            if (Test_pixel(xr, yu, 1) == Hintergrund) {
+              if (xr >= 0 && xr < GFX.getWidth() && yu < GFX.getHeight()){
+                GFX.setPixel(xr, yu);
+                xr++;
+              }
+              else xr_m = true;
+
+            }
+            else {                        //rand rechts detektiert
+              xr_m = true;
+            }
+
+            if (xr_m && xl_m)
+            { //rand links und rechts erreicht dann eine Zeile tiefer
+              if (Test_pixel(x, yu + 1, 1) == Hintergrund)
+              {
+                yu++;
+                xr_m = false;
+                xl_m = false;
+                //x = xr - 1 - xl -1;
+                xr = x;
+                xl = x;
+              }
+              else {
+                d = true;
+              }
+            }
+
+          }
+          fcolor(Vordergrund);
+          return 0;
         }
-        //x = xr - 1 - xl - 1;
-        xl = x;
-        xr = x;
-        yu = y;
-        d = false;
-
-        while (!d) {
-          if (Test_pixel(xl, yu, 1) == Hintergrund) {
-            if (xl >= 0 && xl < GFX.getWidth() && yu < GFX.getHeight()) {
-              GFX.setPixel(xl, yu);
-              xl--;
-            }
-            else xl_m = true;
-
-          }
-          else {                        //rand links detektiert
-            xl_m = true;
-          }
-
-          if (Test_pixel(xr, yu, 1) == Hintergrund) {
-            if (xr >= 0 && xr < GFX.getWidth() && yu < GFX.getHeight()){
-              GFX.setPixel(xr, yu);
-              xr++;
-            }
-            else xr_m = true;
-
-          }
-          else {                        //rand rechts detektiert
-            xr_m = true;
-          }
-
-          if (xr_m && xl_m)
-          { //rand links und rechts erreicht dann eine Zeile tiefer
-            if (Test_pixel(x, yu + 1, 1) == Hintergrund)
-            {
-              yu++;
-              xr_m = false;
-              xl_m = false;
-              //x = xr - 1 - xl -1;
-              xr = x;
-              xl = x;
-            }
-            else {
-              d = true;
-            }
-          }
-
-        }
-        fcolor(Vordergrund);
-        return 0;
-      }
 
 
+  */
 
 
-  
   //------------------------------------------------- Prüfe, ob Pixel gesetzt ist --------------------------------------------------------------
   //->modes=0 - test Pixel gesetzt(1) oder nicht(0); modes=1 gibt die Farbe des Pixels zurück
 
@@ -8534,3 +8584,132 @@ void win_cls(int nr) {
     }
     else return c;          //Farbe des Pixels
   }
+
+  //-------------------------------------------------------- Testbereich Midi-Player -----------------------------------------------------
+  int midi_player(void) {
+    /*
+        int err;
+        get_value();                                              //in tempstring steht der Dateiname
+
+        if (expression_error) return expression_error;
+
+        spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+
+        if ( !SD.exists(String(sd_pfad) + String(tempstring)))    //Datei vorhanden?
+        {
+          syntaxerror(sdfilemsg);                                 //Datei nicht vorhanden -> Fehlerausgabe
+          sd_ende();
+          expression_error = 1;
+          return expression_error;
+        }
+        else {
+          //fp = SD.open(String(sd_pfad) + String(tempstring));     //Datei zum Laden öffnen
+          //SMF.begin(SD);
+          SMF.setMidiHandler(midiCallback);
+          err = SMF.load(tempstring);
+          //fp = SD.open(String(sd_pfad) + String(tempstring));     //Datei zum Laden öffnen
+          if (err != MD_MIDIFile::E_OK)
+          {
+            syntaxerror(sdfilemsg);
+            return 1;
+
+          }
+        }
+        if (!SMF.isEOF())
+        {
+          SMF.getNextEvent();
+        }
+        SMF.close();
+        sd_ende();                                                //SD-Card unmount
+    */
+  }
+
+
+  void midiSetInstrument(uint8_t chan, uint8_t inst) {
+    if (chan > 15) return;
+    inst --; // page 32 has instruments starting with 1 not 0 :(
+    if (inst > 127) return;
+    VS1053_MIDI.write(MIDI_CHAN_PROGRAM | chan);
+    VS1053_MIDI.write(inst);
+  }
+
+  void midiChannelMessage(uint8_t chan, uint8_t cmsg, uint8_t value) {
+    if (chan > 15) return;
+    if (cmsg > 127) return;
+    if (value > 127) return;
+    VS1053_MIDI.write(MIDI_CHAN_MSG | chan);
+    VS1053_MIDI.write(cmsg);
+    VS1053_MIDI.write(value);
+  }
+
+  void midiSetChannelVolume(uint8_t chan, uint8_t vol) {
+    if (chan > 15) return;
+    if (vol > 127) return;
+
+    VS1053_MIDI.write(MIDI_CHAN_MSG | chan);
+    VS1053_MIDI.write(MIDI_CHAN_VOLUME);
+    VS1053_MIDI.write(vol);
+  }
+
+  void midiSetChannelBank(uint8_t chan, uint8_t bank) {
+    if (chan > 15) return;
+    if (bank > 127) return;
+
+    VS1053_MIDI.write(MIDI_CHAN_MSG | chan);
+    VS1053_MIDI.write((uint8_t)MIDI_CHAN_BANK);
+    VS1053_MIDI.write(bank);
+  }
+
+  void midiNoteOn(uint8_t chan, uint8_t n, uint8_t vel) {
+    if (chan > 15) return;
+    if (n > 127) return;
+    if (vel > 127) return;
+
+    VS1053_MIDI.write(MIDI_NOTE_ON | chan);
+    VS1053_MIDI.write(n);
+    VS1053_MIDI.write(vel);
+  }
+
+  void midiNoteOff(uint8_t chan, uint8_t n, uint8_t vel) {
+    if (chan > 15) return;
+    if (n > 127) return;
+    if (vel > 127) return;
+
+    VS1053_MIDI.write(MIDI_NOTE_OFF | chan);
+    VS1053_MIDI.write(n);
+    VS1053_MIDI.write(vel);
+  }
+
+  void midiSetPan(uint8_t chan, uint8_t pan) {
+    VS1053_MIDI.write(MIDI_CHAN_MSG | chan);
+    VS1053_MIDI.write(MIDI_CHAN_PAN);
+    VS1053_MIDI.write(pan); //00..64..127 64 = Mitten-Wert
+  }
+
+  void midiSetReverbLevel(uint8_t chan, uint8_t amount) {
+    VS1053_MIDI.write(MIDI_CHAN_MSG | chan);
+    VS1053_MIDI.write(MIDI_EFFECT_LEVEL);
+    VS1053_MIDI.write(amount); // 0..127 Reverb-Level
+  }
+
+  void midiSetReverbType(uint8_t chan, uint8_t amount) {
+    VS1053_MIDI.write(MIDI_CHAN_MSG | chan);
+    VS1053_MIDI.write(MIDI_EFFECT_CNTRL);
+    VS1053_MIDI.write(amount); // 0 .. 127 = reverb room size
+  }
+
+  void midiSetPitch(uint8_t chan, uint8_t pitch) {  //der Pitch befehl muss noch genau ergründet werden
+    VS1053_MIDI.write(MIDI_CHAN_PITCH | chan);
+    VS1053_MIDI.write(0);
+    VS1053_MIDI.write(pitch);  //0..64..127 64 ist Mitten-Wert
+  }
+
+  /*
+    void midiCallback(midi_event *pev) {
+      if ((pev->data[0] >= 0x80) && (pev->data[0] <= 0xe0))
+      {
+        VS1053_MIDI.write(pev->data[0] | pev->channel);
+        VS1053_MIDI.write(&pev->data[1], pev->size - 1);
+      }
+    }
+  */

@@ -1,0 +1,64 @@
+<NotepadPlus>
+    <UserLang name="BASIC32+" ext="" udlVersion="2.1">
+        <Settings>
+            <Global caseIgnored="no" allowFoldOfComments="no" foldCompact="no" forcePureLC="1" decimalSeparator="2" />
+            <Prefix Keywords1="yes" Keywords2="no" Keywords3="no" Keywords4="no" Keywords5="no" Keywords6="no" Keywords7="no" Keywords8="no" />
+        </Settings>
+        <KeywordLists>
+            <Keywords name="Comments">00REM 01 02 03&quot; 04&quot;</Keywords>
+            <Keywords name="Numbers, prefix1"></Keywords>
+            <Keywords name="Numbers, prefix2"></Keywords>
+            <Keywords name="Numbers, extras1"></Keywords>
+            <Keywords name="Numbers, extras2"></Keywords>
+            <Keywords name="Numbers, suffix1"></Keywords>
+            <Keywords name="Numbers, suffix2"></Keywords>
+            <Keywords name="Numbers, range"></Keywords>
+            <Keywords name="Operators1">= - ? \  +  ^  *  /  &amp; &lt;&lt; &gt;&gt; | | /  ( )  &lt;&gt;  .  ,  :  $</Keywords>
+            <Keywords name="Operators2"></Keywords>
+            <Keywords name="Folders in code1, open">&quot;</Keywords>
+            <Keywords name="Folders in code1, middle"></Keywords>
+            <Keywords name="Folders in code1, close">&quot;</Keywords>
+            <Keywords name="Folders in code2, open"></Keywords>
+            <Keywords name="Folders in code2, middle"></Keywords>
+            <Keywords name="Folders in code2, close"></Keywords>
+            <Keywords name="Folders in comment, open"></Keywords>
+            <Keywords name="Folders in comment, middle"></Keywords>
+            <Keywords name="Folders in comment, close"></Keywords>
+            <Keywords name="Keywords1">PI() COS SIN TAN PEEK ABS RND LOG SGN SQR INT MIN MAX EXP GET CHR$ INKEY FONT ASC TIMER ATN LEN INSTR COMP$ BIN HEX LEFT$ RIGHT$ MID$ TAB SPC STR$ DATE TIME IIC AKKU AIN DIN UC$ LC$ VAL MEM ! TEMP DHT COL BMP FN PORT PIN LN DEEK FPEEK GPX GPIC MAP CONS STRING$ FILE GRID PRINT REM LIST LOAD SAVE NEW RUN NEXT REN IF GOTO GOSUB RETURN FOR INPUT POKE DIR CLS POS COL PSET CIRC LINE RECT FONT PAUSE END CLEAR THEN ELSE CUR PRZ DMP STYLE SCROLL START THEME DATA READ RESTORE DEL AND OR RTC IIC DOUT PWM DAC DRAW SPRT PULSE SND PEN ON LCD PORT PIN CHD MKD RMD DEFN LED EDIT DOKE BEEP DIM OPT FPOKE MNT COM PIC OPEN CLOSE FILE TYPE BLOAD GRID TEXT ? WINDOW HELP TO STEP PRINT AT&#x000D;&#x000A;</Keywords>
+            <Keywords name="Keywords2"></Keywords>
+            <Keywords name="Keywords3"></Keywords>
+            <Keywords name="Keywords4"></Keywords>
+            <Keywords name="Keywords5"></Keywords>
+            <Keywords name="Keywords6"></Keywords>
+            <Keywords name="Keywords7"></Keywords>
+            <Keywords name="Keywords8"></Keywords>
+            <Keywords name="Delimiters">00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23</Keywords>
+        </KeywordLists>
+        <Styles>
+            <WordsStyle name="DEFAULT" fgColor="000000" bgColor="FFFFFF" colorStyle="1" fontName="Arial" fontStyle="1" fontSize="10" nesting="0" />
+            <WordsStyle name="COMMENTS" fgColor="FF0000" bgColor="FFFFFF" colorStyle="1" fontName="Arial" fontStyle="2" fontSize="10" nesting="0" />
+            <WordsStyle name="LINE COMMENTS" fgColor="00FFFF" bgColor="FFFFFF" colorStyle="1" fontName="Arial" fontStyle="1" fontSize="10" nesting="0" />
+            <WordsStyle name="NUMBERS" fgColor="FF00FF" bgColor="FFFFFF" colorStyle="1" fontName="Arial" fontStyle="2" fontSize="10" nesting="0" />
+            <WordsStyle name="KEYWORDS1" fgColor="008080" bgColor="FFFFFF" colorStyle="1" fontName="Arial" fontStyle="3" fontSize="10" nesting="0" />
+            <WordsStyle name="KEYWORDS2" fgColor="FF8000" bgColor="FFFFFF" colorStyle="1" fontName="Arial" fontStyle="1" fontSize="10" nesting="0" />
+            <WordsStyle name="KEYWORDS3" fgColor="0000FF" bgColor="FFFFFF" fontName="Arial" fontStyle="7" fontSize="10" nesting="0" />
+            <WordsStyle name="KEYWORDS4" fgColor="0000FF" bgColor="FFFFFF" colorStyle="1" fontStyle="0" nesting="0" />
+            <WordsStyle name="KEYWORDS5" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="KEYWORDS6" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="KEYWORDS7" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="KEYWORDS8" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="OPERATORS" fgColor="0000FF" bgColor="FFFFFF" colorStyle="1" fontName="Arial" fontStyle="0" fontSize="10" nesting="0" />
+            <WordsStyle name="FOLDER IN CODE1" fgColor="FF0000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="FOLDER IN CODE2" fgColor="000000" bgColor="FFFFFF" fontName="Arial" fontStyle="2" fontSize="10" nesting="0" />
+            <WordsStyle name="FOLDER IN COMMENT" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="DELIMITERS1" fgColor="008000" bgColor="FFFFFF" colorStyle="1" fontStyle="0" nesting="0" />
+            <WordsStyle name="DELIMITERS2" fgColor="FF8040" bgColor="FFFFFF" colorStyle="1" fontStyle="0" nesting="0" />
+            <WordsStyle name="DELIMITERS3" fgColor="FF8000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="DELIMITERS4" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="DELIMITERS5" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="DELIMITERS6" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="DELIMITERS7" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="DELIMITERS8" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+        </Styles>
+    </UserLang>
+</NotepadPlus>

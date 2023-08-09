@@ -241,6 +241,7 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("DATA Lines");
       Terminal.println("READ Var - reads Datalines");
       Terminal.println("RESTORE resets the Data-Pointer");
+      Terminal.println("RESTORE lnr - set the Data-Pointer on Line->lnr");
       break;
     case 40:
       Terminal.println("DEL Filename");
@@ -484,7 +485,7 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("has the same function as Print");
       break;
     case 79:
-      Terminal.println("WINDOW(nr,x,y,xx,yy<,color,Title>");
+      Terminal.println("WINDOW(nr,x,y,xx,yy<,color,Title>)");
       Terminal.println("creates a window nr=1..5");
       Terminal.println("WINDOW without Parameters switch to Mainwindow");
       Terminal.println("WINDOW(nr) switch to Window nr");
@@ -492,6 +493,9 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("Title is the window title"); 
       break;
     case 80:
+      Terminal.println("MIDI(Parameter noch unklar)");
+      break;
+    case 81:
       Terminal.println("HELP");
       Terminal.println("without Parameters shows all Commands");
       Terminal.println("HELP Keyword shows Keyword-explanations");
