@@ -10,9 +10,10 @@
 //      PS2Controller IRQ (clock) to ESP32 pin 33;                                                                                                //
 //      VGA RGB to ESP32 pin 21,22, 18,19 and 4,5                                                                                                 //
 //      VGA Hsync and Vsync to ESP32 pins 23 and 15                                                                                               //
-//      SD-Card 14, 16, 17, 13 (SCK, MISO, MOSI, CS)    ESP32-Eigenboard                                                                          //
-//      SD-Card 14, 2, 12, 13 (SCK, MISO, MOSI, CS)     TTGO                                                                                      //
-//      FRAM-Board 14, 16, 17, 0 (SCK, MISO, MOSI, CS)  512kB FRAM am SD-SPI-BUS                                                                //
+//      SD-Card 14, 16, 17, 13 (SCK, MISO, MOSI, CS)             ESP32-Eigenboard                                                                 //
+//      SD-Card 14, 2, 12, 13 (SCK, MISO, MOSI, CS)              TTGO 1.4                                                                         //
+//      FRAM-Board 14, 16, 17, 0 (SCK, MISO, MOSI, CS)           512kB FRAM am SD-SPI-BUS                                                         //
+//      TFT-ILI9341 18, 23, 22, 21, 5 (SCK, MOSI, DC, RESET, CS) TFT-Display ILI9341                                                              //
 //                                                                                                                                                //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -23,7 +24,7 @@
 //	        Scott Lawrence <yorgle@gmail.com>
 //          Brian O'Dell <megamemnon@megamemnon.com>
 //
-// Die Version meiner Vor-Authoren wird die Grundlage für einen erweiterten Basic-Interpreter
+// Die Version meiner Vor-Authoren bildet die Grundlage für einen erweiterten Basic-Interpreter
 // die Grundversion wurde erweitert durch:  -fliesskomma Arithmetik
 //                                          -Grafikfunktionen
 //                                          -mathematische Funktionen
@@ -44,10 +45,27 @@
 // April 2021
 //
 //
-#define BasicVersion "1.87b"
-#define BuiltTime "08.08.2023"
+#define BasicVersion "1.91b"
+#define BuiltTime "30.12.2023"
 #pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v1.91b:30.12.2013          -CardKB als Tastatur mit PS/2 Software eingebunden (über define auswählbar)
+//                            -kleine Änderungen in der ESC-Behandlung, da es beim CardKB kein Ctrl-C gibt -> ESC hat die gleiche Wirkung
+//                            -mit dem CardKB und dem ILI9341 ist nun eine Pocket-Variante von Basic32+ möglich :-)
+//
+// v1.90b:24.12.2013          -Fehler in der Datumsbehandlung in ESP32_Time entdeckt -> der Monat wird von 0-11 zurückgegeben, daher wurde in der DIR-Datei-Anzeige der Monat falsch angezeigt
+//
+// v1.89b:12.12.2013          -TFT-Treiber für ILI9341 240x320 Pixel-Display integriert - Treiber der Grafik ist über #define auswählbar
+//                            -Breadboard-Test soweit erfolgreich
+//                            -ab und zu startet das Display nicht korrekt, Ursache muss noch erforscht werden -> Print_info etwas geändert, scheint jetzt zu funktionieren
+//                            -neue Platinenvariante muss noch erstellt werden, welche alle Grafik-Varianten vereint (AV,VGA,TFT)
+//
+// v1.88b:03.12.2013          -MIDI-Funktionalität wieder entfernt
+//                            -Sound-Befehl wieder die ursprüngliche Routine aktiviert
+//                            -Augenmerk soll mehr auf Funktionalität als Basic-Messcomputer gesetzt werden
+//                            -Akku-Messroutine über define auswählbar
+//                            -15531 Zeilen/sek.
+//
 // v1.87b:08.08.2013          -erste MIDI-Funktionalität integriert
 //                            -der Sound-Befehl wird für die interne Ausgabe von Tönen benutzt, die ursprüngliche Routine wurde deaktiviert
 //                            -Syntax: SND_N 0,45,127,100 -> Chan,Note,Velocity,Duration
@@ -121,32 +139,41 @@
 //
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Feature option configuration...
-// Dies aktiviert die Befehle LOAD, SAVE, DIR über die Arduino SD Library
-//#define ENABLE_FILEIO 1
-//
+// Konfiguration Grafiktreiber und Akku-Überwachung
 //---------------------------------------------------------------- Akku-Überwachung für Akkubetrieb ------------------------------------------------
 //#define Akkualarm_enabled
 //
 //
 //---------------------------------------------------------------- Auswahl Bildschirmtreiber -------------------------------------------------------
-//#define AVOUT                  //activate for AV
-#define VGA64                    //activate VGA 64 Color 320x240 Pixel Driver
+//#define AVOUT                   //activate for AV
+//#define VGA64                   //activate VGA 64 Color 320x240 Pixel Driver
+#define ILI9341                 //TFT-Display ILI9341
+#define CardKB                   //Verwendung von CardKB als Tastatur (nur mit PS2-Software nutzbar)
 
 #include "fabgl.h" //********************************************* Bibliotheken zur VGA-Signalerzeugung *********************************************
 fabgl::Terminal         Terminal;
 fabgl::LineEditor       LineEditor(&Terminal);
+
 
 //---------------------------------------- die verschiedenen Grafiktreiber --------------------------------------------------------------------------
 #ifdef AVOUT
 fabgl::CVBS16Controller VGAController;    //AV-Variante
 #define VIDEOOUT_GPIO GPIO_NUM_26         //Ausgabe auf GPIO25 oder 26 möglich ACHTUNG!:Soundausgabe erfolgt auf GPIO25
 static const char * MODES_STD[]   = { "I-PAL-B", "P-PAL-B", "I-NTSC-M", "P-NTSC-M", "I-PAL-B-WIDE", "P-PAL-B-WIDE", "I-NTSC-M-WIDE", "P-NTSC-M-WIDE", "P-NTSC-M-EXT",};
+
+#elif defined VGA64
+fabgl::VGAController    VGAController;      //VGA-Variante
+
+#else
+fabgl::ILI9341Controller VGAController;     //TFT-Display ILI9341
+#define TFT_SCK    18
+#define TFT_MOSI   23
+#define TFT_CS     5
+#define TFT_DC     22
+#define TFT_RESET  21
+#define TFT_SPIBUS VSPI_HOST
 #endif
 
-#ifdef VGA64
-fabgl::VGAController    VGAController;      //VGA-Variante
-#endif
 
 //------------------------------------------ Tastatur,GFX-Treiber- und Terminaltreiber -------------------------------------------------------------
 fabgl::PS2Controller    PS2Controller;
@@ -165,48 +192,49 @@ byte y_char[]      PROGMEM = {8, 8, 8, 14, 20, 14, 14, 16, 16, 14, 14, 14, 16, 1
 unsigned int noteTable []  PROGMEM = {16350, 17320, 18350, 19450, 20600, 21830, 23120, 24500, 25960, 27500, 29140, 30870}; //Notentabelle für Soundausgabe
 //------------------------------------------------------------- Soundgenerator ----------------------------------------------------------------------------
 //------------------------------------------------------- MIDI-Funktionen -------------------------------------------------------------------------
+/*
+  #define MIDI_Baud 31250
+  #define VS1053_MIDI Serial2
+  //#include <MD_MIDIFile.h>
 
-#define MIDI_Baud 31250
-#define VS1053_MIDI Serial2
-//#include <MD_MIDIFile.h>
+  #define MIDI_NOTE_ON  0x90
+  #define MIDI_NOTE_OFF 0x80
+  #define MIDI_CHAN_MSG 0xB0
+  #define MIDI_CHAN_BANK 0x00
+  #define MIDI_CHAN_VOLUME 0x07
+  #define MIDI_CHAN_PAN 0x0A
+  #define MIDI_CHAN_PITCH 0xE0
+  #define MIDI_EFFECT_CNTRL 0x0C
+  #define MIDI_EFFECT_LEVEL 0x5B
+  #define MIDI_CHAN_PROGRAM 0xC0
 
-#define MIDI_NOTE_ON  0x90
-#define MIDI_NOTE_OFF 0x80
-#define MIDI_CHAN_MSG 0xB0
-#define MIDI_CHAN_BANK 0x00
-#define MIDI_CHAN_VOLUME 0x07
-#define MIDI_CHAN_PAN 0x0A
-#define MIDI_CHAN_PITCH 0xE0
-#define MIDI_EFFECT_CNTRL 0x0C
-#define MIDI_EFFECT_LEVEL 0x5B
-#define MIDI_CHAN_PROGRAM 0xC0
+  #define MIDI_BANK_DEFAULT 0x00
+  #define MIDI_BANK_DRUMS1 0x78
+  #define MIDI_BANK_DRUMS2 0x7F
+  #define MIDI_BANK_MELODY 0x79
+  //SDFAT  MIDI_SD;
+  //MD_MIDIFile SMF;
 
-#define MIDI_BANK_DEFAULT 0x00
-#define MIDI_BANK_DRUMS1 0x78
-#define MIDI_BANK_DRUMS2 0x7F
-#define MIDI_BANK_MELODY 0x79
-//SDFAT  MIDI_SD;
-//MD_MIDIFile SMF;
+  // Define constants for MIDI channel voice message IDs
+  const uint8_t NOTE_OFF = 0x80;    // note on
+  const uint8_t NOTE_ON = 0x90;     // note off. NOTE_ON with velocity 0 is same as NOTE_OFF
+  const uint8_t POLY_KEY = 0xa0;    // polyphonic key press
+  const uint8_t CTL_CHANGE = 0xb0;  // control change
+  const uint8_t PROG_CHANGE = 0xc0; // program change
+  const uint8_t CHAN_PRESS = 0xd0;  // channel pressure
+  const uint8_t PITCH_BEND = 0xe0;  // pitch bend
 
-// Define constants for MIDI channel voice message IDs
-const uint8_t NOTE_OFF = 0x80;    // note on
-const uint8_t NOTE_ON = 0x90;     // note off. NOTE_ON with velocity 0 is same as NOTE_OFF
-const uint8_t POLY_KEY = 0xa0;    // polyphonic key press
-const uint8_t CTL_CHANGE = 0xb0;  // control change
-const uint8_t PROG_CHANGE = 0xc0; // program change
-const uint8_t CHAN_PRESS = 0xd0;  // channel pressure
-const uint8_t PITCH_BEND = 0xe0;  // pitch bend
+  // Define constants for MIDI channel control special channel numbers
+  const uint8_t CH_RESET_ALL = 0x79;    // reset all controllers
+  const uint8_t CH_LOCAL_CTL = 0x7a;    // local control
+  const uint8_t CH_ALL_NOTE_OFF = 0x7b; // all notes off
+  const uint8_t CH_OMNI_OFF = 0x7c;     // omni mode off
+  const uint8_t CH_OMNI_ON = 0x7d;      // omni mode on
+  const uint8_t CH_MONO_ON = 0x7e;      // mono mode on (Poly off)
+  const uint8_t CH_POLY_ON = 0x7f;      // poly mode on (Omni off)
 
-// Define constants for MIDI channel control special channel numbers
-const uint8_t CH_RESET_ALL = 0x79;    // reset all controllers
-const uint8_t CH_LOCAL_CTL = 0x7a;    // local control
-const uint8_t CH_ALL_NOTE_OFF = 0x7b; // all notes off
-const uint8_t CH_OMNI_OFF = 0x7c;     // omni mode off
-const uint8_t CH_OMNI_ON = 0x7d;      // omni mode on
-const uint8_t CH_MONO_ON = 0x7e;      // mono mode on (Poly off)
-const uint8_t CH_POLY_ON = 0x7f;      // poly mode on (Omni off)
-
-//------------------------------------------------------- MIDI-Funktionen -------------------------------------------------------------------------
+  //------------------------------------------------------- MIDI-Funktionen -------------------------------------------------------------------------
+*/
 
 #define RAMEND 60928//----------------------------------- RAM increment for ESP32 ----------------------------------------------------------------- 
 
@@ -282,11 +310,13 @@ Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);              
 Adafruit_MCP23X17 mcp;
 short int MCP23017_ADDR = 0x20 ; //Adresse 32 (0x20) für eingebauten MCP23017
 bool mcp_start_marker = false;
+
 //------------------------------ I2C Library ------------------------------------------------------------------------------------------------------
 #include <Wire.h>           // for I2C 
 #include "RTClib.h"         //to show time
 TwoWire myI2C = TwoWire(0); //eigenen I2C-Bus erstellen
 RTC_DS3231 rtc;
+
 //-------------------------------------- LCD-Treiber ----------------------------------------------------------------------------------------------
 #include "HD44780_LCD_PCF8574.h"
 #define DISPLAY_DELAY_INIT 50 // mS
@@ -297,7 +327,7 @@ bool LCD_Backlight = true;
 //---------------------------------------- Konfiguration FRAM -------------------------------------------------------------------------------------
 byte FRAM_CS  = 0;//13;             //SPI_FRAM 512kB CS-Pin
 word FRAM_OFFSET      = 0x8000;     //Offset für Poke-Anweisungen, um zu verhindern, das in den Array-Bereich gepoked wird
-word FRAM_PIC_OFFSET  = 0x12C04;    //Platz pro Bildschirm im Speicher
+word FRAM_PIC_OFFSET  = 0x12C04;    //Platz pro Bildschirm im Speicher 320x240=76800 + 4Byte für die Dimension = 76804
 long load_adress      = 0x70000;    //hier kann ein Basicprogramm abgelegt werden (Eingabe: LOAD oder SAVE ohne Parameter)
 
 Adafruit_FRAM_SPI spi_fram = Adafruit_FRAM_SPI(kSD_CLK, kSD_MISO, kSD_MOSI, FRAM_CS);
@@ -316,6 +346,7 @@ byte IIC_SET = 55;      // -steht 55 im EEprom-Platz 13, dann sind die Werte im 
 byte SDA_RTC = 3;
 byte SCL_RTC = 1;
 
+
 byte Keyboard_lang = 3; //Tastatur-Layout (Deutsch)
 byte KEY_SET = 66;      //-steht 66 im EEprom Platz 15, dann Nummer des Keyboard-Layouts aus dem EEProm laden
 byte THEME_SET = 77;    //-steht 77 im EEPROM Platz 17, dann setze das gespeicherte Theme
@@ -323,8 +354,10 @@ byte PATH_SET = 88;     //-steht 88 im EEPROM Platz 19, dann setze Arbeits-Pfad
 
 
 //------------------------------------- Akku-Überwachung ------------------------------------------------------------------------------------------
-#define Batt_Pin 39
+#ifdef Akkualarm_enabled
 hw_timer_t *Akku_timer = NULL;      //Interrupt-Routine Akku-Überwachung
+#endif
+#define Batt_Pin 39                 //Pin wird in jedem Fall definiert
 
 //------------------------------- BMP-Info-Parameter für PIC-Befehl -------------------------------------------------------------------------------
 uint32_t bmp_width, bmp_height;
@@ -372,6 +405,7 @@ short int Theme_state = 0;              //aktuelle Theme Nummer (im EEPROM gespe
 static bool Theme_marker = false;       //Theme-Marker, falls Farben geändert
 short int Mode_state = 0;               //aktuelle Auflösung (im EEProm gespeichert)
 
+static bool break_marker = false;      //********** Test für CardKB *****************
 //------------------------------ Array-Parameter --------------------------------------------------------------------------------------------------
 word Var_Neu_Platz =  0;                //Adresse nächstes Array-Feld Start bei 0x77e00
 static word VAR_TBL = 0x7e00;           //Variablen-Array-Tabelle im FRAM
@@ -556,7 +590,6 @@ const static char keywords[] PROGMEM = {
   'T', 'E', 'X', 'T' + 0x80,
   '?' + 0x80,
   'W', 'I', 'N', 'D', 'O', 'W' + 0x80,
-  'M', 'I', 'D', 'I' + 0x80,
   'H', 'E', 'L', 'P' + 0x80,
   0
 };
@@ -644,9 +677,8 @@ enum {
   KW_TEXT,
   KW_PRINTING,
   KW_WINDOW,
-  KW_MIDI,    //80
-  KW_HELP,    //81
-  KW_DEFAULT  //82/* hier ist das Ende */
+  KW_HELP,    //80
+  KW_DEFAULT  //81/* hier ist das Ende */
 };
 
 int KW_WORDS = KW_DEFAULT;
@@ -786,12 +818,12 @@ enum {
   FUNC_TEMP,
   FUNC_DHT,
   FUNC_GETCOL,
-  FUNC_BMPREAD,         //ungetestet
+  FUNC_BMPREAD,  //ungetestet BMP180 Drucksensor
   FUNC_FN,
   FUNC_PORT,
   FUNC_PIN,
   FUNC_PI,
-  FUNC_LN,        //50
+  FUNC_LN,       //50
   FUNC_DEEK,
   FUNC_FPEEK,
   FUNC_GPIX,
@@ -801,7 +833,7 @@ enum {
   FUNC_STRING,
   FUNC_FILE,
   FUNC_GRID,
-  FUNC_UNKNOWN   //61
+  FUNC_UNKNOWN   //60
 };
 
 int FUNC_WORDS = FUNC_UNKNOWN;
@@ -1263,6 +1295,7 @@ static void getln(char prompt)
     char c = inchar();
     if (c == 27 && Frame_nr) continue;
 
+
     switch (c)
     {
       case NL:
@@ -1288,7 +1321,6 @@ static void getln(char prompt)
         else
           Terminal.write("\b\e[K");      //nicht im Fenster, dann Backspace
         break;
-
       case 0x03:       // ctrl+c
         line_terminator();
         printmsg(breaks, 1);
@@ -1414,7 +1446,7 @@ void getdatetime()
   Datum[1] = now.month();
   Datum[2] = now.year();
   Datum[3] = now.dayOfTheWeek();
-  e_rtc.setTime(Zeit[2], Zeit[1], Zeit[0], Datum[0], Datum[1], Datum[2]);
+  e_rtc.setTime(Zeit[2], Zeit[1], Zeit[0], Datum[0], Datum[1], Datum[2], 0);
 }
 
 //--------------------------------------------- Unterprogramm - Hexadezimalzahl in Dezimalzahl konvertieren ---------------------------------------
@@ -2541,7 +2573,7 @@ static int set_TimeDate(void)
     }
   }
   rtc.adjust(DateTime(tagzeit[2], tagzeit[1], tagzeit[0], tagzeit[3], tagzeit[4], tagzeit[5]));
-  e_rtc.setTime(tagzeit[5], tagzeit[4], tagzeit[3], tagzeit[1], tagzeit[2], tagzeit[3]);
+  e_rtc.setTime(tagzeit[5], tagzeit[4], tagzeit[3], tagzeit[1], tagzeit[2], tagzeit[3], 0);
 
   return 0;
 }
@@ -3251,9 +3283,9 @@ run_next_statement:
 
 interpreteAtTxtpos:
 
-    if (breakcheck())                                              //Programmabbruch mit Ctrl-C
+    if (breakcheck() || break_marker)                                //Programmabbruch mit Ctrl-C oder ESC
     {
-
+      break_marker = false;
       line_terminator();
 
       if (current_line != NULL)
@@ -3902,11 +3934,6 @@ interpreteAtTxtpos:
           continue;
         break;
 
-      case KW_MIDI:
-        if (midi_player())
-          continue;
-        break;
-
       case KW_HELP:
         if (*txtpos == NL) show_help();
         else show_help_name();
@@ -4469,7 +4496,6 @@ void cmd_new(void) {
   del_window();                                                       //Fensterparameter löschen
   Frame_nr = 0;                                                       //Hauptfenster setzen
   print_info();                                                       //Start-Bildschirm anzeigen
-
 }
 
 //#######################################################################################################################################
@@ -4889,13 +4915,14 @@ static int sprite(char cm) {
 //----------------------------------------------------- SND-Befehl ----------------------------------------------------------------------
 //#######################################################################################################################################
 static int Sound(void) {
-  short int  par[7];
+  short int  i, par[7];
   char c;
-  if (Test_char('_')) return 1;                           //Klammer-auf vorhanden?
-  c = *txtpos;
-  expression_error = 0;
-  txtpos++;
-  switch (c) {
+  //if (Test_char('_')) return 1;                           //Klammer-auf vorhanden?
+  //c = *txtpos;
+  //expression_error = 0;
+  //txtpos++;
+  /*
+    switch (c) {
     case 'N':
       for (int i = 1; i < 5; i++)
       {
@@ -4931,15 +4958,16 @@ static int Sound(void) {
       par[2] = int(get_value());
       midiSetInstrument(par[1], par[2]);
       break;
-      
+
     case 'R':
       VS1053_MIDI.write(0xff);
       break;
-        
+
     default:
       break;
 
-  }
+    }
+  */
   //Sound(Chan,note,vel,duration)
   /*
        Sequence:
@@ -4960,15 +4988,27 @@ static int Sound(void) {
       volume:
           volume (min is 0, max is 127)  snd(waveform,freq,duration,vol)
   */
-  //if (Test_char('(')) return 1;                           //Klammer-auf vorhanden?
+  if (Test_char('(')) return 1;                           //Klammer-auf vorhanden?
+
+  for (i = 1; i < 5; i++)
+  {
+    expression_error = 0;
+    par[i] = get_value();
+    if (expression_error) return 1;
+    if (i < 4) {
+      if (*txtpos != ',') return 1;
+      txtpos++;
+    }
+  }
 
 
-  //if (par[1] > 5)   par[1] = 5;
-  //if (par[4] > 127) par[4] = 127;
-  //par[2] = NoteToFreq(par[2]);
+
+  if (par[1] > 5)   par[1] = 5;
+  if (par[4] > 127) par[4] = 127;
+  par[2] = NoteToFreq(par[2]);
   //Terminal.write("\e_S0;800;1000;100$");
-  //Terminal.print("\e_S" + String(par[1], DEC) + ";" + String(par[2], DEC) + ";" + String(par[3], DEC) + ";" + String(par[4], DEC) + "$");
-  //if (Test_char(')')) return 1;                           //Klammer-zu vorhanden?
+  Terminal.print("\e_S" + String(par[1], DEC) + ";" + String(par[2], DEC) + ";" + String(par[3], DEC) + ";" + String(par[4], DEC) + "$");
+  if (Test_char(')')) return 1;                           //Klammer-zu vorhanden?
 
   // Check that we are at the end of the statement
   if (*txtpos != NL && *txtpos != ':' )  return 1;
@@ -5526,53 +5566,48 @@ void print_info()
 { int c, d, e, f;
   String built;
 
-  int y_pos = VGAController.getScreenHeight() / y_char[fontsatz];
-  int x_pos = VGAController.getScreenWidth() / x_char[fontsatz];
+#ifdef ILI9341                                     //beim ILI9341 ist x und y vertauscht, da die Grundausrichtung Hochkant ist (240x320)
+int x_pos = VGAController.getScreenHeight() / x_char[fontsatz];
+int y_pos = VGAController.getScreenWidth() / y_char[fontsatz];
+#else
+int y_pos = VGAController.getScreenHeight() / y_char[fontsatz];
+int x_pos = VGAController.getScreenWidth() / x_char[fontsatz];
+#endif
 
 #ifdef Akkualarm_enabled
-float g = 3.3 / 4095 * analogRead(Batt_Pin);
+float g = 3.3 / 4095 * 4000;//analogRead(Batt_Pin);
 g = g / 0.753865;                                 //(Umess/(R2/(R1+R2)) R1=3.327kohm R2=10.19kohm
 int   h = 100 - ((4.2 - g) * 100);                //Akkuwert in Prozent
 if (h > 100) h = 100;
-#else
-int h = 100;
 #endif
 
-  fbcolor(Vordergrund, Hintergrund);
   Terminal.enableCursor(false);
   GFX.clear();
-  c = random(64);
-  d = random(64);
-  e = random(64);
-  f = random(64);
-  fcolor(c);  //48,60,3,28
-  GFX.drawLine(100 - h, 1 + (2 * y_char[fontsatz]), 219 + h, 1 + (2 * y_char[fontsatz]));
-  fcolor(d);
-  GFX.drawLine(100 - h, 2 + (2 * y_char[fontsatz]), 219 + h, 2 + (2 * y_char[fontsatz]));
-  fcolor(e);
-  GFX.drawLine(100 - h, 3 + (2 * y_char[fontsatz]), 219 + h, 3 + (2 * y_char[fontsatz]));
-  fcolor(f);
-  GFX.drawLine(100 - h, 4 + (2 * y_char[fontsatz]), 219 + h, 4 + (2 * y_char[fontsatz]));
-  fcolor(e);
-  GFX.drawLine(100 - h, 5 + (2 * y_char[fontsatz]), 219 + h, 5 + (2 * y_char[fontsatz]));
-  fcolor(d);
-  GFX.drawLine(100 - h, 6 + (2 * y_char[fontsatz]), 219 + h, 6 + (2 * y_char[fontsatz]));
-  fcolor(c);
-  GFX.drawLine(100 - h, 7 + (2 * y_char[fontsatz]), 219 + h, 7 + (2 * y_char[fontsatz]));
+  delay(100);
+  fbcolor(Vordergrund, Hintergrund);
+
 
   fcolor(Vordergrund);
-  strcpy(tempstring, BuiltTime);
-  drawing_text(15, 278, 1);
+  //strcpy(tempstring, BuiltTime);
+  //drawing_text(15, 278, 1);
 
   tc.setCursorPos((x_pos - 26) / 2, 1);
   Terminal.write("Basic32+ V");
   Terminal.write(BasicVersion);
-  Terminal.write(" Zille-Soft\r\n");
+  Terminal.write(" Zille-Soft");//\r\n");
+
+#ifdef Akkualarm_enabled                                  //Akku in Prozent anzeigen
+Terminal.write("  ");
+Terminal.print(int(h), DEC);
+Terminal.write("%");
+#endif
+
   tc.setCursorPos((x_pos - 16) / 2 , 2);
   // memory free
   Terminal.print(int(variables_begin - program_end), DEC);
   printmsg(memorymsg, 1);
   tc.setCursorPos(1, 4);
+
   Terminal.write("Terminal-Size:");
   Terminal.print(x_pos);
   Terminal.write("x");
@@ -5672,10 +5707,18 @@ static int inchar()
 
               break;
           }
+
           if (Graph_char && c != 13 && c != 32 && c != 0x7F) return c + 121; //alle Tasten außer Enter und Space und Backspace umwandeln in Grafik-chars
           return c;
         }//if(Terminal.available)
-
+        
+        if (break_marker) {                     //ESC-Abfrage -> Break
+          break_marker = false;
+          current_line = 0;
+          sp = program + sizeof(program);
+          return 0x03;
+        }
+        
       }//while
 
   }//switch (inStream)
@@ -6141,8 +6184,8 @@ void cmd_Dir(void)
       if (tmstruct->tm_mday < 10) outchar('0');                 //führende Null bei Werten < 10
       printnum(tmstruct->tm_mday, 0);                           //Tag ausgeben
       outchar('.');
-      if (tmstruct->tm_mon < 10) outchar('0');                  //führende Null bei Werten < 10
-      printnum(tmstruct->tm_mon, 0);                            //Monat ausgeben
+      if ((tmstruct->tm_mon + 1) < 10) outchar('0');            //führende Null bei Werten < 10
+      printnum(tmstruct->tm_mon + 1, 0);                        //Monat ausgeben -> +1, da der Monat von 0-11 zurückgegeben wird
       outchar('.');
       printnum(((tmstruct->tm_year) + 1900), 0);                //Jahr ausgeben
       if (wd > 40) {                                            //bei Terminalbreite > 40 zusätzlich Zeit anzeigen
@@ -6222,6 +6265,7 @@ static int isValidFnChar( char c )
 //#######################################################################################################################################
 //--------------------------------------------- Timer-Interrupt für Akku-Überwachung ----------------------------------------------------
 //#######################################################################################################################################
+
 void IRAM_ATTR onTimer()
 {
   //----------------------- Akku-Überwachung -----------------------------------
@@ -6308,30 +6352,46 @@ void setup()
   }
   else                                                  //der ESP ist noch jungfräulich, also standard-Werte setzen
   {
-    Vordergrund = 43;                                   //Standard-Vordergrundfarbe (wenn noch nichts im EEprom steht)
-    Hintergrund = 18;                                   //Standard-Hintergrundfarbe (wenn noch nichts im EEprom steht)
-    user_font = 19;
-    Theme_state = 0;
+    Vordergrund = 60;                                     //CPC Theme
+    Hintergrund = 1;
+    user_font   = 19;
+    //Vordergrund = 43;                                   //Standard-Vordergrundfarbe (wenn noch nichts im EEprom steht)
+    //Hintergrund = 18;                                   //Standard-Hintergrundfarbe (wenn noch nichts im EEprom steht)
+    //user_font = 19;
+    Theme_state = 2;                                      //CPC Theme
   }
 
   VGAController.queueSize = 400;
   PS2Controller.begin(PS2Preset::KeyboardPort0);
-
+  #ifdef CardKB
+    Keyboard_lang = 9;                                    //bei Verwendung von CardKB wird auf die japanische Tastaturbelegung umgeschaltet, damit die Symbolik passt
+  #endif
   Set_Layout();                                                                       //Keyboard-Layout setzen
 
   delay(200);
+
+
   //************************************************************ welcher Bildschirmtreiber? *********************************************************
   // 64 colors
 #ifdef AVOUT                                                                          //AV-Variante
 VGAController.begin(VIDEOOUT_GPIO);
 VGAController.setHorizontalRate(2);                                                   //320x240
 VGAController.setResolution(MODES_STD[5]);                                            //5 scheint optimal
-#else
+
+#elif defined VGA64
 VGAController.begin();                                                                //VGA-Variante //64 Farben
 VGAController.setResolution(QVGA_320x240_60Hz);
 //VGAController.setResolution(VGA_400x300_60Hz);
+
+#else                                                                                 //ILI9341
+VGAController.begin(TFT_SCK, TFT_MOSI, TFT_DC, TFT_RESET, TFT_CS, TFT_SPIBUS);
+VGAController.setResolution(TFT_240x320);
+VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte links
+//VGAController.setOrientation(fabgl::TFTOrientation::Rotate90);   //Kontakte rechts
 #endif
-//***************************************************************************************************************************************************
+
+
+  //***************************************************************************************************************************************************
 
   Terminal.begin(&VGAController);
   Terminal.connectLocally();                                                           // für Terminal Komandos
@@ -6348,7 +6408,8 @@ VGAController.setResolution(QVGA_320x240_60Hz);
   PS2Controller.keyboard()-> onVirtualKey = [&](VirtualKey * vk, bool keyDown) {
     if (*vk == VirtualKey::VK_ESCAPE) {
       if (keyDown) {
-        Terminal.write(0x0D);                                                          //ESC-Taste abfangen
+        break_marker = true;                                                          //ESC abfangen und in Ctrl-C wandeln
+        Terminal.write(0x0D);
       }
       *vk = VirtualKey::VK_NONE;
     }
@@ -6368,42 +6429,34 @@ VGAController.setResolution(QVGA_320x240_60Hz);
       }
       *vk = VirtualKey::VK_NONE;
     }
-    else if (*vk == VirtualKey::VK_F3) {
+    else if (*vk == VirtualKey::VK_F3) {                                              //Ausgabe Char-Table 32..127
       if (keyDown) {
         char_out(32, 128);
       }
       *vk = VirtualKey::VK_NONE;
     }
-    else if (*vk == VirtualKey::VK_F4) {
+    else if (*vk == VirtualKey::VK_F4) {                                              //Ausgabe Char-Table 128..255
       if (keyDown) {
         char_out(128, 256);
       }
       *vk = VirtualKey::VK_NONE;
     }
-    else if (*vk == VirtualKey::VK_F5) {
+    else if (*vk == VirtualKey::VK_F5) {                                              //Ausgabe Color-Tabelle
       if (keyDown) {
         color_out();
       }
       *vk = VirtualKey::VK_NONE;
     }
+
   };
 
   //Serial.begin(kConsoleBaud);                                                           // open serial port
 
   // ein I2C-Interface definieren
   myI2C.begin(SDA_RTC, SCL_RTC, 400000); //400kHz
-
   rtc.begin(&myI2C);
   getdatetime();                                              //ESP32-interne Uhr stellen für Datei-Zeitstempel
 
-  //-------------------------------- Soundmodul MIDI-Schnittstelle ----------------------------------------------------
-  VS1053_MIDI.begin(MIDI_Baud, SERIAL_8N1, -1, 25); // MIDI uses a 'strange baud rate'
-  delay(200);
-  midiSetChannelBank(0, MIDI_BANK_MELODY);
-  midiSetChannelVolume(0, 127);
-  //  midiSetReverbType(0, 1);
-  //  midiSetReverbLevel(0,127);
-  midiSetInstrument(0, 1); //
 
   //-------------------------------- Akku-Überwachung per Timer0-Interrupt --------------------------------------------
 #ifdef Akkualarm_enabled
@@ -6413,6 +6466,8 @@ timerAlarmWrite(Akku_timer, 60000000, true);         //ca.60sek bis Interrupt au
 timerAlarmEnable(Akku_timer);                        //Interrupt-Routine
 #endif
 //-------------------------------------------------------------------------------------------------------------------
+
+
 
 }
 
@@ -7247,7 +7302,7 @@ nochmal:
   }
 
   //#######################################################################################################################################
-  //**************************************************************** Seriell-Funktionen *****************************************************************************
+  //**************************************************************** Seriell-Funktionen ***************************************************
   //#######################################################################################################################################
 
   int cmd_serial(void) {
@@ -8584,132 +8639,3 @@ nochmal:
     }
     else return c;          //Farbe des Pixels
   }
-
-  //-------------------------------------------------------- Testbereich Midi-Player -----------------------------------------------------
-  int midi_player(void) {
-    /*
-        int err;
-        get_value();                                              //in tempstring steht der Dateiname
-
-        if (expression_error) return expression_error;
-
-        spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-
-        if ( !SD.exists(String(sd_pfad) + String(tempstring)))    //Datei vorhanden?
-        {
-          syntaxerror(sdfilemsg);                                 //Datei nicht vorhanden -> Fehlerausgabe
-          sd_ende();
-          expression_error = 1;
-          return expression_error;
-        }
-        else {
-          //fp = SD.open(String(sd_pfad) + String(tempstring));     //Datei zum Laden öffnen
-          //SMF.begin(SD);
-          SMF.setMidiHandler(midiCallback);
-          err = SMF.load(tempstring);
-          //fp = SD.open(String(sd_pfad) + String(tempstring));     //Datei zum Laden öffnen
-          if (err != MD_MIDIFile::E_OK)
-          {
-            syntaxerror(sdfilemsg);
-            return 1;
-
-          }
-        }
-        if (!SMF.isEOF())
-        {
-          SMF.getNextEvent();
-        }
-        SMF.close();
-        sd_ende();                                                //SD-Card unmount
-    */
-  }
-
-
-  void midiSetInstrument(uint8_t chan, uint8_t inst) {
-    if (chan > 15) return;
-    inst --; // page 32 has instruments starting with 1 not 0 :(
-    if (inst > 127) return;
-    VS1053_MIDI.write(MIDI_CHAN_PROGRAM | chan);
-    VS1053_MIDI.write(inst);
-  }
-
-  void midiChannelMessage(uint8_t chan, uint8_t cmsg, uint8_t value) {
-    if (chan > 15) return;
-    if (cmsg > 127) return;
-    if (value > 127) return;
-    VS1053_MIDI.write(MIDI_CHAN_MSG | chan);
-    VS1053_MIDI.write(cmsg);
-    VS1053_MIDI.write(value);
-  }
-
-  void midiSetChannelVolume(uint8_t chan, uint8_t vol) {
-    if (chan > 15) return;
-    if (vol > 127) return;
-
-    VS1053_MIDI.write(MIDI_CHAN_MSG | chan);
-    VS1053_MIDI.write(MIDI_CHAN_VOLUME);
-    VS1053_MIDI.write(vol);
-  }
-
-  void midiSetChannelBank(uint8_t chan, uint8_t bank) {
-    if (chan > 15) return;
-    if (bank > 127) return;
-
-    VS1053_MIDI.write(MIDI_CHAN_MSG | chan);
-    VS1053_MIDI.write((uint8_t)MIDI_CHAN_BANK);
-    VS1053_MIDI.write(bank);
-  }
-
-  void midiNoteOn(uint8_t chan, uint8_t n, uint8_t vel) {
-    if (chan > 15) return;
-    if (n > 127) return;
-    if (vel > 127) return;
-
-    VS1053_MIDI.write(MIDI_NOTE_ON | chan);
-    VS1053_MIDI.write(n);
-    VS1053_MIDI.write(vel);
-  }
-
-  void midiNoteOff(uint8_t chan, uint8_t n, uint8_t vel) {
-    if (chan > 15) return;
-    if (n > 127) return;
-    if (vel > 127) return;
-
-    VS1053_MIDI.write(MIDI_NOTE_OFF | chan);
-    VS1053_MIDI.write(n);
-    VS1053_MIDI.write(vel);
-  }
-
-  void midiSetPan(uint8_t chan, uint8_t pan) {
-    VS1053_MIDI.write(MIDI_CHAN_MSG | chan);
-    VS1053_MIDI.write(MIDI_CHAN_PAN);
-    VS1053_MIDI.write(pan); //00..64..127 64 = Mitten-Wert
-  }
-
-  void midiSetReverbLevel(uint8_t chan, uint8_t amount) {
-    VS1053_MIDI.write(MIDI_CHAN_MSG | chan);
-    VS1053_MIDI.write(MIDI_EFFECT_LEVEL);
-    VS1053_MIDI.write(amount); // 0..127 Reverb-Level
-  }
-
-  void midiSetReverbType(uint8_t chan, uint8_t amount) {
-    VS1053_MIDI.write(MIDI_CHAN_MSG | chan);
-    VS1053_MIDI.write(MIDI_EFFECT_CNTRL);
-    VS1053_MIDI.write(amount); // 0 .. 127 = reverb room size
-  }
-
-  void midiSetPitch(uint8_t chan, uint8_t pitch) {  //der Pitch befehl muss noch genau ergründet werden
-    VS1053_MIDI.write(MIDI_CHAN_PITCH | chan);
-    VS1053_MIDI.write(0);
-    VS1053_MIDI.write(pitch);  //0..64..127 64 ist Mitten-Wert
-  }
-
-  /*
-    void midiCallback(midi_event *pev) {
-      if ((pev->data[0] >= 0x80) && (pev->data[0] <= 0xe0))
-      {
-        VS1053_MIDI.write(pev->data[0] | pev->channel);
-        VS1053_MIDI.write(&pev->data[1], pev->size - 1);
-      }
-    }
-  */

@@ -29,8 +29,11 @@ void show_help(void) {  //Unterprogramme des Helpsystems in help_sys
     }
   }
 
-  if (wait_key(true) == 3) return;
-
+  if (wait_key(true) == 3 || break_marker) {
+    break_marker = false; 
+    return;
+  }
+  
   n = 0;
   z = 0;
   Terminal.println();
@@ -493,9 +496,6 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("Title is the window title"); 
       break;
     case 80:
-      Terminal.println("MIDI(Parameter noch unklar)");
-      break;
-    case 81:
       Terminal.println("HELP");
       Terminal.println("without Parameters shows all Commands");
       Terminal.println("HELP Keyword shows Keyword-explanations");
