@@ -52,10 +52,13 @@
 // v1.91b:30.12.2013          -CardKB als Tastatur mit PS/2 Software eingebunden (über define auswählbar)
 //                            -kleine Änderungen in der ESC-Behandlung, da es beim CardKB kein Ctrl-C gibt -> ESC hat die gleiche Wirkung
 //                            -mit dem CardKB und dem ILI9341 ist nun eine Pocket-Variante von Basic32+ möglich :-)
+//                            -CardKB funktioniert nicht immer nach dem Reset :-( woran liegt das nun wieder?
+//                            -ESC-Abfrage verbessert, jetzt wird auch bei List-Ausgaben korrekt abgebrochen
+//                            -15459 Zeilen/sek.
 //
 // v1.90b:24.12.2013          -Fehler in der Datumsbehandlung in ESP32_Time entdeckt -> der Monat wird von 0-11 zurückgegeben, daher wurde in der DIR-Datei-Anzeige der Monat falsch angezeigt
 //
-// v1.89b:12.12.2013          -TFT-Treiber für ILI9341 240x320 Pixel-Display integriert - Treiber der Grafik ist über #define auswählbar
+// v1.89b:12.12.2013          -TFT-Treiber für ILI9341 240x320 Pixel-Display integriert - Treiber ist über #define auswählbar
 //                            -Breadboard-Test soweit erfolgreich
 //                            -ab und zu startet das Display nicht korrekt, Ursache muss noch erforscht werden -> Print_info etwas geändert, scheint jetzt zu funktionieren
 //                            -neue Platinenvariante muss noch erstellt werden, welche alle Grafik-Varianten vereint (AV,VGA,TFT)
@@ -146,9 +149,9 @@
 //
 //---------------------------------------------------------------- Auswahl Bildschirmtreiber -------------------------------------------------------
 //#define AVOUT                   //activate for AV
-//#define VGA64                   //activate VGA 64 Color 320x240 Pixel Driver
-#define ILI9341                 //TFT-Display ILI9341
-#define CardKB                   //Verwendung von CardKB als Tastatur (nur mit PS2-Software nutzbar)
+#define VGA64                   //activate VGA 64 Color 320x240 Pixel Driver
+//#define ILI9341                 //TFT-Display ILI9341 (mit Touch-Controller XPT2046)
+//#define CardKB                  //Verwendung von CardKB als Tastatur (nur mit PS2-Software nutzbar)
 
 #include "fabgl.h" //********************************************* Bibliotheken zur VGA-Signalerzeugung *********************************************
 fabgl::Terminal         Terminal;
@@ -242,7 +245,6 @@ unsigned int noteTable []  PROGMEM = {16350, 17320, 18350, 19450, 20600, 21830, 
 #include "FS.h"
 #include <SD.h>
 #include <SPI.h>
-//#include <SdFat.h>
 
 //-------------------------------------- Verwendung der SD-Karte ----------------------------------------------------------------------------------
 //SPI CLASS FOR REDEFINED SPI PINS !
@@ -1225,7 +1227,7 @@ static int Memory_Dump() {                       //DMP Speichertyp 0..2 <,Adress
       }
       line_terminator();
     }
-    if (wait_key(true) == 3) ex = 1;
+    if (wait_key(true) == 3) ex = 1;    //Ctrl-C oder ESC Abbruch
 
   }//while (ex)
   return 0;
@@ -1267,13 +1269,18 @@ static unsigned short wait_key(bool modes) {
   if (modes)
   {
     line_terminator();//Terminal.println();
-    printmsg("SPACE<Continue>/CTR+C<Exit>", 1);
-    //Terminal.println("SPACE<Continue>/CTR+C<Exit>");
+    printmsg("SPACE<Continue>/CTR+C or ESC<Exit>", 1);
   }
   while (1) {
     if (Terminal.available())
     {
       c = Terminal.read();
+      break;
+    }
+    if(break_marker == true) 
+    {
+      c=3;
+      break_marker == false;
       break;
     }
   }
@@ -6204,7 +6211,7 @@ void cmd_Dir(void)
 
     if (ln == (VGAController.getScreenHeight() / y_char[fontsatz]) - 3) //Ausgabezeilen abhängig vom gewählten Fontsatz
     {
-      if (wait_key(true) == 3) ex = 1;                          //nach ln Zeilen auf Tastatur warten ->SPACE,ENTER=weiter, CTRL+C=EXIT
+      if (wait_key(true) == 3) ex = 1;                          //nach ln Zeilen auf Tastatur warten ->SPACE,ENTER=weiter, CTRL+C oder ESC=EXIT
       ln = 1;
     }
 
@@ -6361,13 +6368,16 @@ void setup()
     Theme_state = 2;                                      //CPC Theme
   }
 
-  VGAController.queueSize = 400;
+  //VGAController.queueSize = 400;
   PS2Controller.begin(PS2Preset::KeyboardPort0);
   #ifdef CardKB
     Keyboard_lang = 9;                                    //bei Verwendung von CardKB wird auf die japanische Tastaturbelegung umgeschaltet, damit die Symbolik passt
   #endif
   Set_Layout();                                                                       //Keyboard-Layout setzen
 
+//  PS2Controller.keyboard()-> sendCommand(0xED);           //LED-Befehl zur Tastatur -> keine Ahnung, ob das funktioniert
+//  PS2Controller.keyboard()-> sendCommand(0x80);           //Symbol-LED ein 
+  
   delay(200);
 
 
@@ -6409,7 +6419,6 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
     if (*vk == VirtualKey::VK_ESCAPE) {
       if (keyDown) {
         break_marker = true;                                                          //ESC abfangen und in Ctrl-C wandeln
-        Terminal.write(0x0D);
       }
       *vk = VirtualKey::VK_NONE;
     }
