@@ -155,6 +155,7 @@
 //#define ILI9341                 //TFT-Display ILI9341 (mit Touch-Controller XPT2046)
 //#define CardKB                  //Verwendung von CardKB als Tastatur (nur mit PS2-Software nutzbar)
 
+
 #include "fabgl.h" //********************************************* Bibliotheken zur VGA-Signalerzeugung *********************************************
 fabgl::Terminal         Terminal;
 fabgl::LineEditor       LineEditor(&Terminal);
@@ -299,7 +300,9 @@ float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA;
 #define EEPROM_SIZE 512  //2048 byte lesen/speichern
 
 //---------------------------- EEPROM o.FRAM-Chip I2C-Adressen ------------------------------------------------------------------------------------
-short int EEprom_ADDR = 0x50;
+
+short int EEprom_ADDR = 0x50; //-> Adresse 0x50 ist der EEPROM auf dem MCP23017 Board
+
 
 // ---------------------------- W2812-seriell LED-Treiber -----------------------------------------------------------------------------------------
 #include <Adafruit_NeoPixel.h>
@@ -846,7 +849,7 @@ int FUNC_WORDS = FUNC_UNKNOWN;
 const static char options[] PROGMEM = {
   'S', 'D', 'C', 'A', 'R', 'D' + 0x80,      //Pin-Festlegung SD-Karte
   'F', 'R', 'A', 'M' + 0x80,                //CS-Pin FRAM
-  'I', 'I', 'C' + 0x80,                     //Pin-Festlegung I2C-Port
+  'E', 'E', 'P', 'R', 'O', 'M' + 0x80,      //Adresse des I2C-EEproms
   'F', 'O', 'N', 'T' + 0x80,                //Font dauerhaft speichern
   'C', 'O', 'L' , 'O', 'R' + 0x80,          //Vordergrund- und Hintergrundfarbe dauerhaft speichern
   'K', 'E', 'Y' + 0x80,                     //Keyboardlayout 1=US,2=UK,3=GE,4=IT,5=ES,6=FR,7=BE,8=NO,9=JP
@@ -858,7 +861,7 @@ const static char options[] PROGMEM = {
 enum {
   OPT_SDCARD = 0,
   OPT_FRAM,
-  OPT_IIC,
+  OPT_EEP,
   OPT_FONT,
   OPT_COLOR,
   OPT_KEYBOARD,
@@ -1279,9 +1282,9 @@ static unsigned short wait_key(bool modes) {
       c = Terminal.read();
       break;
     }
-    if(break_marker == true) 
+    if (break_marker == true)
     {
-      c=3;
+      c = 3;
       break_marker == false;
       break;
     }
@@ -5720,14 +5723,14 @@ static int inchar()
           if (Graph_char && c != 13 && c != 32 && c != 0x7F) return c + 121; //alle Tasten außer Enter und Space und Backspace umwandeln in Grafik-chars
           return c;
         }//if(Terminal.available)
-        
+
         if (break_marker) {                     //ESC-Abfrage -> Break
           break_marker = false;
           current_line = 0;
           sp = program + sizeof(program);
           return 0x03;
         }
-        
+
       }//while
 
   }//switch (inStream)
@@ -6340,13 +6343,13 @@ void setup()
       kSD_MOSI = EEPROM.read(8);
       kSD_CS   = EEPROM.read(9);
     }
-    /*
-    //--- ist der IIC_Marker (55) auf Platz 13 gesetzt, dann sind die folgenden Werte zu verwenden
-    if (EEPROM.read(13) == 55) {
-      SDA_RTC = EEPROM.read(11);
-      SCL_RTC = EEPROM.read(12);
-    }
-    */
+    
+      //--- ist der IIC_Marker (55) auf Platz 13 gesetzt, dann sind die folgenden Werte zu verwenden
+      if (EEPROM.read(13) == 55) {
+      EEprom_ADDR = EEPROM.read(11);  //Adresse des zu verwendenden EEProms
+      //SCL_RTC = EEPROM.read(12);
+      }
+    
 
     //--- ist der KEY_Marker (66) auf Platz 15 gestzt, dann ist das gespeicherte Layout zu wählen
     if (EEPROM.read(15) == 66) {
@@ -6373,14 +6376,14 @@ void setup()
 
   //VGAController.queueSize = 400;
   PS2Controller.begin(PS2Preset::KeyboardPort0);
-  #ifdef CardKB
-    Keyboard_lang = 9;                                    //bei Verwendung von CardKB wird auf die japanische Tastaturbelegung umgeschaltet, damit die Symbolik passt
-  #endif
-  Set_Layout();                                                                       //Keyboard-Layout setzen
+#ifdef CardKB
+Keyboard_lang = 9;                                    //bei Verwendung von CardKB wird auf die japanische Tastaturbelegung umgeschaltet, damit die Symbolik passt
+#endif
+Set_Layout();                                                                       //Keyboard-Layout setzen
 
-//  PS2Controller.keyboard()-> sendCommand(0xED);           //LED-Befehl zur Tastatur -> keine Ahnung, ob das funktioniert
-//  PS2Controller.keyboard()-> sendCommand(0x80);           //Symbol-LED ein 
-  
+  //  PS2Controller.keyboard()-> sendCommand(0xED);           //LED-Befehl zur Tastatur -> keine Ahnung, ob das funktioniert
+  //  PS2Controller.keyboard()-> sendCommand(0x80);           //Symbol-LED ein
+
   delay(200);
 
 
@@ -7217,14 +7220,15 @@ nochmal:
         EEPROM.commit () ;
         break;
 
-      case OPT_IIC:
+      case OPT_EEP:                       //Adresse des verwendeten EEPROM's
         p[0] = get_value();
-        if (Test_char(',')) return 1;
-        p[1] = get_value();
-        EEPROM.write(11, p[0]);          //SDA im Flash speichern
-        EEPROM.write(12, p[1]);          //SCL im Flash speichern
+        //if (Test_char(',')) return 1;
+        //p[1] = get_value();
+        EEPROM.write(11, p[0]);          //EEPROM-Adresse im Flash speichern
+        //EEPROM.write(12, p[1]);          //SCL im Flash speichern
         EEPROM.write(13, IIC_SET);       //Marker, das Pinkonfiguration im EEprom abgelegt wurde
         EEPROM.commit () ;
+        EEprom_ADDR=p[0];               //EEPROM Adresse sofort setzen
         break;
 
       case OPT_KEYBOARD:

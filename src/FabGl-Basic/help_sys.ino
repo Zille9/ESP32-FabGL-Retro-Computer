@@ -407,7 +407,7 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("KEY= ->(1=US,2=UK,3=GE,4=IT,5=ES,6=FR,7=BE,8=NO,9=JP");
       Terminal.println("COLOR=Foreground,Background");
       Terminal.println("FONT=0..25");
-      Terminal.println("IIC=SDA-Pin,SCL-Pin");
+      Terminal.println("EEPROM=Adress");
       Terminal.println("FRAM=FRAM-CS-Pin");
       Terminal.println("SDCARD=SCK,MISO,MOSI,CS - Pins");
       Terminal.println("PATH='Workpath' (must be in quotes)");
