@@ -54,6 +54,8 @@
 //                            -mit dem CardKB und dem ILI9341 ist nun eine Pocket-Variante von Basic32+ möglich :-)
 //                            -CardKB funktioniert nicht immer nach dem Reset :-( woran liegt das nun wieder?
 //                            -ESC-Abfrage verbessert, jetzt wird auch bei List-Ausgaben korrekt abgebrochen
+//                            -EEPROM Adresse falsch (0x57), auf dem MCP23017-Board ist der EEPROM auf Adresse 0x50 ->geändert
+//                            -SDA und SCL - Pins jetzt nicht mehr mit OPT IIC änderbar, das führte zu Problemen, da nicht immer korrekte Werte aus dem internen ESP32-Eeprom gelesen wurden
 //                            -15459 Zeilen/sek.
 //
 // v1.90b:24.12.2013          -Fehler in der Datumsbehandlung in ESP32_Time entdeckt -> der Monat wird von 0-11 zurückgegeben, daher wurde in der DIR-Datei-Anzeige der Monat falsch angezeigt
@@ -297,7 +299,7 @@ float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA;
 #define EEPROM_SIZE 512  //2048 byte lesen/speichern
 
 //---------------------------- EEPROM o.FRAM-Chip I2C-Adressen ------------------------------------------------------------------------------------
-short int EEprom_ADDR = 0x57;
+short int EEprom_ADDR = 0x50;
 
 // ---------------------------- W2812-seriell LED-Treiber -----------------------------------------------------------------------------------------
 #include <Adafruit_NeoPixel.h>
@@ -6338,12 +6340,13 @@ void setup()
       kSD_MOSI = EEPROM.read(8);
       kSD_CS   = EEPROM.read(9);
     }
-
+    /*
     //--- ist der IIC_Marker (55) auf Platz 13 gesetzt, dann sind die folgenden Werte zu verwenden
     if (EEPROM.read(13) == 55) {
       SDA_RTC = EEPROM.read(11);
       SCL_RTC = EEPROM.read(12);
     }
+    */
 
     //--- ist der KEY_Marker (66) auf Platz 15 gestzt, dann ist das gespeicherte Layout zu wählen
     if (EEPROM.read(15) == 66) {
