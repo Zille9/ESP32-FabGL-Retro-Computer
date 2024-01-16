@@ -45,11 +45,18 @@
 // April 2021
 //
 //
-#define BasicVersion "1.91b"
-#define BuiltTime "30.12.2023"
-#pragma GCC optimize ("O2")
+#define BasicVersion "1.93b"
+#define BuiltTime "13.01.2024"
+//#pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
-// v1.91b:30.12.2013          -CardKB als Tastatur mit PS/2 Software eingebunden (über define auswählbar)
+// v1.93b:13.01.2024          -Taste F10 mit der Ausgabe der mit Option gesicherten Parameter belegt ->Version, BuiltTime, Tastaturlayout, EEProm-Adresse, Arbeitsverzeichnis
+//                            -die restlichen Werte werden beim Start schon angezeigt
+//
+// v1.92b:07.01.2024          -Dump-Ausgabe für ILI9341 angepasst, da hier im Querformat x und y vertauscht sind
+//                            -SD-Karte bisher nicht gleichzeitig mit ILI9341 funktionsfähig !? mal sehen, woran das nun wieder liegt :-(
+//                            -ab und zu wird die CardKB-Tastatur nach dem Reset nicht erkannt -> ein reset-Befehl muss initiiert werden
+//
+// v1.91b:30.12.2023          -CardKB als Tastatur mit PS/2 Software eingebunden (über define auswählbar)
 //                            -kleine Änderungen in der ESC-Behandlung, da es beim CardKB kein Ctrl-C gibt -> ESC hat die gleiche Wirkung
 //                            -mit dem CardKB und dem ILI9341 ist nun eine Pocket-Variante von Basic32+ möglich :-)
 //                            -CardKB funktioniert nicht immer nach dem Reset :-( woran liegt das nun wieder?
@@ -58,26 +65,26 @@
 //                            -SDA und SCL - Pins jetzt nicht mehr mit OPT IIC änderbar, das führte zu Problemen, da nicht immer korrekte Werte aus dem internen ESP32-Eeprom gelesen wurden
 //                            -15459 Zeilen/sek.
 //
-// v1.90b:24.12.2013          -Fehler in der Datumsbehandlung in ESP32_Time entdeckt -> der Monat wird von 0-11 zurückgegeben, daher wurde in der DIR-Datei-Anzeige der Monat falsch angezeigt
+// v1.90b:24.12.2023          -Fehler in der Datumsbehandlung in ESP32_Time entdeckt -> der Monat wird von 0-11 zurückgegeben, daher wurde in der DIR-Datei-Anzeige der Monat falsch angezeigt
 //
-// v1.89b:12.12.2013          -TFT-Treiber für ILI9341 240x320 Pixel-Display integriert - Treiber ist über #define auswählbar
+// v1.89b:12.12.2023          -TFT-Treiber für ILI9341 240x320 Pixel-Display integriert - Treiber ist über #define auswählbar
 //                            -Breadboard-Test soweit erfolgreich
 //                            -ab und zu startet das Display nicht korrekt, Ursache muss noch erforscht werden -> Print_info etwas geändert, scheint jetzt zu funktionieren
 //                            -neue Platinenvariante muss noch erstellt werden, welche alle Grafik-Varianten vereint (AV,VGA,TFT)
 //
-// v1.88b:03.12.2013          -MIDI-Funktionalität wieder entfernt
+// v1.88b:03.12.2023          -MIDI-Funktionalität wieder entfernt
 //                            -Sound-Befehl wieder die ursprüngliche Routine aktiviert
 //                            -Augenmerk soll mehr auf Funktionalität als Basic-Messcomputer gesetzt werden
 //                            -Akku-Messroutine über define auswählbar
 //                            -15531 Zeilen/sek.
 //
-// v1.87b:08.08.2013          -erste MIDI-Funktionalität integriert
+// v1.87b:08.08.2023          -erste MIDI-Funktionalität integriert
 //                            -der Sound-Befehl wird für die interne Ausgabe von Tönen benutzt, die ursprüngliche Routine wurde deaktiviert
 //                            -Syntax: SND_N 0,45,127,100 -> Chan,Note,Velocity,Duration
 //                            -die Angabe von Duration (Dauer) muss noch geändert werden, damit mehrere Noten gleichzeitig erklingen können
 //                            -16329 Zeilen/sek.
 //
-// v1.86b:07.08.2013          -Beginn der Einbindung des Adafruit VS1053 Boards für MIDI-Funktionalität, um die Soundfunktionen aufzupeppen
+// v1.86b:07.08.2023          -Beginn der Einbindung des Adafruit VS1053 Boards für MIDI-Funktionalität, um die Soundfunktionen aufzupeppen
 //                            -2GM-Soundbänke + 2Drumkit-Bänke
 //                            -Pan-Funktion, Reverb-Effekt, Pitch-Funktion, Polyfonie bis zu 64 Stimmen
 //                            -erste Trockentest's sind vielversprechend
@@ -189,7 +196,8 @@ TerminalController      tc(&Terminal);
 #define erststart_marker 131                //dieser Marker steht im EEprom an Position 100 - wird der ESP32 zum ersten mal mit dem Basic gestartet werden standard-Werte gesetzt
 //damit eine benutzbare Version gestartet wird
 //---------------------------------------------------- verfügbare Themes ---------------------------------------------------------------------------
-char * Themes[]    PROGMEM = {"C64", "C128", "CPC", "ATARI 800", "ZX-Spectrum", "KC87", "KC85", "VIC-20", "TRS-80", "ESP32+", "LCD", "User"}; //Theme-Namen
+const char * Themes[]    PROGMEM = {"C64", "C128", "CPC", "ATARI 800", "ZX-Spectrum", "KC87", "KC85", "VIC-20", "TRS-80", "ESP32+", "LCD", "User"}; //Theme-Namen
+const char * Keylayout[] PROGMEM = {" ", "US", "UK", "GE", "IT", "ES", "FR", "BE", "NO", "JP"};
 byte x_char[]      PROGMEM = {8, 5, 6, 8,  10, 8,  8,  8,  8,  8,  8,  8,  8,  6,  8,  4, 6,  7,  7,  8, 8, 8, 6, 9, 8, 6}; //x-werte der Fontsätze zur Berechnung der Terminalbreite
 byte y_char[]      PROGMEM = {8, 8, 8, 14, 20, 14, 14, 16, 16, 14, 14, 14, 16, 10, 14, 6, 12, 13, 14, 9, 14, 14, 10, 15, 16, 8}; //y-werte der Fontsätze zur Berechnung der Terminalhöhe
 
@@ -333,11 +341,20 @@ bool LCD_Backlight = true;
 
 //---------------------------------------- Konfiguration FRAM -------------------------------------------------------------------------------------
 byte FRAM_CS  = 0;//13;             //SPI_FRAM 512kB CS-Pin
+Adafruit_FRAM_SPI spi_fram = Adafruit_FRAM_SPI(kSD_CLK, kSD_MISO, kSD_MOSI, FRAM_CS);
+
+//---------------------------------------- spezielle FRam-Adressen --------------------------------------------------------------------------------
 word FRAM_OFFSET      = 0x8000;     //Offset für Poke-Anweisungen, um zu verhindern, das in den Array-Bereich gepoked wird
 word FRAM_PIC_OFFSET  = 0x12C04;    //Platz pro Bildschirm im Speicher 320x240=76800 + 4Byte für die Dimension = 76804
 long load_adress      = 0x70000;    //hier kann ein Basicprogramm abgelegt werden (Eingabe: LOAD oder SAVE ohne Parameter)
+//---------------------------------------- Array-Parameter ----------------------------------------------------------------------------------------
+//Der Arraybereich befindet sich 0x0..0x7fff
+word Var_Neu_Platz =  0;            //Adresse nächstes Array-Feld Start bei 0x77e00
+static word VAR_TBL = 0x7e00;       //Variablen-Array-Tabelle im FRAM
+static word STR_TBL = 0x7f00;       //String-Array-Tabelle im FRAM
+//-------------------------------------------------------------------------------------------------------------------------------------------------
 
-Adafruit_FRAM_SPI spi_fram = Adafruit_FRAM_SPI(kSD_CLK, kSD_MISO, kSD_MOSI, FRAM_CS);
+
 
 //------------------------------- Konfiguration serielle Schnittstelle ----------------------------------------------------------------------------
 uint8_t prx, ptx;             //RX- und TX-Pin
@@ -413,11 +430,6 @@ static bool Theme_marker = false;       //Theme-Marker, falls Farben geändert
 short int Mode_state = 0;               //aktuelle Auflösung (im EEProm gespeichert)
 
 static bool break_marker = false;      //********** Test für CardKB *****************
-//------------------------------ Array-Parameter --------------------------------------------------------------------------------------------------
-word Var_Neu_Platz =  0;                //Adresse nächstes Array-Feld Start bei 0x77e00
-static word VAR_TBL = 0x7e00;           //Variablen-Array-Tabelle im FRAM
-static word STR_TBL = 0x7f00;           //String-Array-Tabelle im FRAM
-//-------------------------------------------------------------------------------------------------------------------------------------------------
 
 //------------------------------ Grid-Parameter ---------------------------------------------------------------------------------------------------
 int Grid[15];  //0=x, 1=y, 2=xx, 3=yy, 4=zell_x, 5=zell_y, 6=pix_x, 7=pix_y, 8=frame-col, 9=grid_col
@@ -1152,10 +1164,15 @@ void printnum(float num, int modes)   //Ausgabe als float
 //#######################################################################################################################################
 
 static int Memory_Dump() {                       //DMP Speichertyp 0..2 <,Adresse>
-  int ex = 0, c, was;
+  int ex = 0, c, was,tpm;
   int ln = (VGAController.getScreenHeight() / y_char[fontsatz]) - 3; //Anzahl Zeilen abhängig vom Fontsatz
   //if (Frame_nr) win_set_cursor(0);               //sind Fenster gesetzt?, dann Hauptfenster setzen
   int x_weite = VGAController.getScreenWidth() / x_char[fontsatz];
+  
+#ifdef ILI9341                                  //bei TFT x und y vertauscht
+  x_weite = (VGAController.getScreenHeight() / x_char[fontsatz]) ; 
+  ln = VGAController.getScreenWidth() / y_char[fontsatz] - 3;    //Anzahl Zeilen abhängig vom Fontsatz
+#endif
 
   byte rdbyte[8];
 
@@ -1718,6 +1735,7 @@ static float expr4(void)
     char fu = table_index, iic, cc;
     int charb, fname;                                         //Hilfsvariable für FN
     unsigned long result;                                     //Hilfsvariable für Peek
+    
     //-------------------------------------------------------- einfache Funktionen ohne Klammer ------------------------------------------------------------------
     switch (fu)                                               // Rückgabe einfache Werte (ohne Klammer)
     {
@@ -2011,23 +2029,17 @@ static float expr4(void)
           buf[1] = program[int(b) + 1];
           buf[2] = program[int(b) + 2];
           buf[3] = program[int(b) + 3];
-          float reslt = *(float*)buf;
-          return reslt;
         }
         else if (a == 1) {
           spi_fram.read(FRAM_OFFSET + b, buf, 4);         //FRAM float
-          //readBuffer(FRam_ADDR, b, 4, buf);
-
-          float reslt = *(float*)buf;
-          return reslt;
         }
-        else if (a == 2) {                                //EEPROM float
+        else {//if (a == 2) {                                //EEPROM float
           readBuffer(EEprom_ADDR, b, 4, buf);
-          float reslt = *(float*)buf;
-          return reslt;
         }
+        return *(float*)buf;
         break;
 
+        
       case FUNC_GPIX:
         return Test_pixel(a, b, 1);
         break;
@@ -6213,12 +6225,20 @@ void cmd_Dir(void)
     line_terminator();
     entry.close();
     ln++;
-
-    if (ln == (VGAController.getScreenHeight() / y_char[fontsatz]) - 3) //Ausgabezeilen abhängig vom gewählten Fontsatz
-    {
-      if (wait_key(true) == 3) ex = 1;                          //nach ln Zeilen auf Tastatur warten ->SPACE,ENTER=weiter, CTRL+C oder ESC=EXIT
+    
+#ifdef ILI9341                                                      //bei TFT x und y vertauscht
+  if(ln == VGAController.getScreenWidth() / y_char[fontsatz] - 3)   //Anzahl Zeilen abhängig vom Fontsatz
+  {
+      if (wait_key(true) == 3) ex = 1;                              //nach ln Zeilen auf Tastatur warten ->SPACE,ENTER=weiter, CTRL+C oder ESC=EXIT
       ln = 1;
     }
+#else
+    if (ln == (VGAController.getScreenHeight() / y_char[fontsatz]) - 3) //Ausgabezeilen abhängig vom gewählten Fontsatz
+    {
+      if (wait_key(true) == 3) ex = 1;                              //nach ln Zeilen auf Tastatur warten ->SPACE,ENTER=weiter, CTRL+C oder ESC=EXIT
+      ln = 1;
+    }
+#endif
 
   }
   line_terminator();
@@ -6343,13 +6363,13 @@ void setup()
       kSD_MOSI = EEPROM.read(8);
       kSD_CS   = EEPROM.read(9);
     }
-    
-      //--- ist der IIC_Marker (55) auf Platz 13 gesetzt, dann sind die folgenden Werte zu verwenden
-      if (EEPROM.read(13) == 55) {
+
+    //--- ist der IIC_Marker (55) auf Platz 13 gesetzt, dann sind die folgenden Werte zu verwenden
+    if (EEPROM.read(13) == 55) {
       EEprom_ADDR = EEPROM.read(11);  //Adresse des zu verwendenden EEProms
       //SCL_RTC = EEPROM.read(12);
-      }
-    
+    }
+
 
     //--- ist der KEY_Marker (66) auf Platz 15 gestzt, dann ist das gespeicherte Layout zu wählen
     if (EEPROM.read(15) == 66) {
@@ -6374,12 +6394,14 @@ void setup()
     Theme_state = 2;                                      //CPC Theme
   }
 
+delay(1000);                                              //eine sek warten, damit die CardKB-Tastatur starten kann
+
   //VGAController.queueSize = 400;
   PS2Controller.begin(PS2Preset::KeyboardPort0);
 #ifdef CardKB
-Keyboard_lang = 9;                                    //bei Verwendung von CardKB wird auf die japanische Tastaturbelegung umgeschaltet, damit die Symbolik passt
+Keyboard_lang = 9;                                        //bei Verwendung von CardKB wird auf die japanische Tastaturbelegung umgeschaltet, damit die Symbolik passt
 #endif
-Set_Layout();                                                                       //Keyboard-Layout setzen
+Set_Layout();                                             //Keyboard-Layout setzen
 
   //  PS2Controller.keyboard()-> sendCommand(0xED);           //LED-Befehl zur Tastatur -> keine Ahnung, ob das funktioniert
   //  PS2Controller.keyboard()-> sendCommand(0x80);           //Symbol-LED ein
@@ -6392,7 +6414,7 @@ Set_Layout();                                                                   
 #ifdef AVOUT                                                                          //AV-Variante
 VGAController.begin(VIDEOOUT_GPIO);
 VGAController.setHorizontalRate(2);                                                   //320x240
-VGAController.setResolution(MODES_STD[5]);                                            //5 scheint optimal
+VGAController.setResolution(MODES_STD[5]);                                            //5 scheint optimal ist aber mit 384x240 nicht kompatibel
 
 #elif defined VGA64
 VGAController.begin();                                                                //VGA-Variante //64 Farben
@@ -6462,6 +6484,12 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
       }
       *vk = VirtualKey::VK_NONE;
     }
+    else if (*vk == VirtualKey::VK_F10) {                                              //Ausgabe Color-Tabelle
+      if (keyDown) {
+        show_systemparameters();
+      }
+      *vk = VirtualKey::VK_NONE;
+    }
 
   };
 
@@ -6485,6 +6513,7 @@ timerAlarmEnable(Akku_timer);                        //Interrupt-Routine
 
 
 }
+
 
 
 
@@ -7228,7 +7257,7 @@ nochmal:
         //EEPROM.write(12, p[1]);          //SCL im Flash speichern
         EEPROM.write(13, IIC_SET);       //Marker, das Pinkonfiguration im EEprom abgelegt wurde
         EEPROM.commit () ;
-        EEprom_ADDR=p[0];               //EEPROM Adresse sofort setzen
+        EEprom_ADDR = p[0];             //EEPROM Adresse sofort setzen
         break;
 
       case OPT_KEYBOARD:
@@ -8655,3 +8684,26 @@ nochmal:
     }
     else return c;          //Farbe des Pixels
   }
+
+
+
+//################################################## Systemparameter anzeigen ###########################################################
+void show_systemparameters(void){
+  Terminal.println();
+  Terminal.write("BuiltTime : ");
+  Terminal.write(BuiltTime);
+  Terminal.println();
+  Terminal.write("Keyboard  : ");
+  Terminal.print(Keyboard_lang,DEC);
+  Terminal.write("=");
+  Terminal.write(Keylayout[Keyboard_lang]);
+  Terminal.println();
+  Terminal.write("Eeprom-Adr: #");
+  Terminal.print(EEPROM.read(11),HEX); 
+  Terminal.println();
+  Terminal.write("Workpath  : ");
+  Terminal.print(sd_pfad);
+  line_terminator();
+  printmsg("OK>", 0);
+
+}
