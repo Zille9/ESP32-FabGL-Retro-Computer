@@ -21,7 +21,6 @@
       }
 
       File updateBin = SD.open(String(sd_pfad) + String(tempstring));
-
       if (updateBin) {
         size_t updateSize = updateBin.size();
 

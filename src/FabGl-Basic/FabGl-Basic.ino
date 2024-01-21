@@ -45,10 +45,13 @@
 // April 2021
 //
 //
-#define BasicVersion "1.93b"
-#define BuiltTime "13.01.2024"
+#define BasicVersion "1.94b"
+#define BuiltTime "19.01.2024"
 //#pragma GCC optimize ("O2")
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v1.94b:19.01.2024          -Grafikbefehl ROUND erstellt -> erschafft Rechtecke mit abgerundeten Ecken
+//                            -momentan aber keine Fill-Funktion
+//
 // v1.93b:13.01.2024          -Taste F10 mit der Ausgabe der mit Option gesicherten Parameter belegt ->Version, BuiltTime, Tastaturlayout, EEProm-Adresse, Arbeitsverzeichnis
 //                            -die restlichen Werte werden beim Start schon angezeigt
 //
@@ -610,6 +613,7 @@ const static char keywords[] PROGMEM = {
   '?' + 0x80,
   'W', 'I', 'N', 'D', 'O', 'W' + 0x80,
   'H', 'E', 'L', 'P' + 0x80,
+  'R', 'O', 'U', 'N', 'D' + 0x80,
   0
 };
 
@@ -697,7 +701,8 @@ enum {
   KW_PRINTING,
   KW_WINDOW,
   KW_HELP,    //80
-  KW_DEFAULT  //81/* hier ist das Ende */
+  KW_ROUND,
+  KW_DEFAULT  //82/* hier ist das Ende */
 };
 
 int KW_WORDS = KW_DEFAULT;
@@ -1164,14 +1169,14 @@ void printnum(float num, int modes)   //Ausgabe als float
 //#######################################################################################################################################
 
 static int Memory_Dump() {                       //DMP Speichertyp 0..2 <,Adresse>
-  int ex = 0, c, was,tpm;
+  int ex = 0, c, was, tpm;
   int ln = (VGAController.getScreenHeight() / y_char[fontsatz]) - 3; //Anzahl Zeilen abhängig vom Fontsatz
   //if (Frame_nr) win_set_cursor(0);               //sind Fenster gesetzt?, dann Hauptfenster setzen
   int x_weite = VGAController.getScreenWidth() / x_char[fontsatz];
-  
+
 #ifdef ILI9341                                  //bei TFT x und y vertauscht
-  x_weite = (VGAController.getScreenHeight() / x_char[fontsatz]) ; 
-  ln = VGAController.getScreenWidth() / y_char[fontsatz] - 3;    //Anzahl Zeilen abhängig vom Fontsatz
+x_weite = (VGAController.getScreenHeight() / x_char[fontsatz]) ;
+ln = VGAController.getScreenWidth() / y_char[fontsatz] - 3;    //Anzahl Zeilen abhängig vom Fontsatz
 #endif
 
   byte rdbyte[8];
@@ -1735,7 +1740,7 @@ static float expr4(void)
     char fu = table_index, iic, cc;
     int charb, fname;                                         //Hilfsvariable für FN
     unsigned long result;                                     //Hilfsvariable für Peek
-    
+
     //-------------------------------------------------------- einfache Funktionen ohne Klammer ------------------------------------------------------------------
     switch (fu)                                               // Rückgabe einfache Werte (ohne Klammer)
     {
@@ -2039,7 +2044,7 @@ static float expr4(void)
         return *(float*)buf;
         break;
 
-        
+
       case FUNC_GPIX:
         return Test_pixel(a, b, 1);
         break;
@@ -3540,6 +3545,11 @@ interpreteAtTxtpos:
           continue;
         break;
 
+      case KW_ROUND:                                      // ROUND x,y,w,h,r
+        if (line_rec_circ(3, 5))                          // 3=Round, 0..4 Parameter
+          continue;
+        break;
+
       case KW_FONT:                                       // FONT f
         expression_error = 0;
         val = int(get_value());
@@ -4812,14 +4822,35 @@ static int line_rec_circ(int circ_or_rect, int param)
       if (par[4] == 0) GFX.drawEllipse(par[0], par[1], par[2], par[3]);       //Circle circ x,y,xx,yy,fill=0
       else {
         bcolor(Hintergrund);
-        GFX.fillEllipse(par[0], par[1], par[2], par[3]);                   //Circle circ x,y,xx,yy,fill=1
+        GFX.fillEllipse(par[0], par[1], par[2], par[3]);                      //Circle circ x,y,xx,yy,fill=1
       }
       break;
     case 2:
       if (par[4] == 0) GFX.drawRectangle(par[0], par[1], par[2], par[3]);     //Rectangle rect x,y,xx,yy,fill=0
       else {
         bcolor(Hintergrund);
-        GFX.fillRectangle(par[0], par[1], par[2], par[3]);                 //Rectangle rect x,y,xx,yy,fill=1
+        GFX.fillRectangle(par[0], par[1], par[2], par[3]);                    //Rectangle rect x,y,xx,yy,fill=1
+      }
+      break;                                                                   //               0 1 2  3  4
+    case 3:                                                                   //Roundrect round x,y,xx,yy,r,fill
+      
+      GFX.drawLine(par[0] + 1.6 * par[4], par[1] - 1, par[0] + par[2] - 1.6 * par[4], par[1] - 1);
+      GFX.drawLine(par[0] + 1.6 * par[4], par[1] + par[3], par[0] + par[2] - 1.6 * par[4], par[1] + par[3]);
+      GFX.drawLine(par[0] - 1, par[1] + par[4], par[0] - 1, par[1] + par[3] - par[4]);
+      GFX.drawLine(par[0] + par[2], par[1] + par[4], par[0] + par[2], par[1] + par[3] - par[4]);
+      for (int i = 0; i <= 25; i++) {
+        GFX.setPixel(par[0] + par[2] - par[4] * 1.6 * (1 - cos(i / 25.*3.1415 / 2.)), par[1] + par[4] * (1 - sin(i / 25.*3.1415 / 2.)));
+        GFX.setPixel(par[0] + par[4] * 1.6 * (1 - cos(i / 25.*3.1415 / 2.)), par[1] + par[4] * (1 - sin(i / 25.*3.1415 / 2.)));
+        GFX.setPixel(par[0] + par[2] - par[4] * 1.6 * (1 - cos(i / 25.*3.1415 / 2.)), par[1] + par[3] - par[4] * (1 - sin(i / 25.*3.1415 / 2.)));
+        GFX.setPixel(par[0] + par[4] * 1.6 * (1 - cos(i / 25.*3.1415 / 2.)), par[1] + par[3] - par[4] * (1 - sin(i / 25.*3.1415 / 2.)));
+      }
+      if(par[5]==1){
+        bcolor(Vordergrund);
+        GFX.fillRectangle(par[0] + (1.6 * par[4])-1, par[1], par[0] + par[2] - (1.6 * par[4])+1, par[1] + par[3]);
+        GFX.fillRectangle(par[0] , par[1] + par[4], par[0] + par[2], par[1] + par[3] - par[4]);
+        GFX.fillEllipse(par[0]+par[4], par[1] + par[4], par[4]*1.9, par[4]*1.6);
+        bcolor(Hintergrund);
+        //fill_area(par[0]+(par[2]/2),par[1]); 
       }
       break;
     default:
@@ -6225,19 +6256,19 @@ void cmd_Dir(void)
     line_terminator();
     entry.close();
     ln++;
-    
+
 #ifdef ILI9341                                                      //bei TFT x und y vertauscht
-  if(ln == VGAController.getScreenWidth() / y_char[fontsatz] - 3)   //Anzahl Zeilen abhängig vom Fontsatz
-  {
-      if (wait_key(true) == 3) ex = 1;                              //nach ln Zeilen auf Tastatur warten ->SPACE,ENTER=weiter, CTRL+C oder ESC=EXIT
-      ln = 1;
-    }
+if (ln == VGAController.getScreenWidth() / y_char[fontsatz] - 3)  //Anzahl Zeilen abhängig vom Fontsatz
+{
+if (wait_key(true) == 3) ex = 1;                              //nach ln Zeilen auf Tastatur warten ->SPACE,ENTER=weiter, CTRL+C oder ESC=EXIT
+ln = 1;
+}
 #else
-    if (ln == (VGAController.getScreenHeight() / y_char[fontsatz]) - 3) //Ausgabezeilen abhängig vom gewählten Fontsatz
-    {
-      if (wait_key(true) == 3) ex = 1;                              //nach ln Zeilen auf Tastatur warten ->SPACE,ENTER=weiter, CTRL+C oder ESC=EXIT
-      ln = 1;
-    }
+if (ln == (VGAController.getScreenHeight() / y_char[fontsatz]) - 3) //Ausgabezeilen abhängig vom gewählten Fontsatz
+{
+if (wait_key(true) == 3) ex = 1;                              //nach ln Zeilen auf Tastatur warten ->SPACE,ENTER=weiter, CTRL+C oder ESC=EXIT
+ln = 1;
+}
 #endif
 
   }
@@ -6394,7 +6425,7 @@ void setup()
     Theme_state = 2;                                      //CPC Theme
   }
 
-delay(1000);                                              //eine sek warten, damit die CardKB-Tastatur starten kann
+  delay(1000);                                              //eine sek warten, damit die CardKB-Tastatur starten kann
 
   //VGAController.queueSize = 400;
   PS2Controller.begin(PS2Preset::KeyboardPort0);
@@ -6402,9 +6433,6 @@ delay(1000);                                              //eine sek warten, dam
 Keyboard_lang = 9;                                        //bei Verwendung von CardKB wird auf die japanische Tastaturbelegung umgeschaltet, damit die Symbolik passt
 #endif
 Set_Layout();                                             //Keyboard-Layout setzen
-
-  //  PS2Controller.keyboard()-> sendCommand(0xED);           //LED-Befehl zur Tastatur -> keine Ahnung, ob das funktioniert
-  //  PS2Controller.keyboard()-> sendCommand(0x80);           //Symbol-LED ein
 
   delay(200);
 
@@ -8548,121 +8576,117 @@ nochmal:
     printmsg("OK>", 0);
   }
   //***************************************************** Testbereich - Fill *****************************************************************
-  /*
-        //------------------------------------------ Befehl Fill --------------------------------------------------------------------------------------
-        int fill_area(void) {
-          int xx, yy, xl, xr, yo, yu, x, y, c, lbuf[3], rbuf[3], cl, cr;
-          bool d, l, r, o, u, xl_m, xr_m = false;
 
-          x = get_value();
-          if (Test_char(',')) return 1;
-          y = get_value();
-          if (Test_char(',')) return 1;
-          c = get_value();
-          fcolor(c);
-          xl = x;
-          xr = x;
-          yo = y;
-          yu = y;
-          d = false;
-
-          while (!d) {
-            if (Test_pixel(xl, yo, 1) == Hintergrund) {         //hat Pixel die Hintergrundfarbe?
-              if (xl >= 0 && xl < GFX.getWidth() && y >= 0) {   //innerhalb der Grenzen bleiben
-                GFX.setPixel(xl, yo);                           //dann setze Pixel
-                xl--;                                           //ein Pixel nach links
-              }
-              else xl_m = true;                                 //ausserhalb der Grenzen - abbruch
-            }
-            else {                                              //Pixel gesetzt = rand links detektiert - abbruch
-              xl_m = true;
-            }
-
-            if (Test_pixel(xr, yy, 1) == Hintergrund) {                       //hat Pixel die Hintergrundfarbe?
-              if (xr >= 0 && xr < GFX.getWidth() && y >= 0) {   //innerhalb der Grenzen bleiben
-                GFX.setPixel(xr, yo);                           //dann setze Pixel
-                xr++;                                           //ein Pixxel nach rechts
-              }
-              else xr_m = true;                                 //Grenzen erreicht, dann abbruch
-
-            }
-            else {                                              //rand rechts detektiert, dann abbruch
-              xr_m = true;
-            }
-
-            if (xr_m && xl_m)                                   //Grenzen rechtss und links erreicht
-            {
-              if (Test_pixel(x, yo - 1, 1) == Hintergrund)      //test Pixel eine Zeile höher
-              {
-                yo--;                                           //eine Zeile höher
-                xr_m = false;                                   //rechten Grenzmarker zurücksetzen
-                xl_m = false;                                   //linken Grenzmarker zurücksetzen
-
-                //x = xr - xl ;                                 //mitte neu errechnen
-                xr = x;
-                xl = x;
-              }
-              else {
-                d = true;
-              }
-            }
-
-
-          }
-          //x = xr - 1 - xl - 1;
-          xl = x;
-          xr = x;
-          yu = y;
-          d = false;
-
-          while (!d) {
-            if (Test_pixel(xl, yu, 1) == Hintergrund) {
-              if (xl >= 0 && xl < GFX.getWidth() && yu < GFX.getHeight()) {
-                GFX.setPixel(xl, yu);
-                xl--;
-              }
-              else xl_m = true;
-
-            }
-            else {                        //rand links detektiert
-              xl_m = true;
-            }
-
-            if (Test_pixel(xr, yu, 1) == Hintergrund) {
-              if (xr >= 0 && xr < GFX.getWidth() && yu < GFX.getHeight()){
-                GFX.setPixel(xr, yu);
-                xr++;
-              }
-              else xr_m = true;
-
-            }
-            else {                        //rand rechts detektiert
-              xr_m = true;
-            }
-
-            if (xr_m && xl_m)
-            { //rand links und rechts erreicht dann eine Zeile tiefer
-              if (Test_pixel(x, yu + 1, 1) == Hintergrund)
-              {
-                yu++;
-                xr_m = false;
-                xl_m = false;
-                //x = xr - 1 - xl -1;
-                xr = x;
-                xl = x;
-              }
-              else {
-                d = true;
-              }
-            }
-
-          }
-          fcolor(Vordergrund);
-          return 0;
+  //------------------------------------------ Befehl Fill --------------------------------------------------------------------------------------
+  int fill_area(int x, int y) {
+    int xx, yy, xl, xr, yo, yu;
+    bool d, xl_m, xr_m = false;
+    
+    xl = x;
+    xr = x;
+    yo = y;
+    yu = y;
+    d = false;
+/*
+    while (!d) {
+      
+      if (Test_pixel(xl, yo, 0) == 0){//Hintergrund) {         //hat Pixel die Hintergrundfarbe?
+        if (xl >= 0 && xl < GFX.getWidth() && yo >= 0) {   //innerhalb der Grenzen bleiben
+          GFX.setPixel(xl, yo);                           //dann setze Pixel
+          delay(1);
+          xl--;                                           //ein Pixel nach links
         }
+        else xl_m = true;                                 //ausserhalb der Grenzen - abbruch
+      }
+      else {                                              //Pixel gesetzt = rand links detektiert - abbruch
+        xl_m = true;
+      }
+
+      if (Test_pixel(xr, yo, 0) == 0){//Hintergrund) {    //hat Pixel die Hintergrundfarbe?
+        if (xr >= 0 && xr < GFX.getWidth() && yo >= 0) {  //innerhalb der Grenzen bleiben
+          GFX.setPixel(xr, yo);                           //dann setze Pixel
+          xr++;                                           //ein Pixxel nach rechts
+        }
+        else xr_m = true;                                 //Grenzen erreicht, dann abbruch
+
+      }
+      else {                                              //rand rechts detektiert, dann abbruch
+        xr_m = true;
+      }
+
+      if (xr_m && xl_m)                                   //Grenzen rechtss und links erreicht
+      {
+        if (Test_pixel(x, yo - 1, 0) == 0)//Hintergrund)      //test Pixel eine Zeile höher
+        {
+          yo--;                                           //eine Zeile höher
+          xr_m = false;                                   //rechten Grenzmarker zurücksetzen
+          xl_m = false;                                   //linken Grenzmarker zurücksetzen
+
+          //x = xr - xl ;                                 //mitte neu errechnen
+          xr = x;
+          xl = x;
+        }
+        else {
+          d = true;
+        }
+      }
 
 
-  */
+    }
+    //x = xr - 1 - xl - 1;
+    xl = x;
+    xr = x;
+    yu = y;
+    d = false;
+*/
+    while (!d) {
+      if (Test_pixel(xl, yu, 1) !=Vordergrund){//Hintergrund) {
+        if (xl >= 0 && xl < GFX.getWidth() && yu < GFX.getHeight()) {
+          GFX.setPixel(xl, yu);
+          xl--;
+        }
+        else xl_m = true;
+
+      }
+      else {                        //rand links detektiert
+        xl_m = true;
+      }
+
+      if (Test_pixel(xr, yu, 1) !=Vordergrund){//Hintergrund) {
+        if (xr >= 0 && xr < GFX.getWidth() && yu < GFX.getHeight()) {
+          GFX.setPixel(xr, yu);
+          xr++;
+        }
+        else xr_m = true;
+
+      }
+      else {                        //rand rechts detektiert
+        xr_m = true;
+      }
+
+      if (xr_m && xl_m)
+      { //rand links und rechts erreicht dann eine Zeile tiefer
+        if (Test_pixel(x, yu + 1, 0) == 0)//Hintergrund)
+        {
+          yu++;
+          xr_m = false;
+          xl_m = false;
+          //x = xr - 1 - xl -1;
+          xr = x;
+          xl = x;
+        }
+        else {
+          d = true;
+        }
+      }
+
+    }
+    fcolor(Vordergrund);
+    return 0;
+  }
+
+
+
 
 
   //------------------------------------------------- Prüfe, ob Pixel gesetzt ist --------------------------------------------------------------
@@ -8687,23 +8711,23 @@ nochmal:
 
 
 
-//################################################## Systemparameter anzeigen ###########################################################
-void show_systemparameters(void){
-  Terminal.println();
-  Terminal.write("BuiltTime : ");
-  Terminal.write(BuiltTime);
-  Terminal.println();
-  Terminal.write("Keyboard  : ");
-  Terminal.print(Keyboard_lang,DEC);
-  Terminal.write("=");
-  Terminal.write(Keylayout[Keyboard_lang]);
-  Terminal.println();
-  Terminal.write("Eeprom-Adr: #");
-  Terminal.print(EEPROM.read(11),HEX); 
-  Terminal.println();
-  Terminal.write("Workpath  : ");
-  Terminal.print(sd_pfad);
-  line_terminator();
-  printmsg("OK>", 0);
+  //################################################## Systemparameter anzeigen ###########################################################
+  void show_systemparameters(void) {
+    Terminal.println();
+    Terminal.write("BuiltTime : ");
+    Terminal.write(BuiltTime);
+    Terminal.println();
+    Terminal.write("Keyboard  : ");
+    Terminal.print(Keyboard_lang, DEC);
+    Terminal.write("=");
+    Terminal.write(Keylayout[Keyboard_lang]);
+    Terminal.println();
+    Terminal.write("Eeprom-Adr: #");
+    Terminal.print(EEPROM.read(11), HEX);
+    Terminal.println();
+    Terminal.write("Workpath  : ");
+    Terminal.print(sd_pfad);
+    line_terminator();
+    printmsg("OK>", 0);
 
-}
+  }

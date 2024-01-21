@@ -500,7 +500,10 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("without Parameters shows all Commands");
       Terminal.println("HELP Keyword shows Keyword-explanations");
       break;
-
+    case 81:
+      Terminal.println("ROUND x,y,w,h,r,f");
+      Terminal.println("Draws a rectangle with rounded corners");
+      Terminal.println("ROUND x,y,w(width),h(height),r(radius),f(fill=1 or not=0)");
     default:
 
       break;
