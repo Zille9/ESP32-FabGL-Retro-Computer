@@ -179,8 +179,8 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("Draws a Line on x,y,xx,yy with Pencolor");
       break;
     case 23:
-      Terminal.println("RECT x,y,w,h,fill");
-      Terminal.println("Draws a Rectangle on x,y,w (width),h (height),fill");
+      Terminal.println("RECT x,y,xx,yy,fill");
+      Terminal.println("Draws a Rectangle on x,y to xx,yy,fill");
       Terminal.println("fill=1 draw a filled Rectangle");
       break;
     case 24:
@@ -501,9 +501,9 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("HELP Keyword shows Keyword-explanations");
       break;
     case 81:
-      Terminal.println("ROUND x,y,w,h,r,f");
+      Terminal.println("FRAME x,y,w,h,r");
       Terminal.println("Draws a rectangle with rounded corners");
-      Terminal.println("ROUND x,y,w(width),h(height),r(radius),f(fill=1 or not=0)");
+      Terminal.println("FRAME x,y,w(width),h(height),r(radius)");
     default:
 
       break;

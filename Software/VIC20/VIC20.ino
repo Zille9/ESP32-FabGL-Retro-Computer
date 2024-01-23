@@ -504,8 +504,9 @@ class Menu : public uiApp {
       // Download List button (download programs listed and linked in LIST_URL)
       auto downloadProgsBtn = new uiButton(rootWindow(), "Exit", Point(13, 345), Size(27, 20), uiButtonKind::Button, true, STYLE_BUTTON);
       downloadProgsBtn->onClick = [&]() {
-        basic_load = true;
+        
         new uiStaticLabel(rootWindow(), "return to Basic32+", Point(5, 371), true, STYLE_LABELGROUP);
+        delay(500);
         basicloader();
         /*
           if (checkWiFi() && messageBox("Download Programs listed in \"LIST_URL\"", "Check your local laws for restrictions", "OK", "Cancel", nullptr, uiMessageBoxIcon::Warning) == uiMessageBoxResult::Button1) {
@@ -949,7 +950,7 @@ void loop()
 
 //------------------------------------- Testbereich SD-Update -----------------------------------------------------------------------------
 void basicloader(void) {
-
+  
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
   //SPI.setFrequency(20000000);
 

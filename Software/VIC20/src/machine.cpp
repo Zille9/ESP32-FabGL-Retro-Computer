@@ -1161,12 +1161,12 @@ void Machine::setKeyboard(VirtualKey key, bool down)
       break;
 
     // RMENU -> JOYSTICK FIRE
-    case VirtualKey::VK_APPLICATION:  // also called MENU key
-      if (m_joyEmu == JE_CursorKeys || keyboard->isVKDown(VirtualKey::VK_RALT)) {
+    case VirtualKey::VK_LALT:  // also called MENU key
+      //if (m_joyEmu == JE_CursorKeys || keyboard->isVKDown(VirtualKey::VK_RALT)) {
         // RALT-MENU fires joystick
         setJoy(JoyFire, down);
-        break;
-      }
+        //break;
+      //}
       break;
 
     default:
