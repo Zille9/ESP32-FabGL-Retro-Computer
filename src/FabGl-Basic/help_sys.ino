@@ -77,12 +77,13 @@ void show_help_name(void) {                                             //Anzeig
 void show_Command_Help(int was) {                                       //Anzeige eines spezifischen Befehls oder Funktion
   switch (was) {
     case 0:
-      Terminal.println("LIST <Linenumber>");
-      Terminal.println("Linenumber is optional");
+      Terminal.println("LIST <from Line, to Line>");
+      Terminal.println("from and to Line is optional");
       break;
     case 1:
       Terminal.println("LOAD Filename");
       Terminal.println("Filename in qoute or as String");
+      Terminal.println("Bsp.: LOAD'/TEST.BAS'");
       Terminal.println("LOAD without Name,load a Program from FRAM");
       break;
     case 2:
@@ -146,6 +147,8 @@ void show_Command_Help(int was) {                                       //Anzeig
     case 16:
       Terminal.println("DIR");
       Terminal.println("Shows the Directory of SD-Card");
+      Terminal.println("DIR'BAS'");
+      Terminal.println("Shows only Files with the BAS-Extension");
       break;
     case 17:
       Terminal.println("CLS");
