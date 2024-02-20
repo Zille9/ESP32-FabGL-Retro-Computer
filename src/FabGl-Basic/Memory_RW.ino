@@ -61,7 +61,6 @@ void readBuffer(int deviceaddress, word address, byte ln, byte* p_data)
 
 //############################################### externer SPI-FRAM #################################################################
 void SPI_RAM_write8(uint32_t addr, uint8_t value) {
-  //spi_fram.begin(3);
   spi_fram.writeEnable(true);
   spi_fram.write8(addr, value);
   spi_fram.writeEnable(false);

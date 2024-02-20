@@ -46,10 +46,20 @@
 //
 //
 
-#define BasicVersion "1.95b"
-#define BuiltTime "28.01.2024"
+#define BasicVersion "1.97b"
+#define BuiltTime "18.02.2024"
 
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v1.97b:18.02.2024          -RUN-Befehl erweitert RUN"/Filename" lädt und startet ein Basic-Programm -> es wird auf BAS und BIN - Erweiterung überprüft, um ein Basic oder Binärprogramm (Bload) zu starten
+//                            -BLOAD-Befehl entfernt - übernimmt jetzt Load und RUN LOAD"/BIN-FILE" oder RUN"/BINFILE"
+//                            -Start-Befehl entfernt - übernimmt jetzt der Befehl RUN, RUN* lädt und startet ein Programm aus dem FRAM
+//                            -FS.h entfernt -> wird nicht gebraucht
+//                            -Hilfe angepasst
+//
+// v1.96b:11.02.2024          -SD-Card-Aktivitätsanzeige über IO2 realisiert -> leuchtet bei SD-Card-Zugriff auf
+//                            -Keyboard-Initialisierung in setup() mit der Angabe der GPIO-Nummer
+//                            -15924 Zeilen/sek.
+//
 // v1.95b:28.01.2024          -Dir-Befehl erweitert ->DIR"ext" zeigt nur Dateien mit der Dateierweiterung 'ext' an Bsp.:DIR"BAS" listet nur Basic-Programme auf.
 //                            -15924 Zeilen/sek.
 //
@@ -161,6 +171,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Konfiguration Grafiktreiber und Akku-Überwachung
+//#define TTGO_T7                 //TTGO T7 V1.4 Board                       
 //---------------------------------------------------------------- Akku-Überwachung für Akkubetrieb ------------------------------------------------
 //#define Akkualarm_enabled
 //
@@ -199,6 +210,7 @@ fabgl::ILI9341Controller VGAController;     //TFT-Display ILI9341
 
 //------------------------------------------ Tastatur,GFX-Treiber- und Terminaltreiber -------------------------------------------------------------
 fabgl::PS2Controller    PS2Controller;
+fabgl::Keyboard Keyboard;
 fabgl::Canvas           GFX(&VGAController);
 TerminalController      tc(&Terminal);
 
@@ -262,7 +274,7 @@ unsigned int noteTable []  PROGMEM = {16350, 17320, 18350, 19450, 20600, 21830, 
 #define RAMEND 60928//----------------------------------- RAM increment for ESP32 ----------------------------------------------------------------- 
 
 // ---------------------------------- SD-Karten-Zugriff--------------------------------------------------------------------------------------------
-#include "FS.h"
+//#include "FS.h"
 #include <SD.h>
 #include <SPI.h>
 
@@ -270,16 +282,28 @@ unsigned int noteTable []  PROGMEM = {16350, 17320, 18350, 19450, 20600, 21830, 
 //SPI CLASS FOR REDEFINED SPI PINS !
 SPIClass spiSD(HSPI);
 //Konfiguration der SD-Karte unter FabGl - kann mit OPT geändert werden
-byte kSD_CS   = 13;
-byte kSD_MISO = 16;
-byte kSD_MOSI = 17;
-byte kSD_CLK  = 14;
+#define kSD_CS   13
+#define kSD_MISO 16
+#define kSD_MOSI 17
+#define kSD_CLK  14
+#define SD_LED   2
 byte SD_SET   = 44;      // -steht 44 im EEprom-Platz 10, dann sind die Werte im EEprom gültig
+
+#ifdef TTGO_T7
+#define kSD_MISO 2
+#define kSD_MOSI 12
+#define SD_LED -1
+#endif
+
+#define keyb_clk   33
+#define keyb_data  32
 
 #define kSD_Fail  0      //Fehler-Marker
 #define kSD_OK    1      //OK-Marker
 File fp;
 
+const char* binfile[] ={".bin"};
+const char* basfile[] ={".bas"};
 //------------------------------------- OTA-Update-Lib --------------------------------------------------------------------------------------------
 #include <Update.h>
 
@@ -573,7 +597,6 @@ const static char keywords[] PROGMEM = {
   'D', 'M', 'P' + 0x80,
   'S', 'T', 'Y', 'L', 'E' + 0x80,
   'S', 'C', 'R', 'O', 'L', 'L' + 0x80,
-  'S', 'T', 'A', 'R', 'T' + 0x80,
   'T', 'H', 'E', 'M', 'E' + 0x80,
   'D', 'A', 'T', 'A' + 0x80,
   'R', 'E', 'A', 'D' + 0x80,
@@ -613,7 +636,6 @@ const static char keywords[] PROGMEM = {
   'C', 'L', 'O', 'S', 'E' + 0x80,
   'F', 'I', 'L', 'E' + 0x80,
   'T', 'Y', 'P', 'E' + 0x80,
-  'B', 'L', 'O', 'A', 'D' + 0x80,
   'G', 'R', 'I', 'D' + 0x80,
   'T', 'E', 'X', 'T' + 0x80,
   '?' + 0x80,
@@ -661,13 +683,12 @@ enum {
   KW_DUMP,
   KW_STYLE,
   KW_SCROLL,
-  KW_START,
   KW_THEME,
   KW_DATA,
   KW_READ,
   KW_RESTORE,
-  KW_DEL,      //40
-  KW_AND,
+  KW_DEL,      
+  KW_AND,       //40
   KW_OR,
   KW_SRTC,
   KW_IIC,
@@ -676,8 +697,8 @@ enum {
   KW_DAC,
   KW_DRAW,
   KW_SPRITE,
-  KW_PULSE,    //50
-  KW_SOUND,
+  KW_PULSE,    
+  KW_SOUND,    //50
   KW_PEN,
   KW_ON,
   KW_LCD,
@@ -686,8 +707,8 @@ enum {
   KW_CHDIR,
   KW_MKDIR,
   KW_RMDIR,
-  KW_DEFFUNC, //60
-  KW_LED,
+  KW_DEFFUNC, 
+  KW_LED,     //60
   KW_EDIT,
   KW_DOKE,
   KW_BEEP,
@@ -696,19 +717,18 @@ enum {
   KW_FPOKE,
   KW_MOUNT,
   KW_COM,
-  KW_PIC,     //70
-  KW_OPEN,
+  KW_PIC,     
+  KW_OPEN,    //70
   KW_CLOSE,
   KW_FILE,
   KW_TYPE,
-  KW_CPM,
   KW_GRID,
   KW_TEXT,
   KW_PRINTING,
   KW_WINDOW,
-  KW_HELP,    //80
-  KW_FRAME,
-  KW_DEFAULT  //82/* hier ist das Ende */
+  KW_HELP,    
+  KW_FRAME,   //79
+  KW_DEFAULT  //80/* hier ist das Ende */
 };
 
 int KW_WORDS = KW_DEFAULT;
@@ -987,7 +1007,7 @@ static const char no_prg_msg[]       PROGMEM = "No Program in Memory !";        
 static const char no_command_msg[]   PROGMEM = "Keyword not found !";           //24
 static const char not_openmsg[]      PROGMEM = "File not open Error !";         //25
 static const char dirnotfound[]      PROGMEM = "DIR not found !";               //26
-
+static const char extension_error[]  PROGMEM = "invalid File-Extension !";      //27
 //----------------------------------- Interpreter-Variablen ---------------------------------------------------------------------------------------
 char *pstart;
 char *newEnd;
@@ -2647,7 +2667,8 @@ void list_out()
   int bis, num;
   bool b_bis = false;
 
-  linenum = testnum();                                                    // gibt 0 zurück, wenn keine Zeilennummer angegeben wird
+  linenum = testnum();                                       // wenn nicht LIST-Taste, dann überprüfe Zeilennummer und gibt 0 zurück, wenn keine Zeilennummer angegeben wird
+  
 
   if (*txtpos == ',') {                                                   // optionaler Wert bis zu welcher Zeile ausgegeben werden soll
     txtpos++;
@@ -2660,7 +2681,8 @@ void list_out()
     syntaxerror(syntaxmsg);
     return;
   }
-
+ 
+  
   list_line = findline();                                                 // Finde Zeile
   while (list_line != program_end) {
 
@@ -3280,6 +3302,7 @@ void Basic_Interpreter()
   char pa, pb;
   initSD();                                              //SD-Karte initialisieren
   cmd_new();                                             //alles löschen
+  print_info();                                          //Start-Bildschirm anzeigen
   int a, e;
 
 
@@ -3370,11 +3393,6 @@ interpreteAtTxtpos:
           continue;
         }
         string_marker = false;
-        if (*txtpos == ',') {
-          txtpos++;
-          if (Test_char('1')) continue;
-          autorun = true;                                 //Load"Filename",1 ->autostart
-        }
         continue;
         break;
 
@@ -3384,6 +3402,16 @@ interpreteAtTxtpos:
         break;
 
       case KW_RUN:                                        // RUN
+        if(*txtpos == '"'){                               //RUN"/Filename" lädt und startet das Programm
+          if (load_file()) {
+          continue;
+         }
+         string_marker = false;
+         autorun = true; 
+        }
+        if(*txtpos =='*'){
+          load_ram();
+        }
         clear_var();
         find_data_line();                                 //Data-Zeilen finden
         current_line = program_start;                     //beginn mit erster Zeile
@@ -3625,23 +3653,6 @@ interpreteAtTxtpos:
       case KW_SCROLL:
         if (scroll_xy())
           continue;
-        break;
-
-      case KW_START:                                      // START filename
-        autorun = true;
-        if (*txtpos == NL) {
-          load_ram();
-          clear_var();
-          find_data_line();                                 //Data-Zeilen finden
-          current_line = program_start;                     //beginn mit erster Zeile
-          sp = program + sizeof(program);
-          goto execline;
-          break;
-        }
-        if (load_file()) {
-          continue;
-        }
-        continue;
         break;
 
       case KW_THEME:
@@ -3960,10 +3971,6 @@ interpreteAtTxtpos:
 
       case KW_TYPE:
         type_file();
-        break;
-
-      case KW_CPM:
-        load_binary();
         break;
 
       case KW_GRID:
@@ -4542,7 +4549,7 @@ void cmd_new(void) {
   for (int i = 0x0; i < 0x7fff; i += 4) SPI_RAM_write(i, bytes, 4);   //Array-Bereich löschen
   del_window();                                                       //Fensterparameter löschen
   Frame_nr = 0;                                                       //Hauptfenster setzen
-  print_info();                                                       //Start-Bildschirm anzeigen
+  //print_info();                                                       //Start-Bildschirm anzeigen
 }
 
 //#######################################################################################################################################
@@ -5861,6 +5868,9 @@ static int initSD( void )
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
   SPI.setFrequency(40000000);
+  
+  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+  
   if ( !SD.begin( kSD_CS, spiSD )) {                        //SD-Card starten
     // mount-fehler
     spiSD.end();                                            //unmount
@@ -5906,10 +5916,21 @@ static int initSD( void )
 
 void sd_ende(void) {
   spiSD.end();                                              //SD-Card unmount
+  Show_LED(SD_LED, 0);
   spi_fram.begin(3);                                        //FRAM aktivieren
 
 }
 
+void Show_LED(int p, int lv){                               //Laufwerksanzeige ein und ausschalten
+  if(lv){
+    pinMode(p, OUTPUT);
+    digitalWrite(p, HIGH);
+  }
+  else{
+  digitalWrite(p, LOW);
+  pinMode(p, INPUT);
+  }
+}
 
 //#######################################################################################################################################
 //--------------------------------------------- LOAD - Befehl ---------------------------------------------------------------------------
@@ -5917,7 +5938,7 @@ void sd_ende(void) {
 
 static int load_file(void)
 {
-
+  int fcheck;
   // Programmspeicher löschen
   program_end = program_start;
 
@@ -5929,6 +5950,7 @@ static int load_file(void)
   if (expression_error) return expression_error;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
   if ( !SD.exists(String(sd_pfad) + String(tempstring)))    //Datei vorhanden?
   {
@@ -5938,13 +5960,46 @@ static int load_file(void)
     return expression_error;
   }
   else {
-    fp = SD.open(String(sd_pfad) + String(tempstring));     //Datei zum Laden öffnen
-    inStream = kStreamFile;
-    inhibitOutput = true;
+    
+    //******* hier Überprüfung auf BAS bzw. BIN Erweiterung ************************
+    fcheck = check_extension();
+    switch (fcheck){
+      case 0:
+        syntaxerror(extension_error);//Terminal.println("no valid File-extension");
+        return 1;
+        break;
+      case 1:
+        fp = SD.open(String(sd_pfad) + String(tempstring));     //Datei zum Laden öffnen
+        inStream = kStreamFile;
+        inhibitOutput = true;
+        break;
+      case 2:
+        load_binary();
+        break;
+      default:
+        break;
+    }
   }
 
   warmstart();
   return expression_error;
+}
+
+int check_extension(){
+  String cbuf,dbuf,ebuf,fbuf;
+  int a,b,c;
+  c = 0;
+  dbuf = String(tempstring);
+  dbuf.toUpperCase();                               //String in Grossbuchstaben umwandeln
+  cbuf = dbuf.substring(dbuf.length() - 4, dbuf.length());  //in cbuf steht die Dateierweiterung von tempstring
+  ebuf = ".BAS";
+  fbuf = ".BIN";
+  a = cbuf.compareTo(ebuf);
+  b = cbuf.compareTo(fbuf);
+  if(a==0) c = 1;
+  if(b == 0) c = 2;
+  //Terminal.println(c);
+  return c;
 }
 
 //#######################################################################################################################################
@@ -5962,6 +6017,7 @@ static int save_file()
   if (expression_error) return 1;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
+  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
   // remove the old file if it exists
   if ( SD.exists( String(sd_pfad) + String(tempstring))) {          //Datei existiert schon, überschreiben?
@@ -6087,6 +6143,7 @@ static int cmd_delFiles(void)
   if (expression_error) return 1;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
   // Datei löschen, wenn sie existiert
   if ( SD.exists(String(sd_pfad) + String(tempstring))) {
@@ -6148,6 +6205,7 @@ void cmd_chdir(void)
     return;
   }
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
   //prüfen, ob der Pfad gültig ist
   if ( !SD.open(String(sd_pfad))) {
@@ -6173,6 +6231,7 @@ static int cmd_mkdir(int mod)
   if (expression_error) return 1;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
   if (mod == 1) {
     // Verzeichnis erstellen
@@ -6262,10 +6321,15 @@ return 0;
     }
 
     spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
+    
+    Show_LED(SD_LED, 1);                                        //Laufwerksanzeige
 
     File dir = SD.open(String(sd_pfad));
     dir.seek(0);                                                  //zum Verzeichnis-Anfang
-
+    
+    pinMode(SD_LED, OUTPUT);
+    digitalWrite(SD_LED, HIGH);
+    
     while ( !ex ) {
       File entry = dir.openNextFile();                            //nächsten Eintrag holen
       if ( !entry ) {                                             //kein Eintrag mehr, dann abbruch
@@ -6360,6 +6424,7 @@ return 0;
     printmsg("MB", 1);
 
     dir.close();
+    
     sd_ende();                                             //SD-Card unmount
   }
 
@@ -6375,6 +6440,8 @@ return 0;
     printmsg(path2, 0);
     line_terminator();
     spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+    
+    Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
     if (fs.rename(path1, path2)) {
       printmsg("File renamed", 1);
@@ -6462,7 +6529,7 @@ return 0;
       LCD_ZEILEN = EEPROM.read(3);
       LCD_SPALTEN = EEPROM.read(4);
       LCD_ADRESSE = EEPROM.read(5);
-
+      /*
       //--- ist der SD-Marker (44) auf Platz 10 gesetzt, dann sind folgende Werte für die SD-Card-Konfiguration zu verwenden ---------------------------
       if (EEPROM.read(10) == 44) {
         kSD_CLK  = EEPROM.read(6);
@@ -6470,7 +6537,7 @@ return 0;
         kSD_MOSI = EEPROM.read(8);
         kSD_CS   = EEPROM.read(9);
       }
-
+      */
       //--- ist der IIC_Marker (55) auf Platz 13 gesetzt, dann sind die folgenden Werte zu verwenden
       if (EEPROM.read(13) == 55) {
         EEprom_ADDR = EEPROM.read(11);  //Adresse des zu verwendenden EEProms
@@ -6504,7 +6571,8 @@ return 0;
     delay(1000);                                              //eine sek warten, damit die CardKB-Tastatur starten kann
 
     //VGAController.queueSize = 400;
-    PS2Controller.begin(PS2Preset::KeyboardPort0);
+    Keyboard.begin(GPIO_NUM_33, GPIO_NUM_32);
+    //PS2Controller.begin(PS2Preset::KeyboardPort0);
 #ifdef CardKB
 Keyboard_lang = 9;                                        //bei Verwendung von CardKB wird auf die japanische Tastaturbelegung umgeschaltet, damit die Symbolik passt
 #endif
@@ -6518,7 +6586,7 @@ Set_Layout();                                             //Keyboard-Layout setz
 #ifdef AVOUT                                                                          //AV-Variante
 VGAController.begin(VIDEOOUT_GPIO);
 VGAController.setHorizontalRate(2);                                                   //320x240
-VGAController.setResolution(MODES_STD[5]);                                            //5 scheint optimal ist aber mit 384x240 nicht kompatibel
+VGAController.setResolution(MODES_STD[7]);                                            //5 scheint optimal ist aber mit 384x240 nicht 100% kompatibel (3) (7-360x200)
 
 #elif defined VGA64
 VGAController.begin();                                                                //VGA-Variante //64 Farben
@@ -6554,14 +6622,20 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
         }
         *vk = VirtualKey::VK_NONE;
       }
-      else if (*vk == VirtualKey::VK_F1) {                                               //Grafiksymbole on/off
+      else if (*vk == VirtualKey::VK_F1) {                                               //LIST
+        if (keyDown) {
+          
+        }
+        *vk = VirtualKey::VK_NONE;
+      }
+      else if (*vk == VirtualKey::VK_F2) {                                               //Grafiksymbole on/off
         if (keyDown) {
           Graph_char = !Graph_char;
           PS2Controller.keyboard()->setLEDs(false, false, Graph_char);
         }
         *vk = VirtualKey::VK_NONE;
       }
-      else if (*vk == VirtualKey::VK_F2) {                                               //TRON/TROFF
+      else if (*vk == VirtualKey::VK_F3) {                                               //TRON/TROFF
         if (keyDown) {
           tron_marker = !tron_marker;
           if (tron_marker) printmsg("TRON", 1);
@@ -6570,19 +6644,19 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
         }
         *vk = VirtualKey::VK_NONE;
       }
-      else if (*vk == VirtualKey::VK_F3) {                                              //Ausgabe Char-Table 32..127
+      else if (*vk == VirtualKey::VK_F4) {                                              //Ausgabe Char-Table 32..127
         if (keyDown) {
           char_out(32, 128);
         }
         *vk = VirtualKey::VK_NONE;
       }
-      else if (*vk == VirtualKey::VK_F4) {                                              //Ausgabe Char-Table 128..255
+      else if (*vk == VirtualKey::VK_F5) {                                              //Ausgabe Char-Table 128..255
         if (keyDown) {
           char_out(128, 256);
         }
         *vk = VirtualKey::VK_NONE;
       }
-      else if (*vk == VirtualKey::VK_F5) {                                              //Ausgabe Color-Tabelle
+      else if (*vk == VirtualKey::VK_F6) {                                              //Ausgabe Color-Tabelle
         if (keyDown) {
           color_out();
         }
