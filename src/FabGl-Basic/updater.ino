@@ -29,7 +29,7 @@ int load_binary(void) {
   }
 }
 
-// perform the actual update from a given stream
+// perform the actual update from a given streams
 void performUpdate(Stream &updateSource, size_t updateSize) {
   if (Update.begin(updateSize)) {
     size_t written = Update.writeStream(updateSource);

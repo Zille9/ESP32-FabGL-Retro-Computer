@@ -45,11 +45,14 @@
 // April 2021
 //
 //
-
-#define BasicVersion "1.97b"
-#define BuiltTime "18.02.2024"
+#pragma GCC optimize("O3")
+#define BasicVersion "1.98b"
+#define BuiltTime "21.02.2024"
 
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v1.98b:21.02.2024          -
+//                            -
+//
 // v1.97b:18.02.2024          -RUN-Befehl erweitert RUN"/Filename" lädt und startet ein Basic-Programm -> es wird auf BAS und BIN - Erweiterung überprüft, um ein Basic oder Binärprogramm (Bload) zu starten
 //                            -BLOAD-Befehl entfernt - übernimmt jetzt Load und RUN LOAD"/BIN-FILE" oder RUN"/BINFILE"
 //                            -Start-Befehl entfernt - übernimmt jetzt der Befehl RUN, RUN* lädt und startet ein Programm aus dem FRAM
@@ -226,52 +229,12 @@ byte y_char[]      PROGMEM = {8, 8, 8, 14, 20, 14, 14, 16, 16, 14, 14, 14, 16, 1
 //------------------------------------------------------------- Soundgenerator ----------------------------------------------------------------------------
 unsigned int noteTable []  PROGMEM = {16350, 17320, 18350, 19450, 20600, 21830, 23120, 24500, 25960, 27500, 29140, 30870}; //Notentabelle für Soundausgabe
 //------------------------------------------------------------- Soundgenerator ----------------------------------------------------------------------------
-//------------------------------------------------------- MIDI-Funktionen -------------------------------------------------------------------------
-/*
-  #define MIDI_Baud 31250
-  #define VS1053_MIDI Serial2
-  //#include <MD_MIDIFile.h>
 
-  #define MIDI_NOTE_ON  0x90
-  #define MIDI_NOTE_OFF 0x80
-  #define MIDI_CHAN_MSG 0xB0
-  #define MIDI_CHAN_BANK 0x00
-  #define MIDI_CHAN_VOLUME 0x07
-  #define MIDI_CHAN_PAN 0x0A
-  #define MIDI_CHAN_PITCH 0xE0
-  #define MIDI_EFFECT_CNTRL 0x0C
-  #define MIDI_EFFECT_LEVEL 0x5B
-  #define MIDI_CHAN_PROGRAM 0xC0
-
-  #define MIDI_BANK_DEFAULT 0x00
-  #define MIDI_BANK_DRUMS1 0x78
-  #define MIDI_BANK_DRUMS2 0x7F
-  #define MIDI_BANK_MELODY 0x79
-  //SDFAT  MIDI_SD;
-  //MD_MIDIFile SMF;
-
-  // Define constants for MIDI channel voice message IDs
-  const uint8_t NOTE_OFF = 0x80;    // note on
-  const uint8_t NOTE_ON = 0x90;     // note off. NOTE_ON with velocity 0 is same as NOTE_OFF
-  const uint8_t POLY_KEY = 0xa0;    // polyphonic key press
-  const uint8_t CTL_CHANGE = 0xb0;  // control change
-  const uint8_t PROG_CHANGE = 0xc0; // program change
-  const uint8_t CHAN_PRESS = 0xd0;  // channel pressure
-  const uint8_t PITCH_BEND = 0xe0;  // pitch bend
-
-  // Define constants for MIDI channel control special channel numbers
-  const uint8_t CH_RESET_ALL = 0x79;    // reset all controllers
-  const uint8_t CH_LOCAL_CTL = 0x7a;    // local control
-  const uint8_t CH_ALL_NOTE_OFF = 0x7b; // all notes off
-  const uint8_t CH_OMNI_OFF = 0x7c;     // omni mode off
-  const uint8_t CH_OMNI_ON = 0x7d;      // omni mode on
-  const uint8_t CH_MONO_ON = 0x7e;      // mono mode on (Poly off)
-  const uint8_t CH_POLY_ON = 0x7f;      // poly mode on (Omni off)
-
-  //------------------------------------------------------- MIDI-Funktionen -------------------------------------------------------------------------
-*/
-
-#define RAMEND 60928//----------------------------------- RAM increment for ESP32 ----------------------------------------------------------------- 
+#ifdef ILI9341       // --- Bei Verwendung des TFT-ILI9341 muss der Ram verkleinert werden, damit SD-Card funktioniert -----------------------------
+#define RAMEND 30000 //----------------------------------- RAM increment for ESP32 ----------------------------------------------------------------- 
+#else
+#define RAMEND 60928
+#endif
 
 // ---------------------------------- SD-Karten-Zugriff--------------------------------------------------------------------------------------------
 //#include "FS.h"
@@ -286,7 +249,7 @@ SPIClass spiSD(HSPI);
 #define kSD_MISO 16
 #define kSD_MOSI 17
 #define kSD_CLK  14
-#define SD_LED   2
+//#define SD_LED   2
 byte SD_SET   = 44;      // -steht 44 im EEprom-Platz 10, dann sind die Werte im EEprom gültig
 
 #ifdef TTGO_T7
@@ -314,8 +277,6 @@ ESP32Time e_rtc(0);  // offset in seconds GMT+1
 //------------------------------------- Mathematische Funktionen fuer printnum --------------------------------------------------------------------
 #include "MathHelpers.h"
 
-//------------------------------------- SPI-FRAM-Lib ----------------------------------------------------------------------------------------------
-#include "Adafruit_FRAM_SPI.h"
 
 // ------------------------------ Dallas Temp-Sensor ----------------------------------------------------------------------------------------------
 #include <OneWire.h>
@@ -373,6 +334,9 @@ bool LCD_start_marker = false;
 bool LCD_Backlight = true;
 
 //---------------------------------------- Konfiguration FRAM -------------------------------------------------------------------------------------
+//------------------------------------- SPI-FRAM-Lib ----------------------------------------------------------------------------------------------
+#include "Adafruit_FRAM_SPI.h"
+
 byte FRAM_CS  = 0;//13;             //SPI_FRAM 512kB CS-Pin
 Adafruit_FRAM_SPI spi_fram = Adafruit_FRAM_SPI(kSD_CLK, kSD_MISO, kSD_MOSI, FRAM_CS);
 
@@ -5869,7 +5833,7 @@ static int initSD( void )
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
   SPI.setFrequency(40000000);
   
-  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+  //////Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
   
   if ( !SD.begin( kSD_CS, spiSD )) {                        //SD-Card starten
     // mount-fehler
@@ -5916,7 +5880,7 @@ static int initSD( void )
 
 void sd_ende(void) {
   spiSD.end();                                              //SD-Card unmount
-  Show_LED(SD_LED, 0);
+  //////Show_LED(SD_LED, 0);
   spi_fram.begin(3);                                        //FRAM aktivieren
 
 }
@@ -5950,7 +5914,7 @@ static int load_file(void)
   if (expression_error) return expression_error;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+  //////Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
   if ( !SD.exists(String(sd_pfad) + String(tempstring)))    //Datei vorhanden?
   {
@@ -6017,7 +5981,7 @@ static int save_file()
   if (expression_error) return 1;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
-  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+  ////Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
   // remove the old file if it exists
   if ( SD.exists( String(sd_pfad) + String(tempstring))) {          //Datei existiert schon, überschreiben?
@@ -6143,7 +6107,7 @@ static int cmd_delFiles(void)
   if (expression_error) return 1;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+  ////Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
   // Datei löschen, wenn sie existiert
   if ( SD.exists(String(sd_pfad) + String(tempstring))) {
@@ -6205,7 +6169,7 @@ void cmd_chdir(void)
     return;
   }
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+  ////Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
   //prüfen, ob der Pfad gültig ist
   if ( !SD.open(String(sd_pfad))) {
@@ -6231,7 +6195,7 @@ static int cmd_mkdir(int mod)
   if (expression_error) return 1;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+  ////Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
   if (mod == 1) {
     // Verzeichnis erstellen
@@ -6322,13 +6286,13 @@ return 0;
 
     spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
     
-    Show_LED(SD_LED, 1);                                        //Laufwerksanzeige
+    ////Show_LED(SD_LED, 1);                                        //Laufwerksanzeige
 
     File dir = SD.open(String(sd_pfad));
     dir.seek(0);                                                  //zum Verzeichnis-Anfang
     
-    pinMode(SD_LED, OUTPUT);
-    digitalWrite(SD_LED, HIGH);
+    //pinMode(SD_LED, OUTPUT);
+    //digitalWrite(SD_LED, HIGH);
     
     while ( !ex ) {
       File entry = dir.openNextFile();                            //nächsten Eintrag holen
@@ -6441,7 +6405,7 @@ return 0;
     line_terminator();
     spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
     
-    Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+    ////Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
     if (fs.rename(path1, path2)) {
       printmsg("File renamed", 1);
