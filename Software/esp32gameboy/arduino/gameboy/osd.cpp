@@ -430,7 +430,7 @@ void ShowTinySoundMenu()
 // perform the actual update from a given stream
 void performUpdate(Stream &updateSource, size_t updateSize) {
 
-  if (Update.begin(updateSize)) {
+  if (Update.begin(updateSize, U_FLASH, 2, 1, "Basic")) {
     size_t written = Update.writeStream(updateSource);
 
     if (Update.end()) {

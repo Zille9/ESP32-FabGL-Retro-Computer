@@ -4,6 +4,7 @@
 // #########################################################################################
 
 // =========================================================================================
+#pragma GCC optimize("O3")
 #include "globals.h"
 #include <SPI.h>
 #include <Update.h>
@@ -708,7 +709,7 @@ void loop(void) {
         size_t updateSize = updateBin.size();
 
         if (updateSize > 0) {
-          Terminal.println("load Basic32+");
+          Terminal.println("load Basic32+ "+ String(updateSize));
           performUpdate(updateBin, updateSize);
         }
         else {
@@ -723,7 +724,7 @@ void loop(void) {
 
     // perform the actual update from a given stream
     void performUpdate(Stream &updateSource, size_t updateSize) {
-      if (Update.begin(updateSize)) {
+      if (Update.begin(updateSize, U_FLASH, 2, 1, "Basic")) {
         size_t written = Update.writeStream(updateSource);
         if (written == updateSize) {
           Terminal.println("Written : " + String(written) + " successfully");

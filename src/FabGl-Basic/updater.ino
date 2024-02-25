@@ -31,7 +31,7 @@ int load_binary(void) {
 
 // perform the actual update from a given streams
 void performUpdate(Stream &updateSource, size_t updateSize) {
-  if (Update.begin(updateSize)) {
+  if (Update.begin(updateSize, U_FLASH, SD_LED, 1, "Basic")) {
     size_t written = Update.writeStream(updateSource);
     if (written == updateSize) {
       Terminal.println("Written : " + String(written) + " successfully");

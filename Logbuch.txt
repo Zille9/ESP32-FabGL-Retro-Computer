@@ -1,4 +1,85 @@
-// v1.79b:07.07.2023          -umfangreiche Änderungen der diversen Bildschirmausgaben, um die Window-Funktion zu verbessern
+// v1.89b:12.12.2023          -TFT-Treiber für ILI9341 240x320 Pixel-Display integriert - Treiber ist über #define auswählbar
+//                            -Breadboard-Test soweit erfolgreich
+//                            -ab und zu startet das Display nicht korrekt, Ursache muss noch erforscht werden -> Print_info etwas geändert, scheint jetzt zu funktionieren
+//                            -neue Platinenvariante muss noch erstellt werden, welche alle Grafik-Varianten vereint (AV,VGA,TFT)
+//
+// v1.88b:03.12.2023          -MIDI-Funktionalität wieder entfernt
+//                            -Sound-Befehl wieder die ursprüngliche Routine aktiviert
+//                            -Augenmerk soll mehr auf Funktionalität als Basic-Messcomputer gesetzt werden
+//                            -Akku-Messroutine über define auswählbar
+//                            -15531 Zeilen/sek.
+//
+// v1.87b:08.08.2023          -erste MIDI-Funktionalität integriert
+//                            -der Sound-Befehl wird für die interne Ausgabe von Tönen benutzt, die ursprüngliche Routine wurde deaktiviert
+//                            -Syntax: SND_N 0,45,127,100 -> Chan,Note,Velocity,Duration
+//                            -die Angabe von Duration (Dauer) muss noch geändert werden, damit mehrere Noten gleichzeitig erklingen können
+//                            -16329 Zeilen/sek.
+//
+// v1.86b:07.08.2023          -Beginn der Einbindung des Adafruit VS1053 Boards für MIDI-Funktionalität, um die Soundfunktionen aufzupeppen
+//                            -2GM-Soundbänke + 2Drumkit-Bänke
+//                            -Pan-Funktion, Reverb-Effekt, Pitch-Funktion, Polyfonie bis zu 64 Stimmen
+//                            -erste Trockentest's sind vielversprechend
+//                            -ein neues Board wird eine zusätzliche MIDI-IN-Buchse besitzen, um das Modul auch von außen mit einem
+//                            -MIDI-Keyboard spielen zu können
+//                            -ebenfalls geplant ist ein MIDI-Player, der MIDI-Dateien von SD-Karte abspielt
+//                            -wenn alles funktioniert, wird der ursprüngliche Sound-Befehl überflüssig
+//
+// v1.85b:31.07.2023          -Umstellung Arduino IDE auf 2.x, scheint jetzt zu funktionieren.....
+//                            -Fehlerbehandlung funktioniert nicht mehr, Fehler führen zu einer "Syntax Error!" Dauerschleife ???
+//                            -erst mal wieder auf 1.06 zurück-geswitcht :-( ärgerlich.
+//                            -Neue Idee: als Soundmodul ein GM-Modul (VS1053 hat MIDI inkl. Midi-Instrumente on board)
+//                            -Ansteuerung über MIDI-Befehle, möglich auch über Optokoppler von außen :-)
+//                            -16413 Zeilen/sek.
+//
+// v1.84b:18.07.2023          -Blinkfrequenz des Cursors in fabglconf.h auf 200ms gesetzt
+//                            -Befehl FILL zum füllen unregelmässiger Formen begonnen
+//                            -ESP32Time.h hinzugefügt, mit dessen Hilfe jetzt der Datei-Zeitstempel beim Speichern hinzugefügt wird
+//                            -cmd_dir - Routine mit der Ausgabe des Datei-Zeitstempels erweitert
+//                            -16275 Zeilen/sek.
+//
+// v1.83b:15.07.2023          -cmd_new mit setzen des Hauptfesters ergänzt, nach einem NEW wurden die Fensterparameter zwar gelöscht aber nicht das
+//                            -Hauptfenster gesetzt, dadurch hing der Cursor in der linken oberen Ecke fest
+//                            -Move_up-Subroutine etwas erweitert, jetzt wird nach dem Kopieren des Fensterinhaltes die letzte Zeile gelöscht,
+//                            -das war nötig, weil sonst eventuell existierender Text in der letzten Zeile immer wieder mitkopiert wurde
+//                            -Startbildschirm mit der Anzeige von BuiltTime ergänzt
+//                            -list_out Anzahl der Ausgabezeilen nun abhängig vom gewählten Font
+//                            -list_out um den Parameter bis zu welcher Zeile ausgegeben werden soll, erweitert (LIST 10,50 - Ausgabe Zeile 10 bis 50)
+//                            -16305 Zeilen/sek.
+//
+// v1.82b:11.07.2023          -DATA-Verarbeitung auf Arrays erweitert
+//                            -FILE_RD auf Arrays erweitert
+//                            -Fehler in Array-Dimensionierung behoben, Array-Felder wurden zu gross berechnet
+//                            -Fehler in der ELSE Verarbeitung entdeckt, bei dem Versuch, die Else-Anweisung in der gleichen Zeile zu bearbeiten
+//                            -wurden auch die nach nicht erfolgreicher IF-Verarbeitung stehende Befehle ausgeführt,
+//                            -was manche Programme nicht ausführbar machte, ELSE erst mal wieder in den Urzustand versetzt (nächste Zeile)
+//                            -Routine line_terminator geändert, jetzt erfolgt erst ein Carrige-Return und dann ein Next-Line,
+//                            -war vorher umgekehrt, das führte dazu, das in gespeicherten Programmen zwischen den Zeilen immer eine Leerzeile
+//                            -eingefügt war, jetzt wird Zeile für Zeile korrekt geschrieben
+//                            -Anzahl der Ausgabezeilen bei Memory_Dump und DIR ist jetzt vom verwendeten Font abhängig
+//                            -17205 Zeilen/sek.
+//
+// v1.81b:09.07.2023          -WINDOW-Befehl um die Möglichkeit einen Fenstertitel zu setzen ergänzt
+//                            -CLS entsprechend angepasst
+//                            -CLS-Scrolleffekt wieder deaktiviert, da die unterste Bildschirmzeile beim Scrolling nicht berücksichtigt wird
+//                            -Bildschirmausgabe weiter auf die Windowfunktion angepasst (Datei-Befehle, Memory_Dump)
+//                            -Variable Pencolor entfernt, führte zu unlogischen Farbreaktionen
+//                            -PEN-Befehl ändert nur temporär die Zeichenfarbe COL-Befehl ändert die Farben permanent
+//                            -Fehler in der list_out-Routine behoben, wenn eine Zeile genau eine Bildschirmbreite lang war, wurde kein Zeilenumbruch
+//                            -ausgelöst und die nächste Zeile überschrieb die vorherige auf dem Bildchirm
+//                            -Funktionstasten dürfen im Fenster (Window) nicht benutzt werden, der ESP hängt sich auf???!
+//                            -subroutine printnum etwas optimiert
+//                            -16452 Zeilen/sek.
+//
+// v1.80b:08.07.2023          -WINDOW-komplett neu erstellt - ohne SetscrollRegion, sieht schon viel besser aus
+//                            -CLS-Befehl auf Scrolleffekt geändert, das sieht mehr Retro aus :-)
+//                            -fehlt noch die Speicherung der Cursorposition, momentan werden immer Initialwerte gesetzt, wenn das Fenster
+//                            -gewechselt wird
+//                            -Speicherung der Cursorposition erledigt, beim Fensterwechsel wird die alte Cursorposition in der nächsten Zeile gesetzt
+//                            -nicht ganz korrekt aber akzeptabel
+//                            -Hinweis: die Cursortasten, Del und Ins sind im Fenster wirkungslos bzw. erzeugen Pseudo-char's,
+//                            -nur so konnte ein ESP-Absturz verhindert werden
+//                            -Taste F1 (Grafiksymbole on/off) schaltet zur optischen Signalisation die Scroll-LED ein und aus
+//// v1.79b:07.07.2023          -umfangreiche Änderungen der diversen Bildschirmausgaben, um die Window-Funktion zu verbessern
 //                            -Frame-Befehl wurde durch WINDOW ersetzt
 //                            -Syntax: WINDOW(nr,x,y,xx,yy<,color,Titel>) ->Koordinaten müssen als Zeichenkoordinaten eingegeben werden
 //                            -d.h. das x und y Positionen den Cursorpositionen entsprechen müssen (abhängig vom gewählten Font)

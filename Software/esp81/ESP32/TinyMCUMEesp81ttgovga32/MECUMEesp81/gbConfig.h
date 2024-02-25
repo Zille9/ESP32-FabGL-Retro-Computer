@@ -51,7 +51,7 @@
   //valores validos: 0 2 4 6 8 10
   #define use_lib_border_x 4
  #else
-  #define use_lib_border_x 0
+  #define use_lib_border_x 4
  #endif 
 
 

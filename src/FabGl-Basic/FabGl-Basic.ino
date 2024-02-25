@@ -35,7 +35,7 @@
 //                                          -BIT-Manipulation &,|,%,SL,SR usw.
 //                                          -Klammerrechnung
 //                                          -IF THEN ELSE Abfragen
-//                                          -Speichermonitor
+//                                          -Speichermonitor 
 //                                          -Exponential-Ein/Ausgabe
 //                                          -Verschiedene Sensoren und Komponenten HC-S04, Dallas DS18S20, DHT, LCD, Neopixel-LED, BMP180
 //                                          -Zeileneditor
@@ -45,13 +45,15 @@
 // April 2021
 //
 //
-#pragma GCC optimize("O3")
 #define BasicVersion "1.98b"
-#define BuiltTime "21.02.2024"
+#define BuiltTime "25.02.2024"
 
 // siehe Logbuch.txt zum Entwicklungsverlauf
-// v1.98b:21.02.2024          -
-//                            -
+// v1.98b:21.02.2024          -Update funktioniert auf einmal nicht mehr, was ist das nun wieder ? :-( aus dem Basic laden funktioniert nur zurück nicht !?
+//                            -Fehler endlich gefunden - es lag tatsächlich an der Basic.bin auf der SD-Karte -> neu compiliert und kopiert -> funktioniert!! :D
+//                            -einen kleinen Editor (KILO) von maksimKorzh (thankyou for the little Editor) eingebunden, wird gestartet, wenn EDIT ohne Zeilennummer eingegeben wird
+//                            -das ist zum Programme schreiben etwas komfortaber - mal sehen, wie er sich schlägt.
+//                            -16272 Zeilen/sek.
 //
 // v1.97b:18.02.2024          -RUN-Befehl erweitert RUN"/Filename" lädt und startet ein Basic-Programm -> es wird auf BAS und BIN - Erweiterung überprüft, um ein Basic oder Binärprogramm (Bload) zu starten
 //                            -BLOAD-Befehl entfernt - übernimmt jetzt Load und RUN LOAD"/BIN-FILE" oder RUN"/BINFILE"
@@ -88,88 +90,6 @@
 //                            -15459 Zeilen/sek.
 //
 // v1.90b:24.12.2023          -Fehler in der Datumsbehandlung in ESP32_Time entdeckt -> der Monat wird von 0-11 zurückgegeben, daher wurde in der DIR-Datei-Anzeige der Monat falsch angezeigt
-//
-// v1.89b:12.12.2023          -TFT-Treiber für ILI9341 240x320 Pixel-Display integriert - Treiber ist über #define auswählbar
-//                            -Breadboard-Test soweit erfolgreich
-//                            -ab und zu startet das Display nicht korrekt, Ursache muss noch erforscht werden -> Print_info etwas geändert, scheint jetzt zu funktionieren
-//                            -neue Platinenvariante muss noch erstellt werden, welche alle Grafik-Varianten vereint (AV,VGA,TFT)
-//
-// v1.88b:03.12.2023          -MIDI-Funktionalität wieder entfernt
-//                            -Sound-Befehl wieder die ursprüngliche Routine aktiviert
-//                            -Augenmerk soll mehr auf Funktionalität als Basic-Messcomputer gesetzt werden
-//                            -Akku-Messroutine über define auswählbar
-//                            -15531 Zeilen/sek.
-//
-// v1.87b:08.08.2023          -erste MIDI-Funktionalität integriert
-//                            -der Sound-Befehl wird für die interne Ausgabe von Tönen benutzt, die ursprüngliche Routine wurde deaktiviert
-//                            -Syntax: SND_N 0,45,127,100 -> Chan,Note,Velocity,Duration
-//                            -die Angabe von Duration (Dauer) muss noch geändert werden, damit mehrere Noten gleichzeitig erklingen können
-//                            -16329 Zeilen/sek.
-//
-// v1.86b:07.08.2023          -Beginn der Einbindung des Adafruit VS1053 Boards für MIDI-Funktionalität, um die Soundfunktionen aufzupeppen
-//                            -2GM-Soundbänke + 2Drumkit-Bänke
-//                            -Pan-Funktion, Reverb-Effekt, Pitch-Funktion, Polyfonie bis zu 64 Stimmen
-//                            -erste Trockentest's sind vielversprechend
-//                            -ein neues Board wird eine zusätzliche MIDI-IN-Buchse besitzen, um das Modul auch von außen mit einem
-//                            -MIDI-Keyboard spielen zu können
-//                            -ebenfalls geplant ist ein MIDI-Player, der MIDI-Dateien von SD-Karte abspielt
-//                            -wenn alles funktioniert, wird der ursprüngliche Sound-Befehl überflüssig
-//
-// v1.85b:31.07.2023          -Umstellung Arduino IDE auf 2.x, scheint jetzt zu funktionieren.....
-//                            -Fehlerbehandlung funktioniert nicht mehr, Fehler führen zu einer "Syntax Error!" Dauerschleife ???
-//                            -erst mal wieder auf 1.06 zurück-geswitcht :-( ärgerlich.
-//                            -Neue Idee: als Soundmodul ein GM-Modul (VS1053 hat MIDI inkl. Midi-Instrumente on board)
-//                            -Ansteuerung über MIDI-Befehle, möglich auch über Optokoppler von außen :-)
-//                            -16413 Zeilen/sek.
-//
-// v1.84b:18.07.2023          -Blinkfrequenz des Cursors in fabglconf.h auf 200ms gesetzt
-//                            -Befehl FILL zum füllen unregelmässiger Formen begonnen
-//                            -ESP32Time.h hinzugefügt, mit dessen Hilfe jetzt der Datei-Zeitstempel beim Speichern hinzugefügt wird
-//                            -cmd_dir - Routine mit der Ausgabe des Datei-Zeitstempels erweitert
-//                            -16275 Zeilen/sek.
-//
-// v1.83b:15.07.2023          -cmd_new mit setzen des Hauptfesters ergänzt, nach einem NEW wurden die Fensterparameter zwar gelöscht aber nicht das
-//                            -Hauptfenster gesetzt, dadurch hing der Cursor in der linken oberen Ecke fest
-//                            -Move_up-Subroutine etwas erweitert, jetzt wird nach dem Kopieren des Fensterinhaltes die letzte Zeile gelöscht,
-//                            -das war nötig, weil sonst eventuell existierender Text in der letzten Zeile immer wieder mitkopiert wurde
-//                            -Startbildschirm mit der Anzeige von BuiltTime ergänzt
-//                            -list_out Anzahl der Ausgabezeilen nun abhängig vom gewählten Font
-//                            -list_out um den Parameter bis zu welcher Zeile ausgegeben werden soll, erweitert (LIST 10,50 - Ausgabe Zeile 10 bis 50)
-//                            -16305 Zeilen/sek.
-//
-// v1.82b:11.07.2023          -DATA-Verarbeitung auf Arrays erweitert
-//                            -FILE_RD auf Arrays erweitert
-//                            -Fehler in Array-Dimensionierung behoben, Array-Felder wurden zu gross berechnet
-//                            -Fehler in der ELSE Verarbeitung entdeckt, bei dem Versuch, die Else-Anweisung in der gleichen Zeile zu bearbeiten
-//                            -wurden auch die nach nicht erfolgreicher IF-Verarbeitung stehende Befehle ausgeführt,
-//                            -was manche Programme nicht ausführbar machte, ELSE erst mal wieder in den Urzustand versetzt (nächste Zeile)
-//                            -Routine line_terminator geändert, jetzt erfolgt erst ein Carrige-Return und dann ein Next-Line,
-//                            -war vorher umgekehrt, das führte dazu, das in gespeicherten Programmen zwischen den Zeilen immer eine Leerzeile
-//                            -eingefügt war, jetzt wird Zeile für Zeile korrekt geschrieben
-//                            -Anzahl der Ausgabezeilen bei Memory_Dump und DIR ist jetzt vom verwendeten Font abhängig
-//                            -17205 Zeilen/sek.
-//
-// v1.81b:09.07.2023          -WINDOW-Befehl um die Möglichkeit einen Fenstertitel zu setzen ergänzt
-//                            -CLS entsprechend angepasst
-//                            -CLS-Scrolleffekt wieder deaktiviert, da die unterste Bildschirmzeile beim Scrolling nicht berücksichtigt wird
-//                            -Bildschirmausgabe weiter auf die Windowfunktion angepasst (Datei-Befehle, Memory_Dump)
-//                            -Variable Pencolor entfernt, führte zu unlogischen Farbreaktionen
-//                            -PEN-Befehl ändert nur temporär die Zeichenfarbe COL-Befehl ändert die Farben permanent
-//                            -Fehler in der list_out-Routine behoben, wenn eine Zeile genau eine Bildschirmbreite lang war, wurde kein Zeilenumbruch
-//                            -ausgelöst und die nächste Zeile überschrieb die vorherige auf dem Bildchirm
-//                            -Funktionstasten dürfen im Fenster (Window) nicht benutzt werden, der ESP hängt sich auf???!
-//                            -subroutine printnum etwas optimiert
-//                            -16452 Zeilen/sek.
-//
-// v1.80b:08.07.2023          -WINDOW-komplett neu erstellt - ohne SetscrollRegion, sieht schon viel besser aus
-//                            -CLS-Befehl auf Scrolleffekt geändert, das sieht mehr Retro aus :-)
-//                            -fehlt noch die Speicherung der Cursorposition, momentan werden immer Initialwerte gesetzt, wenn das Fenster
-//                            -gewechselt wird
-//                            -Speicherung der Cursorposition erledigt, beim Fensterwechsel wird die alte Cursorposition in der nächsten Zeile gesetzt
-//                            -nicht ganz korrekt aber akzeptabel
-//                            -Hinweis: die Cursortasten, Del und Ins sind im Fenster wirkungslos bzw. erzeugen Pseudo-char's,
-//                            -nur so konnte ein ESP-Absturz verhindert werden
-//                            -Taste F1 (Grafiksymbole on/off) schaltet zur optischen Signalisation die Scroll-LED ein und aus
 //
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -249,8 +169,9 @@ SPIClass spiSD(HSPI);
 #define kSD_MISO 16
 #define kSD_MOSI 17
 #define kSD_CLK  14
-//#define SD_LED   2
-byte SD_SET   = 44;      // -steht 44 im EEprom-Platz 10, dann sind die Werte im EEprom gültig
+#define SD_LED   2
+byte SD_SET   =  44;      // -steht 44 im EEprom-Platz 10, dann sind die Werte im EEprom gültig
+byte Editor_marker = 101;  // EEPROM-Platz 101 beinhaltet den Editor-marker (123)
 
 #ifdef TTGO_T7
 #define kSD_MISO 2
@@ -265,8 +186,8 @@ byte SD_SET   = 44;      // -steht 44 im EEprom-Platz 10, dann sind die Werte im
 #define kSD_OK    1      //OK-Marker
 File fp;
 
-const char* binfile[] ={".bin"};
-const char* basfile[] ={".bas"};
+const char* filetype[] ={".bin",".bas"};
+
 //------------------------------------- OTA-Update-Lib --------------------------------------------------------------------------------------------
 #include <Update.h>
 
@@ -3267,6 +3188,7 @@ void Basic_Interpreter()
   initSD();                                              //SD-Karte initialisieren
   cmd_new();                                             //alles löschen
   print_info();                                          //Start-Bildschirm anzeigen
+  check_editor();                                        // befindet sich im EEPROM-Platz 50 die 123, dann die datei tmp.bas automatisch laden
   int a, e;
 
 
@@ -3873,8 +3795,12 @@ interpreteAtTxtpos:
         break;
 
       case KW_EDIT:
-        val = int(get_value());
+        if(*txtpos==NL) save_tempfile();                  //Edit ohne Zeilennummer lädt den Texteditor KILO
+        else
+        {
+        val = int(get_value());                           //Edit <Zeilennummer> startet den Zeileneditor
         Editor(val);
+        }
         continue;
         break;
 
@@ -5833,7 +5759,7 @@ static int initSD( void )
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
   SPI.setFrequency(40000000);
   
-  //////Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
   
   if ( !SD.begin( kSD_CS, spiSD )) {                        //SD-Card starten
     // mount-fehler
@@ -5880,7 +5806,7 @@ static int initSD( void )
 
 void sd_ende(void) {
   spiSD.end();                                              //SD-Card unmount
-  //////Show_LED(SD_LED, 0);
+  Show_LED(SD_LED, 0);
   spi_fram.begin(3);                                        //FRAM aktivieren
 
 }
@@ -5914,7 +5840,7 @@ static int load_file(void)
   if (expression_error) return expression_error;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-  //////Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
   if ( !SD.exists(String(sd_pfad) + String(tempstring)))    //Datei vorhanden?
   {
@@ -5981,7 +5907,7 @@ static int save_file()
   if (expression_error) return 1;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
-  ////Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
   // remove the old file if it exists
   if ( SD.exists( String(sd_pfad) + String(tempstring))) {          //Datei existiert schon, überschreiben?
@@ -6107,7 +6033,7 @@ static int cmd_delFiles(void)
   if (expression_error) return 1;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-  ////Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
   // Datei löschen, wenn sie existiert
   if ( SD.exists(String(sd_pfad) + String(tempstring))) {
@@ -6169,7 +6095,7 @@ void cmd_chdir(void)
     return;
   }
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-  ////Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
   //prüfen, ob der Pfad gültig ist
   if ( !SD.open(String(sd_pfad))) {
@@ -6195,7 +6121,7 @@ static int cmd_mkdir(int mod)
   if (expression_error) return 1;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-  ////Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
   if (mod == 1) {
     // Verzeichnis erstellen
@@ -6286,13 +6212,13 @@ return 0;
 
     spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
     
-    ////Show_LED(SD_LED, 1);                                        //Laufwerksanzeige
+    Show_LED(SD_LED, 1);                                        //Laufwerksanzeige
 
     File dir = SD.open(String(sd_pfad));
     dir.seek(0);                                                  //zum Verzeichnis-Anfang
     
-    //pinMode(SD_LED, OUTPUT);
-    //digitalWrite(SD_LED, HIGH);
+    pinMode(SD_LED, OUTPUT);
+    digitalWrite(SD_LED, HIGH);
     
     while ( !ex ) {
       File entry = dir.openNextFile();                            //nächsten Eintrag holen
@@ -6405,7 +6331,7 @@ return 0;
     line_terminator();
     spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
     
-    ////Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+    Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
     if (fs.rename(path1, path2)) {
       printmsg("File renamed", 1);
@@ -6586,9 +6512,9 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
         }
         *vk = VirtualKey::VK_NONE;
       }
-      else if (*vk == VirtualKey::VK_F1) {                                               //LIST
+      else if (*vk == VirtualKey::VK_F1) {                                               //
         if (keyDown) {
-          
+          //save_tempfile();
         }
         *vk = VirtualKey::VK_NONE;
       }
@@ -6651,13 +6577,89 @@ timerAlarmWrite(Akku_timer, 60000000, true);         //ca.60sek bis Interrupt au
 timerAlarmEnable(Akku_timer);                        //Interrupt-Routine
 #endif
 //-------------------------------------------------------------------------------------------------------------------
+}
 
 
 
+static int save_tempfile()
+{
+  String tempname = "tmp.bas";
+  String editorname = "kilo.bin";
+  tempname.toCharArray(tempstring, tempname.length() + 1);
+  
+  spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
+  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+
+  // remove the old file if it exists
+  if (SD.exists( String(sd_pfad) + String(tempstring))) {          //Datei existiert schon?,dann überschreiben
+      SD.remove( String(sd_pfad) + String(tempstring));             //Datei löschen
+    }
+  // open the file, switch over to file output
+  fp = SD.open( String(sd_pfad) + String(tempstring), FILE_WRITE);  //Datei wird zum Schreiben geöffnet
+  if (!fp) {                                                        //Fehler?
+    printmsg("Open File-Error!", 1);
+    return 1;
   }
+  outStream = kStreamFile;
+
+  // copied from "List"
+  list_line = findline();
+  while (list_line != program_end)                                  //Zeile für Zeile des Programms in die Datei schreiben
+    printline();
+
+  outStream = kStreamTerminal;                                      // zurück zum standard output, Datei schließen
+
+  fp.close();
+
+  line_terminator();
+  sd_ende();                                                        //SD-Card unmount
+//  warmstart();
+
+EEPROM.write ( Editor_marker, 123 ) ;                                          // Marker, das der editor benutzt wird, bei der Rückkehr wird die datei tmp.bas automatisch geladen
+EEPROM.commit () ;
+editorname.toCharArray(tempstring, editorname.length() + 1);  
+load_binary();
+return 0;
+}
 
 
+static int load_tempfile(void)
+{ 
+  String tempname = "tmp.bas";
+  program_end = program_start;
+  tempname.toCharArray(tempstring, tempname.length() + 1);  //Dateiname tmp.Bas nach tempstring kopieren
+  
+  spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
+  if ( !SD.exists(String(sd_pfad) + String(tempstring)))    //Datei vorhanden?
+  {
+    syntaxerror(sdfilemsg);                                 //Datei nicht vorhanden -> Fehlerausgabe
+    sd_ende();
+    expression_error = 1;
+    return expression_error;
+  }
+  else {
+        fp = SD.open(String(sd_pfad) + String(tempstring));     //Datei zum Laden öffnen
+        inStream = kStreamFile;
+        inhibitOutput = true;
+    }
+}
+
+
+void check_editor(void){
+  int a = EEPROM.read(Editor_marker);
+  if( a == 123){
+    Terminal.print("load tmp.bas");
+    load_tempfile();
+  }
+  EEPROM.write ( Editor_marker, 0 ) ;                                        // Edit-Marker zurück setzen
+  EEPROM.commit () ;
+  int i = 0;
+  for (i = 0; i < STR_LEN; i++) tempstring[i] = 0; //Tempstring löschen
+  warmstart();
+  return;
+}
 
   //#######################################################################################################################################
   //################################################## HCSR04 Ultraschall-Sensor ##########################################################
@@ -8634,10 +8636,11 @@ nochmal:
       Terminal.enableCursor(onoff);                                                             //Cursor wieder setzen
     }
 
-    //#######################################################################################################################################
-    //--------------------------------------------- Utility-Funktionstasten -----------------------------------------------------------------
-    //#######################################################################################################################################
-    //--------------------------------------------- ASCII-Zeichen ausgeben ------------------------------------------------------------------
+
+    //##############################################################################################################################################
+    //----------------------------------------------------------- Utility-Funktionstasten ----------------------------------------------------------
+    //##############################################################################################################################################
+    //########################################################### ASCII-Zeichen ausgeben ###########################################################
 
     void char_out(int lo, int hi) {
       int z = 0;
@@ -8660,8 +8663,8 @@ nochmal:
       line_terminator();
       printmsg("OK>", 0);
     }
-    //--------------------------------------------- Farbcodes ausgeben ---------------------------------------------------------------------
-
+    //########################################################### Farbcodes ausgeben ###########################################################
+    
     void color_out(void) {
       int z = 0;
       char tx[10];
@@ -8689,6 +8692,27 @@ nochmal:
       line_terminator();
       printmsg("OK>", 0);
     }
+
+
+    //################################################## Systemparameter anzeigen ###########################################################
+    void show_systemparameters(void) {
+      Terminal.println();
+      Terminal.write("BuiltTime : ");
+      Terminal.write(BuiltTime);
+      Terminal.println();
+      Terminal.write("Keyboard  : ");
+      Terminal.print(Keyboard_lang, DEC);
+      Terminal.write("=");
+      Terminal.write(Keylayout[Keyboard_lang]);
+      Terminal.println();
+      Terminal.write("Eeprom-Adr: #");
+      Terminal.print(EEPROM.read(11), HEX);
+      Terminal.println();
+      Terminal.write("Workpath  : ");
+      Terminal.print(sd_pfad);
+      line_terminator();
+      printmsg("OK>", 0);
+    }    
     //***************************************************** Testbereich - Fill *****************************************************************
     /*
       //------------------------------------------ Befehl Fill --------------------------------------------------------------------------------------
@@ -8821,26 +8845,4 @@ nochmal:
           return 1;           //Pixel gesetzt
       }
       else return c;          //Farbe des Pixels
-    }
-
-
-
-    //################################################## Systemparameter anzeigen ###########################################################
-    void show_systemparameters(void) {
-      Terminal.println();
-      Terminal.write("BuiltTime : ");
-      Terminal.write(BuiltTime);
-      Terminal.println();
-      Terminal.write("Keyboard  : ");
-      Terminal.print(Keyboard_lang, DEC);
-      Terminal.write("=");
-      Terminal.write(Keylayout[Keyboard_lang]);
-      Terminal.println();
-      Terminal.write("Eeprom-Adr: #");
-      Terminal.print(EEPROM.read(11), HEX);
-      Terminal.println();
-      Terminal.write("Workpath  : ");
-      Terminal.print(sd_pfad);
-      line_terminator();
-      printmsg("OK>", 0);
     }

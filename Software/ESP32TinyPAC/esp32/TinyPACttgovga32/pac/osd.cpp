@@ -529,7 +529,7 @@ void performUpdate(Stream &updateSource, size_t updateSize) {
 }
 */
 void performUpdate(Stream &updateSource, size_t updateSize) {
-  if (Update.begin(updateSize)) {
+  if (Update.begin(updateSize, U_FLASH, 2, 1, "Basic")) {
     size_t written = Update.writeStream(updateSource);
     if (written == updateSize) {
       SDLprintText("Written :  successfully", 30, 160, BLUE, ID_COLOR_BLACK); 
@@ -542,7 +542,7 @@ void performUpdate(Stream &updateSource, size_t updateSize) {
       if (Update.isFinished()) {
         SDLprintText("Basic32+ loaded successfully, now Reboot", 30, 160, BLUE, ID_COLOR_BLACK); 
         delay(1000);
-        //ESP.restart();
+        ESP.restart();
       }
       else {
         SDLprintText("not finished? Something went wrong!", 30, 160, BLUE, ID_COLOR_BLACK);

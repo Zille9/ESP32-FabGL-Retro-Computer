@@ -385,6 +385,8 @@ void show_Command_Help(int was) {                                       //Anzeig
     case KW_EDIT:
       Terminal.println("EDIT Linenumber");
       Terminal.println("Lineeditor");
+      Terminal.println("EDIT without Linenumber start");
+      Terminal.println("the KILO-Editor");
       break;
     case KW_DOKE:
       Terminal.println("DOKE Memtype,Adress,Word");
