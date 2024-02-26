@@ -22,7 +22,9 @@ SPIClass spiSD(HSPI);
 #define kSD_CLK  14
 #define SD_LED   2
 
-short int Theme_state = 0;
+short int colour = 0;
+#include <EEPROM.h>
+#define EEPROM_SIZE 512
 /* You only need to format SPIFFS the first time you run a
    test or else use the SPIFFS plugin to create a partition
    https://github.com/me−no−dev/arduino−esp32fs−plugin */
@@ -43,7 +45,16 @@ enum editorKey {
   PAGE_UP,
   PAGE_DOWN,
   ENTER_KEY,
-  ESCAPE_KEY
+  ESCAPE_KEY,
+  F1_KEY,
+  F2_KEY,
+  F3_KEY,
+  F4_KEY,
+  F5_KEY,
+  F6_KEY,
+  F7_KEY,
+  F8_KEY,
+  F9_KEY
 };
 
 typedef struct erow {
@@ -468,6 +479,9 @@ int editorReadKey() {
       }
     */
     if (item.down) {
+        Serial.println(item.scancode[0]);
+        Serial.println(item.scancode[1]);
+        Serial.println();
       if (item.scancode[0] == 0xE0) {
         switch (item.scancode[1]) {
           case 0x6B: return ARROW_LEFT;
@@ -479,12 +493,22 @@ int editorReadKey() {
           case 0x69: return END_KEY;
           case 0x7D: return PAGE_UP;
           case 0x7A: return PAGE_DOWN;
+          
         }
       } else {
         switch (item.scancode[0]) {
           case 0x76: return ESCAPE_KEY;
           case 0x5A: return ENTER_KEY;
           case 0x66: return BACKSPACE;
+          case 0x05: return F1_KEY;
+          case 0x06: return F2_KEY;
+          case 0x04: return F3_KEY;
+          case 0x0C: return F4_KEY;
+          case 0x03: return F5_KEY;
+          case 0x0B: return F6_KEY;
+          case 0x83: return F7_KEY;
+          case 0x0A: return F8_KEY;
+          case 0x01: return F9_KEY;
           default: return item.ASCII;
         }
       }
@@ -497,6 +521,34 @@ void editorProcessKeypress() {
   int c = editorReadKey();
   if (!c) return;
   switch (c) {
+    case F1_KEY:
+      setColour();
+      break;
+    case F2_KEY:
+      
+      break;
+    case F3_KEY:
+      
+      break;
+    case F4_KEY:
+      
+      break;
+    case F5_KEY:
+      
+      break;
+    case F6_KEY:
+      
+      break;
+    case F7_KEY:
+      
+      break;
+    case F8_KEY:
+      
+      break;
+    case F9_KEY:
+      
+      break;
+    
     case ENTER_KEY:
       editorInsertNewline();
       //editorSave(SPIFFS);
@@ -514,6 +566,8 @@ void editorProcessKeypress() {
       editorDelChar();
       break;
     case ESCAPE_KEY:
+      EEPROM.write(200,colour);
+      EEPROM.commit();
       editorSave(SD);
       basic_load();
       break;
@@ -544,6 +598,50 @@ void editorProcessKeypress() {
       editorSetStatusMessage("");
       break;
   }
+}
+
+void setColour(){
+  colour+=1;
+  if(colour>8) colour=0;
+  switch (colour){
+    case 0:
+      Terminal.setBackgroundColor(Color::Blue);
+      Terminal.setForegroundColor(Color::BrightCyan);
+      break;
+    case 1:
+      Terminal.setBackgroundColor(Color::Red);
+      Terminal.setForegroundColor(Color::BrightWhite);
+      break;
+    case 2:
+      Terminal.setBackgroundColor(Color::Black);
+      Terminal.setForegroundColor(Color::BrightGreen);
+      break;
+    case 3:
+      Terminal.setBackgroundColor(Color::Magenta);
+      Terminal.setForegroundColor(Color::Black);
+      break;
+    case 4:
+      Terminal.setBackgroundColor(Color::White);
+      Terminal.setForegroundColor(Color::Black);
+      break;
+    case 5:
+      Terminal.setBackgroundColor(Color::Cyan);
+      Terminal.setForegroundColor(Color::Blue);
+      break;
+    case 6:
+      Terminal.setBackgroundColor(Color::BrightGreen);
+      Terminal.setForegroundColor(Color::Black);
+      break;
+    case 7:
+      Terminal.setBackgroundColor(Color::Blue);
+      Terminal.setForegroundColor(Color::BrightYellow);
+      break;
+    case 8:
+      Terminal.setBackgroundColor(Color::BrightYellow);
+      Terminal.setForegroundColor(Color::Black);
+      break;
+}
+
 }
 
 void readFile(fs::FS &fs, const char * path) {
@@ -635,6 +733,8 @@ void setup() {
   // init serial port
   Serial.begin(115200);
   delay(500);  // avoid garbage into the UART
+  EEPROM. begin ( EEPROM_SIZE ) ;
+  delay(200);
 
   // ESP32 peripherals setup
   PS2Controller.begin(PS2Preset::KeyboardPort0);
@@ -642,9 +742,9 @@ void setup() {
   DisplayController.begin();
   DisplayController.setResolution(VGA_640x480_60Hz);
   Terminal.begin(&DisplayController);
+  colour=EEPROM.read(200) - 1;
+  setColour();
   
-  Terminal.setBackgroundColor(Color::Blue);
-  Terminal.setForegroundColor(Color::BrightWhite);//BrightCyan);
   //Terminal.connectLocally();
   // init SPIFFS
 //  if (!SPIFFS.begin(FORMAT_SPIFFS_IF_FAILED)) {
