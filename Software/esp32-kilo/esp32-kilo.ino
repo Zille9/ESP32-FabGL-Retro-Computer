@@ -1,5 +1,8 @@
 /*
     KILO text editor
+    etwas angepasst als Editor für Basic32+ inklusive SD-Card-Unterstützung
+    Farb-Themen-Auswahl (Taste F1) - wird im EEPROM gespeichert und beim Start entsprechend eingestellt
+    ESC lädt Basic32+
 */
 
 #include "fabgl.h"
@@ -235,7 +238,7 @@ char *editorRowsToString(int *buflen) {
   int j;
   for (j = 0; j < E.numrows; j++)
     totlen += E.row[j].size + 1;
-  *buflen = totlen;
+  *buflen = totlen;                      
   char *buf = (char *)malloc(totlen);
   char *p = buf;
   for (j = 0; j < E.numrows; j++) {
@@ -243,7 +246,8 @@ char *editorRowsToString(int *buflen) {
     p += E.row[j].size;
     *p = '\r';
     p++;
-  } *--p = '\0';
+  }
+  *--p = '\0';
   return buf;
 }
 

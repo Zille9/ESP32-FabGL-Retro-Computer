@@ -35,7 +35,7 @@
 //                                          -BIT-Manipulation &,|,%,SL,SR usw.
 //                                          -Klammerrechnung
 //                                          -IF THEN ELSE Abfragen
-//                                          -Speichermonitor 
+//                                          -Speichermonitor
 //                                          -Exponential-Ein/Ausgabe
 //                                          -Verschiedene Sensoren und Komponenten HC-S04, Dallas DS18S20, DHT, LCD, Neopixel-LED, BMP180
 //                                          -Zeileneditor
@@ -45,10 +45,14 @@
 // April 2021
 //
 //
-#define BasicVersion "1.98b"
-#define BuiltTime "25.02.2024"
-
+#define BasicVersion "1.99b"
+#define BuiltTime "27.02.2024"
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v1.99b:27.02.2024          -diverse Definitionen nach cfg.h verschoben (Display-Art, Tastatur-Layout, Pinkonfigurationen usw.)
+//                            -dadurch einige Codezeilen entfernt (ca.50) und einige Options-Funktionen gekürzt (SD-Card-Pins, Tastatur-Layout)
+//                            -Fehler im Editor Kilo entdeckt, wird ein Programm nicht geändert fehlt nach dem Laden im Basic das letzte Zeichen
+//                            -15408 Zeilen/sek.
+//
 // v1.98b:21.02.2024          -Update funktioniert auf einmal nicht mehr, was ist das nun wieder ? :-( aus dem Basic laden funktioniert nur zurück nicht !?
 //                            -Fehler endlich gefunden - es lag tatsächlich an der Basic.bin auf der SD-Karte -> neu compiliert und kopiert -> funktioniert!! :D
 //                            -einen kleinen Editor (KILO) von maksimKorzh (thankyou for the little Editor) eingebunden, wird gestartet, wenn EDIT ohne Zeilennummer eingegeben wird
@@ -94,17 +98,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Konfiguration Grafiktreiber und Akku-Überwachung
-//#define TTGO_T7                 //TTGO T7 V1.4 Board                       
-//---------------------------------------------------------------- Akku-Überwachung für Akkubetrieb ------------------------------------------------
-//#define Akkualarm_enabled
-//
-//
-//---------------------------------------------------------------- Auswahl Bildschirmtreiber -------------------------------------------------------
-//#define AVOUT                   //activate for AV
-#define VGA64                   //activate VGA 64 Color 320x240 Pixel Driver
-//#define ILI9341                 //TFT-Display ILI9341 (mit Touch-Controller XPT2046)
-//#define CardKB                  //Verwendung von CardKB als Tastatur (nur mit PS2-Software nutzbar)
-
+#include "cfg.h"
 
 #include "fabgl.h" //********************************************* Bibliotheken zur VGA-Signalerzeugung *********************************************
 fabgl::Terminal         Terminal;
@@ -122,12 +116,6 @@ fabgl::VGAController    VGAController;      //VGA-Variante
 
 #else
 fabgl::ILI9341Controller VGAController;     //TFT-Display ILI9341
-#define TFT_SCK    18
-#define TFT_MOSI   23
-#define TFT_CS     5
-#define TFT_DC     22
-#define TFT_RESET  21
-#define TFT_SPIBUS VSPI_HOST
 #endif
 
 
@@ -150,43 +138,19 @@ byte y_char[]      PROGMEM = {8, 8, 8, 14, 20, 14, 14, 16, 16, 14, 14, 14, 16, 1
 unsigned int noteTable []  PROGMEM = {16350, 17320, 18350, 19450, 20600, 21830, 23120, 24500, 25960, 27500, 29140, 30870}; //Notentabelle für Soundausgabe
 //------------------------------------------------------------- Soundgenerator ----------------------------------------------------------------------------
 
-#ifdef ILI9341       // --- Bei Verwendung des TFT-ILI9341 muss der Ram verkleinert werden, damit SD-Card funktioniert -----------------------------
-#define RAMEND 30000 //----------------------------------- RAM increment for ESP32 ----------------------------------------------------------------- 
-#else
-#define RAMEND 60928
-#endif
-
 // ---------------------------------- SD-Karten-Zugriff--------------------------------------------------------------------------------------------
-//#include "FS.h"
 #include <SD.h>
 #include <SPI.h>
 
 //-------------------------------------- Verwendung der SD-Karte ----------------------------------------------------------------------------------
 //SPI CLASS FOR REDEFINED SPI PINS !
 SPIClass spiSD(HSPI);
-//Konfiguration der SD-Karte unter FabGl - kann mit OPT geändert werden
-#define kSD_CS   13
-#define kSD_MISO 16
-#define kSD_MOSI 17
-#define kSD_CLK  14
-#define SD_LED   2
-byte SD_SET   =  44;      // -steht 44 im EEprom-Platz 10, dann sind die Werte im EEprom gültig
 byte Editor_marker = 101;  // EEPROM-Platz 101 beinhaltet den Editor-marker (123)
-
-#ifdef TTGO_T7
-#define kSD_MISO 2
-#define kSD_MOSI 12
-#define SD_LED -1
-#endif
-
-#define keyb_clk   33
-#define keyb_data  32
-
 #define kSD_Fail  0      //Fehler-Marker
 #define kSD_OK    1      //OK-Marker
 File fp;
 
-const char* filetype[] ={".bin",".bas"};
+const char* filetype[] = {".bin", ".bas"};
 
 //------------------------------------- OTA-Update-Lib --------------------------------------------------------------------------------------------
 #include <Update.h>
@@ -289,7 +253,7 @@ byte SDA_RTC = 3;
 byte SCL_RTC = 1;
 
 
-byte Keyboard_lang = 3; //Tastatur-Layout (Deutsch)
+byte Keyboard_lang = KLayout; //Tastatur-Layout (cfg.h)
 byte KEY_SET = 66;      //-steht 66 im EEprom Platz 15, dann Nummer des Keyboard-Layouts aus dem EEProm laden
 byte THEME_SET = 77;    //-steht 77 im EEPROM Platz 17, dann setze das gespeicherte Theme
 byte PATH_SET = 88;     //-steht 88 im EEPROM Platz 19, dann setze Arbeits-Pfad
@@ -305,7 +269,7 @@ hw_timer_t *Akku_timer = NULL;      //Interrupt-Routine Akku-Überwachung
 uint32_t bmp_width, bmp_height;
 
 // RAM Puffer-Größe für Programm und Benutzereingaben
-#define kRamSize  RAMEND
+//#define kRamSize  RAMEND
 
 #define bool int
 #define true 1
@@ -572,7 +536,7 @@ enum {
   KW_DATA,
   KW_READ,
   KW_RESTORE,
-  KW_DEL,      
+  KW_DEL,
   KW_AND,       //40
   KW_OR,
   KW_SRTC,
@@ -582,7 +546,7 @@ enum {
   KW_DAC,
   KW_DRAW,
   KW_SPRITE,
-  KW_PULSE,    
+  KW_PULSE,
   KW_SOUND,    //50
   KW_PEN,
   KW_ON,
@@ -592,7 +556,7 @@ enum {
   KW_CHDIR,
   KW_MKDIR,
   KW_RMDIR,
-  KW_DEFFUNC, 
+  KW_DEFFUNC,
   KW_LED,     //60
   KW_EDIT,
   KW_DOKE,
@@ -602,7 +566,7 @@ enum {
   KW_FPOKE,
   KW_MOUNT,
   KW_COM,
-  KW_PIC,     
+  KW_PIC,
   KW_OPEN,    //70
   KW_CLOSE,
   KW_FILE,
@@ -611,7 +575,7 @@ enum {
   KW_TEXT,
   KW_PRINTING,
   KW_WINDOW,
-  KW_HELP,    
+  KW_HELP,
   KW_FRAME,   //79
   KW_DEFAULT  //80/* hier ist das Ende */
 };
@@ -2553,7 +2517,7 @@ void list_out()
   bool b_bis = false;
 
   linenum = testnum();                                       // wenn nicht LIST-Taste, dann überprüfe Zeilennummer und gibt 0 zurück, wenn keine Zeilennummer angegeben wird
-  
+
 
   if (*txtpos == ',') {                                                   // optionaler Wert bis zu welcher Zeile ausgegeben werden soll
     txtpos++;
@@ -2566,8 +2530,8 @@ void list_out()
     syntaxerror(syntaxmsg);
     return;
   }
- 
-  
+
+
   list_line = findline();                                                 // Finde Zeile
   while (list_line != program_end) {
 
@@ -3288,14 +3252,14 @@ interpreteAtTxtpos:
         break;
 
       case KW_RUN:                                        // RUN
-        if(*txtpos == '"'){                               //RUN"/Filename" lädt und startet das Programm
+        if (*txtpos == '"') {                             //RUN"/Filename" lädt und startet das Programm
           if (load_file()) {
-          continue;
-         }
-         string_marker = false;
-         autorun = true; 
+            continue;
+          }
+          string_marker = false;
+          autorun = true;
         }
-        if(*txtpos =='*'){
+        if (*txtpos == '*') {
           load_ram();
         }
         clear_var();
@@ -3795,11 +3759,11 @@ interpreteAtTxtpos:
         break;
 
       case KW_EDIT:
-        if(*txtpos==NL) save_tempfile();                  //Edit ohne Zeilennummer lädt den Texteditor KILO
+        if (*txtpos == NL) save_tempfile();               //Edit ohne Zeilennummer lädt den Texteditor KILO
         else
         {
-        val = int(get_value());                           //Edit <Zeilennummer> startet den Zeileneditor
-        Editor(val);
+          val = int(get_value());                           //Edit <Zeilennummer> startet den Zeileneditor
+          Editor(val);
         }
         continue;
         break;
@@ -5758,9 +5722,9 @@ static int initSD( void )
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
   SPI.setFrequency(40000000);
-  
+
   Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
-  
+
   if ( !SD.begin( kSD_CS, spiSD )) {                        //SD-Card starten
     // mount-fehler
     spiSD.end();                                            //unmount
@@ -5811,14 +5775,14 @@ void sd_ende(void) {
 
 }
 
-void Show_LED(int p, int lv){                               //Laufwerksanzeige ein und ausschalten
-  if(lv){
+void Show_LED(int p, int lv) {                              //Laufwerksanzeige ein und ausschalten
+  if (lv) {
     pinMode(p, OUTPUT);
     digitalWrite(p, HIGH);
   }
-  else{
-  digitalWrite(p, LOW);
-  pinMode(p, INPUT);
+  else {
+    digitalWrite(p, LOW);
+    pinMode(p, INPUT);
   }
 }
 
@@ -5850,10 +5814,10 @@ static int load_file(void)
     return expression_error;
   }
   else {
-    
+
     //******* hier Überprüfung auf BAS bzw. BIN Erweiterung ************************
     fcheck = check_extension();
-    switch (fcheck){
+    switch (fcheck) {
       case 0:
         syntaxerror(extension_error);//Terminal.println("no valid File-extension");
         return 1;
@@ -5875,9 +5839,9 @@ static int load_file(void)
   return expression_error;
 }
 
-int check_extension(){
-  String cbuf,dbuf,ebuf,fbuf;
-  int a,b,c;
+int check_extension() {
+  String cbuf, dbuf, ebuf, fbuf;
+  int a, b, c;
   c = 0;
   dbuf = String(tempstring);
   dbuf.toUpperCase();                               //String in Grossbuchstaben umwandeln
@@ -5886,8 +5850,8 @@ int check_extension(){
   fbuf = ".BIN";
   a = cbuf.compareTo(ebuf);
   b = cbuf.compareTo(fbuf);
-  if(a==0) c = 1;
-  if(b == 0) c = 2;
+  if (a == 0) c = 1;
+  if (b == 0) c = 2;
   //Terminal.println(c);
   return c;
 }
@@ -6190,7 +6154,7 @@ return 0;
   { int ln = 1;
     int ex = 0;
     String cbuf;
-    int was,tmp_col;
+    int was, tmp_col;
     int wd = GFX.getWidth() / x_char[fontsatz];
     int Dateien = 0;
     bool ext = false;       //Sucherweiterung ?
@@ -6211,15 +6175,15 @@ return 0;
     }
 
     spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
-    
+
     Show_LED(SD_LED, 1);                                        //Laufwerksanzeige
 
     File dir = SD.open(String(sd_pfad));
     dir.seek(0);                                                  //zum Verzeichnis-Anfang
-    
+
     pinMode(SD_LED, OUTPUT);
     digitalWrite(SD_LED, HIGH);
-    
+
     while ( !ex ) {
       File entry = dir.openNextFile();                            //nächsten Eintrag holen
       if ( !entry ) {                                             //kein Eintrag mehr, dann abbruch
@@ -6252,15 +6216,15 @@ return 0;
 
       //-------------------------------- Verzeichnis ----------------------------------------------------------------
       if ( entry.isDirectory() ) {
-        
+
         printmsg(slashmsg, 0);
-        
+
         for ( int i = strlen(entry.name()) ; i < 17 ; i++ ) {    //abhängig von der Stringlänge, Leerzeichen ausgeben
           printmsg(spacemsg, 0);
         }
-        
+
         printmsg(dirextmsg, 0);                                   //'dir' ausgeben
-        
+
       }
       //-------------------------------- Datei ----------------------------------------------------------------------
       else {
@@ -6314,7 +6278,7 @@ return 0;
     printmsg("MB", 1);
 
     dir.close();
-    
+
     sd_ende();                                             //SD-Card unmount
   }
 
@@ -6330,7 +6294,7 @@ return 0;
     printmsg(path2, 0);
     line_terminator();
     spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-    
+
     Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
     if (fs.rename(path1, path2)) {
@@ -6419,25 +6383,11 @@ return 0;
       LCD_ZEILEN = EEPROM.read(3);
       LCD_SPALTEN = EEPROM.read(4);
       LCD_ADRESSE = EEPROM.read(5);
-      /*
-      //--- ist der SD-Marker (44) auf Platz 10 gesetzt, dann sind folgende Werte für die SD-Card-Konfiguration zu verwenden ---------------------------
-      if (EEPROM.read(10) == 44) {
-        kSD_CLK  = EEPROM.read(6);
-        kSD_MISO = EEPROM.read(7);
-        kSD_MOSI = EEPROM.read(8);
-        kSD_CS   = EEPROM.read(9);
-      }
-      */
+
       //--- ist der IIC_Marker (55) auf Platz 13 gesetzt, dann sind die folgenden Werte zu verwenden
       if (EEPROM.read(13) == 55) {
         EEprom_ADDR = EEPROM.read(11);  //Adresse des zu verwendenden EEProms
         //SCL_RTC = EEPROM.read(12);
-      }
-
-
-      //--- ist der KEY_Marker (66) auf Platz 15 gestzt, dann ist das gespeicherte Layout zu wählen
-      if (EEPROM.read(15) == 66) {
-        Keyboard_lang = EEPROM.read(14);
       }
 
       // --- ist der Theme_marker (77) auf Platz 17 gesetzt, dann das gespeicherte Theme setzen
@@ -6452,21 +6402,13 @@ return 0;
       Vordergrund = 60;                                     //CPC Theme
       Hintergrund = 1;
       user_font   = 19;
-      //Vordergrund = 43;                                   //Standard-Vordergrundfarbe (wenn noch nichts im EEprom steht)
-      //Hintergrund = 18;                                   //Standard-Hintergrundfarbe (wenn noch nichts im EEprom steht)
-      //user_font = 19;
       Theme_state = 2;                                      //CPC Theme
     }
 
     delay(1000);                                              //eine sek warten, damit die CardKB-Tastatur starten kann
 
-    //VGAController.queueSize = 400;
     Keyboard.begin(GPIO_NUM_33, GPIO_NUM_32);
-    //PS2Controller.begin(PS2Preset::KeyboardPort0);
-#ifdef CardKB
-Keyboard_lang = 9;                                        //bei Verwendung von CardKB wird auf die japanische Tastaturbelegung umgeschaltet, damit die Symbolik passt
-#endif
-Set_Layout();                                             //Keyboard-Layout setzen
+    Set_Layout();                                             //Keyboard-Layout setzen
 
     delay(200);
 
@@ -6576,144 +6518,146 @@ timerAttachInterrupt(Akku_timer, &onTimer, true);
 timerAlarmWrite(Akku_timer, 60000000, true);         //ca.60sek bis Interrupt ausgelöst wird
 timerAlarmEnable(Akku_timer);                        //Interrupt-Routine
 #endif
-//-------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------
 }
+//#######################################################################################################################################
+//################################################## Editor KILO ########################################################################
+//#######################################################################################################################################
+    //----------------------- aktuelles Programm im Speicher in tmp.bas speichern und den Editor KILO aufrufen --------------------------
+    //----------------------- in den EEPROM den Wert:123 schreiben (Editor-marker) ------------------------------------------------------
+    static int save_tempfile()
+    {
+      String tempname = "tmp.bas";
+      String editorname = "kilo.bin";
+      tempname.toCharArray(tempstring, tempname.length() + 1);
 
+      spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
+      Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
+      // remove the old file if it exists
+      if (SD.exists( String(sd_pfad) + String(tempstring))) {          //Datei existiert schon?,dann überschreiben
+        SD.remove( String(sd_pfad) + String(tempstring));             //Datei löschen
+      }
+      // open the file, switch over to file output
+      fp = SD.open( String(sd_pfad) + String(tempstring), FILE_WRITE);  //Datei wird zum Schreiben geöffnet
+      if (!fp) {                                                        //Fehler?
+        printmsg("Open File-Error!", 1);
+        return 1;
+      }
+      outStream = kStreamFile;
 
-static int save_tempfile()
-{
-  String tempname = "tmp.bas";
-  String editorname = "kilo.bin";
-  tempname.toCharArray(tempstring, tempname.length() + 1);
-  
-  spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
-  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
+      // copied from "List"
+      list_line = findline();
+      while (list_line != program_end)                                  //Zeile für Zeile des Programms in die Datei schreiben
+        printline();
+      line_terminator();                                                //noch eine Leerzeile anhängen (KILO löscht beim Speichern das letzte Zeichen !?)
+      outStream = kStreamTerminal;                                      // zurück zum standard output, Datei schließen
 
-  // remove the old file if it exists
-  if (SD.exists( String(sd_pfad) + String(tempstring))) {          //Datei existiert schon?,dann überschreiben
-      SD.remove( String(sd_pfad) + String(tempstring));             //Datei löschen
+      fp.close();
+
+      line_terminator();
+      sd_ende();                                                        //SD-Card unmount
+      //  warmstart();
+
+      EEPROM.write ( Editor_marker, 123 ) ;                                          // Marker, das der editor benutzt wird, bei der Rückkehr wird die datei tmp.bas automatisch geladen
+      EEPROM.commit () ;
+      editorname.toCharArray(tempstring, editorname.length() + 1);
+      load_binary();
+      return 0;
     }
-  // open the file, switch over to file output
-  fp = SD.open( String(sd_pfad) + String(tempstring), FILE_WRITE);  //Datei wird zum Schreiben geöffnet
-  if (!fp) {                                                        //Fehler?
-    printmsg("Open File-Error!", 1);
-    return 1;
-  }
-  outStream = kStreamFile;
 
-  // copied from "List"
-  list_line = findline();
-  while (list_line != program_end)                                  //Zeile für Zeile des Programms in die Datei schreiben
-    printline();
+    //----------------- tmp.bas wieder laden, wenn im EEPROM an Adresse 101 eine 123 steht ----------------------
+    static int load_tempfile(void)
+    {
+      String tempname = "tmp.bas";
+      program_end = program_start;
+      tempname.toCharArray(tempstring, tempname.length() + 1);  //Dateiname tmp.Bas nach tempstring kopieren
 
-  outStream = kStreamTerminal;                                      // zurück zum standard output, Datei schließen
+      spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+      Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
-  fp.close();
-
-  line_terminator();
-  sd_ende();                                                        //SD-Card unmount
-//  warmstart();
-
-EEPROM.write ( Editor_marker, 123 ) ;                                          // Marker, das der editor benutzt wird, bei der Rückkehr wird die datei tmp.bas automatisch geladen
-EEPROM.commit () ;
-editorname.toCharArray(tempstring, editorname.length() + 1);  
-load_binary();
-return 0;
-}
-
-
-static int load_tempfile(void)
-{ 
-  String tempname = "tmp.bas";
-  program_end = program_start;
-  tempname.toCharArray(tempstring, tempname.length() + 1);  //Dateiname tmp.Bas nach tempstring kopieren
-  
-  spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-  Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
-
-  if ( !SD.exists(String(sd_pfad) + String(tempstring)))    //Datei vorhanden?
-  {
-    syntaxerror(sdfilemsg);                                 //Datei nicht vorhanden -> Fehlerausgabe
-    sd_ende();
-    expression_error = 1;
-    return expression_error;
-  }
-  else {
+      if ( !SD.exists(String(sd_pfad) + String(tempstring)))    //Datei vorhanden?
+      {
+        syntaxerror(sdfilemsg);                                 //Datei nicht vorhanden -> Fehlerausgabe
+        sd_ende();
+        expression_error = 1;
+        return expression_error;
+      }
+      else {
         fp = SD.open(String(sd_pfad) + String(tempstring));     //Datei zum Laden öffnen
         inStream = kStreamFile;
         inhibitOutput = true;
+      }
     }
-}
 
-
-void check_editor(void){
-  int a = EEPROM.read(Editor_marker);
-  if( a == 123){
-    Terminal.print("load tmp.bas");
-    load_tempfile();
-  }
-  EEPROM.write ( Editor_marker, 0 ) ;                                        // Edit-Marker zurück setzen
-  EEPROM.commit () ;
-  int i = 0;
-  for (i = 0; i < STR_LEN; i++) tempstring[i] = 0; //Tempstring löschen
-  warmstart();
-  return;
-}
-
-  //#######################################################################################################################################
-  //################################################## HCSR04 Ultraschall-Sensor ##########################################################
-  //#######################################################################################################################################
-  long HCSR04(int p) {
-
-    long duration, inches, cm;
-
-    // The PING))) is triggered by a HIGH pulse of 2 or more microseconds.
-    // Give a short LOW pulse beforehand to ensure a clean HIGH pulse:
-    pinMode(p, OUTPUT);
-    digitalWrite(p, LOW);
-    delayMicroseconds(2);
-    digitalWrite(p, HIGH);
-    delayMicroseconds(5);
-    digitalWrite(p, LOW);
-
-    // The same pin is used to read the signal from the PING))): a HIGH pulse
-    // whose duration is the time (in microseconds) from the sending of the ping
-    // to the reception of its echo off of an object.
-    pinMode(p, INPUT);
-    duration = pulseIn(p, HIGH);
-    delay(100);
-    // convert the time into a distance
-    //if(mo=3) inches = microsecondsToInches(duration);
-    return duration / 29 / 2 ; //microsecondsToCentimeters(duration);
-  }
-
-  //#######################################################################################################################################
-  //############################################### Testbereich Dallas Temp-Sensor ########################################################
-  //#######################################################################################################################################
-  float init_temp(int p, int kanal) {
-
-    OneWire oneWire(p);
-    DallasTemperature sensors(&oneWire);
-
-    if (!twire) {
-      sensors.begin();
-      twire = true;
+    //----------------------- Überprüfung Adresse 101 im EEPROM auf den Wert:123 - dann löschen ------------------------------------------------
+    void check_editor(void) {
+      int a = EEPROM.read(Editor_marker);
+      if ( a == 123) {
+        Terminal.print("load tmp.bas");
+        load_tempfile();
+      }
+      EEPROM.write ( Editor_marker, 0 ) ;                                        // Edit-Marker zurück setzen
+      EEPROM.commit () ;
+      int i = 0;
+      for (i = 0; i < STR_LEN; i++) tempstring[i] = 0; //Tempstring löschen
+      warmstart();
+      return;
     }
-    sensors.requestTemperatures(); // Send the command to get temperatures
-    twire = false;
-    return sensors.getTempCByIndex(kanal);
-  }
 
-  //#######################################################################################################################################
-  //############################################### DHT Temp/Humidity-Sensor ##############################################################
-  //#######################################################################################################################################
+    //#######################################################################################################################################
+    //################################################## HCSR04 Ultraschall-Sensor ##########################################################
+    //#######################################################################################################################################
+    long HCSR04(int p) {
 
-  float init_dht(int p, int m, int w)
-  {
-    float a;
-    switch (m) {
-      case 1:
+      long duration, inches, cm;
+
+      // The PING))) is triggered by a HIGH pulse of 2 or more microseconds.
+      // Give a short LOW pulse beforehand to ensure a clean HIGH pulse:
+      pinMode(p, OUTPUT);
+      digitalWrite(p, LOW);
+      delayMicroseconds(2);
+      digitalWrite(p, HIGH);
+      delayMicroseconds(5);
+      digitalWrite(p, LOW);
+
+      // The same pin is used to read the signal from the PING))): a HIGH pulse
+      // whose duration is the time (in microseconds) from the sending of the ping
+      // to the reception of its echo off of an object.
+      pinMode(p, INPUT);
+      duration = pulseIn(p, HIGH);
+      delay(100);
+      // convert the time into a distance
+      //if(mo=3) inches = microsecondsToInches(duration);
+      return duration / 29 / 2 ; //microsecondsToCentimeters(duration);
+    }
+
+    //#######################################################################################################################################
+    //############################################### Testbereich Dallas Temp-Sensor ########################################################
+    //#######################################################################################################################################
+    float init_temp(int p, int kanal) {
+
+      OneWire oneWire(p);
+      DallasTemperature sensors(&oneWire);
+
+      if (!twire) {
+        sensors.begin();
+        twire = true;
+      }
+      sensors.requestTemperatures(); // Send the command to get temperatures
+      twire = false;
+      return sensors.getTempCByIndex(kanal);
+    }
+
+    //#######################################################################################################################################
+    //############################################### DHT Temp/Humidity-Sensor ##############################################################
+    //#######################################################################################################################################
+
+    float init_dht(int p, int m, int w)
+    {
+      float a;
+      switch (m) {
+        case 1:
 #define DHTTYPE DHT11
 break;
 case 2:
@@ -6727,1074 +6671,1009 @@ default:
 break;
 }
 
-        DHT_Unified dht(p, DHTTYPE);
-        sensor_t sensor;
-        dht.begin();
-        delayMS = sensor.min_delay / 1000;
-        delay(delayMS);
+          DHT_Unified dht(p, DHTTYPE);
+          sensor_t sensor;
+          dht.begin();
+          delayMS = sensor.min_delay / 1000;
+          delay(delayMS);
 
-        sensors_event_t event;
-        if (w == 0)
-        { dht.temperature().getEvent(&event);
-          if (isnan(event.temperature))
-          {
-            //Terminal.println("Error reading temperature!");
-            return -1;
+          sensors_event_t event;
+          if (w == 0)
+          { dht.temperature().getEvent(&event);
+            if (isnan(event.temperature))
+            {
+              //Terminal.println("Error reading temperature!");
+              return -1;
+            }
+
+            a = event.temperature;
+          }
+          else
+          { dht.humidity().getEvent(&event);
+            if (isnan(event.relative_humidity))
+            {
+              //Terminal.println("Error reading humidity!");
+              return -1;
+            }
+
+            a = event.relative_humidity;
           }
 
-          a = event.temperature;
-        }
-        else
-        { dht.humidity().getEvent(&event);
-          if (isnan(event.relative_humidity))
-          {
-            //Terminal.println("Error reading humidity!");
-            return -1;
-          }
-
-          a = event.relative_humidity;
-        }
-
-        return a;
-    }
-
-    //#######################################################################################################################################
-    //############################################### MCP23017-Funktionen ###################################################################
-    //#######################################################################################################################################
-    void mcp_start()
-    {
-      mcp.begin_I2C(MCP23017_ADDR, &myI2C);
-      mcp_start_marker == true;
-    }
-
-    void mcp_Port_direction(char Port, int dir)
-    { int i;
-      if (mcp_start_marker != true) mcp_start();
-      if (Port == 'A' || Port == 'C') {
-        if (dir == 0) {
-          for (i = 0; i < 8; i++) mcp.pinMode(i, OUTPUT); //alle pins von Port A auf Ausgang
-        }
-        else if (dir == 1) {
-          for (i = 0; i < 8; i++) mcp.pinMode(i, INPUT_PULLUP); //alle pins von Port A auf Eingang
-        }
+          return a;
       }
-      if (Port == 'B' || Port == 'C') {
-        if (dir == 0) {
-          for (i = 8; i < 16; i++) mcp.pinMode(i, OUTPUT); //alle pins von Port B auf Ausgang
-        }
-        else if (dir == 1) {
-          for (i = 8; i < 16; i++) mcp.pinMode(i, INPUT_PULLUP); //alle pins von Port B auf Eingang
-        }
-      }
-    }
-    //---------------------- Port-Write --------------------------
-    void mcp_Port_write(char Port, int wert)
-    {
-      if (Port == 'A') mcp.writeGPIOA(wert);            //Port A
-      else if (Port == 'B') mcp.writeGPIOB(wert);       //Port B
-      else if (Port == 'C') mcp.writeGPIOAB(wert);      //Port A+B
-    }
 
-    //---------------------- Pin-Direction -----------------------
-    void mcp_Pin_direction(int pin, int dir)
-    {
-      if (mcp_start_marker != true) mcp_start();
-      if (pin > 0 && pin < 16)
+      //#######################################################################################################################################
+      //############################################### MCP23017-Funktionen ###################################################################
+      //#######################################################################################################################################
+      void mcp_start()
       {
-        if (dir == 0) mcp.pinMode(pin, OUTPUT);
-        else if (dir == 1) mcp.pinMode(pin, INPUT_PULLUP);
+        mcp.begin_I2C(MCP23017_ADDR, &myI2C);
+        mcp_start_marker == true;
       }
-    }
 
-    //----------------------- Pin-Write --------------------------
-    void mcp_Pin_write(int pin, int wert)
-    {
-      if (wert == 0) {
-        if (pin > 0 && pin < 16) mcp.digitalWrite(pin, LOW);
+      void mcp_Port_direction(char Port, int dir)
+      { int i;
+        if (mcp_start_marker != true) mcp_start();
+        if (Port == 'A' || Port == 'C') {
+          if (dir == 0) {
+            for (i = 0; i < 8; i++) mcp.pinMode(i, OUTPUT); //alle pins von Port A auf Ausgang
+          }
+          else if (dir == 1) {
+            for (i = 0; i < 8; i++) mcp.pinMode(i, INPUT_PULLUP); //alle pins von Port A auf Eingang
+          }
+        }
+        if (Port == 'B' || Port == 'C') {
+          if (dir == 0) {
+            for (i = 8; i < 16; i++) mcp.pinMode(i, OUTPUT); //alle pins von Port B auf Ausgang
+          }
+          else if (dir == 1) {
+            for (i = 8; i < 16; i++) mcp.pinMode(i, INPUT_PULLUP); //alle pins von Port B auf Eingang
+          }
+        }
       }
-      else if (wert != 0) {
-        if (pin > 0 && pin < 16) mcp.digitalWrite(pin, HIGH);
+      //---------------------- Port-Write --------------------------
+      void mcp_Port_write(char Port, int wert)
+      {
+        if (Port == 'A') mcp.writeGPIOA(wert);            //Port A
+        else if (Port == 'B') mcp.writeGPIOB(wert);       //Port B
+        else if (Port == 'C') mcp.writeGPIOAB(wert);      //Port A+B
       }
-    }
 
-    //#######################################################################################################################################
-    //############################################### LCD-Befehl ############################################################################
-    //#######################################################################################################################################
+      //---------------------- Pin-Direction -----------------------
+      void mcp_Pin_direction(int pin, int dir)
+      {
+        if (mcp_start_marker != true) mcp_start();
+        if (pin > 0 && pin < 16)
+        {
+          if (dir == 0) mcp.pinMode(pin, OUTPUT);
+          else if (dir == 1) mcp.pinMode(pin, INPUT_PULLUP);
+        }
+      }
 
-    static int LCD_Set(void) {
-      char c;
-      int bl, x, y, p, z;
-      float a;
+      //----------------------- Pin-Write --------------------------
+      void mcp_Pin_write(int pin, int wert)
+      {
+        if (wert == 0) {
+          if (pin > 0 && pin < 16) mcp.digitalWrite(pin, LOW);
+        }
+        else if (wert != 0) {
+          if (pin > 0 && pin < 16) mcp.digitalWrite(pin, HIGH);
+        }
+      }
 
-      HD44780LCD myLCD(LCD_ZEILEN, LCD_SPALTEN, LCD_ADRESSE, &myI2C);  // LCD object.rows ,cols ,PCF8574 I2C addr, Interface)
-      myLCD.PCF8574_LCDBackLightSet(LCD_Backlight);
-      c = spaces();
+      //#######################################################################################################################################
+      //############################################### LCD-Befehl ############################################################################
+      //#######################################################################################################################################
 
-      if (Test_char('(')) return 1;
+      static int LCD_Set(void) {
+        char c;
+        int bl, x, y, p, z;
+        float a;
 
-      c = *txtpos;
-      expression_error = 0;
-      txtpos++;
-      switch (c) {
-        case 'C':                             //CLS
-          myLCD.PCF8574_LCDClearScreen();
-          myLCD.PCF8574_LCDHome();
-          break;
+        HD44780LCD myLCD(LCD_ZEILEN, LCD_SPALTEN, LCD_ADRESSE, &myI2C);  // LCD object.rows ,cols ,PCF8574 I2C addr, Interface)
+        myLCD.PCF8574_LCDBackLightSet(LCD_Backlight);
+        c = spaces();
 
-        case 'B':                             //Backlight
-          if (Test_char(',')) return 1;
-          p = get_value();
-          if (p != 1 ) {
-            LCD_Backlight = false;
-            //myLCD.PCF8574_LCDBackLightSet(false);
-          }
-          else
-            LCD_Backlight = true;
-          myLCD.PCF8574_LCDBackLightSet(LCD_Backlight);
-          myLCD.PCF8574_LCDHome();
-          break;
+        if (Test_char('(')) return 1;
 
-        case 'G':                             //Goto
-          if (Test_char(',')) return 1;
-          p = get_value();
-          if (Test_char(',')) return 1;
-          z = get_value();
-          if (z == 1) myLCD.PCF8574_LCDGOTO(LCDLineNumberOne, p);
-          else if (z == 2) myLCD.PCF8574_LCDGOTO(LCDLineNumberTwo, p);
-          else if (z == 3) myLCD.PCF8574_LCDGOTO(LCDLineNumberThree, p);
-          else
-            myLCD.PCF8574_LCDGOTO(LCDLineNumberFour, p);
-          break;
+        c = *txtpos;
+        expression_error = 0;
+        txtpos++;
+        switch (c) {
+          case 'C':                             //CLS
+            myLCD.PCF8574_LCDClearScreen();
+            myLCD.PCF8574_LCDHome();
+            break;
 
-        case 'I':                             //Init
-          if (Test_char(',')) return 1;
-          p = get_value();
-          if (p == 1) myLCD.PCF8574_LCDInit(LCDCursorTypeOff);
-          else if (p == 2)  myLCD.PCF8574_LCDInit(LCDCursorTypeBlink);
-          else if (p == 3)  myLCD.PCF8574_LCDInit(LCDCursorTypeOn);
-          else
-            myLCD.PCF8574_LCDInit(LCDCursorTypeOnBlink);
-          myLCD.PCF8574_LCDClearScreen();
-          break;
-
-        case 'L':                             //Clear Line Number
-          if (Test_char(',')) return 1;
-          z = get_value();
-          if (z == 1) myLCD.PCF8574_LCDClearLine(LCDLineNumberOne);
-          else if (z == 2) myLCD.PCF8574_LCDClearLine(LCDLineNumberTwo);
-          else if (z == 3) myLCD.PCF8574_LCDClearLine(LCDLineNumberThree);
-          else
-            myLCD.PCF8574_LCDClearLine(LCDLineNumberFour);
-          break;
-
-        case 'M':                             //Move
-          if (Test_char(',')) return 1;
-          z = get_value();
-          if (Test_char(',')) return 1;
-          p = get_value();
-          if (z == 0) myLCD.PCF8574_LCDScroll(LCDMoveRight, p);
-          else myLCD.PCF8574_LCDScroll(LCDMoveLeft, p);
-          break;
-
-        case 'N':                             //Nachkommastellen einstellen
-          if (Test_char(',')) return 1;
-          z = byte(get_value());
-          if (z > 8) {
-            z = 8;                            //Nachkommastellen werden auf 8 begrenzt
-          }
-          else {
-            LCD_NACHKOMMA = z;
-          }
-          break;
-
-        case 'W':
-        case 'P':                             //Print
-          if (Test_char(',')) return 1;
-
-          if (c == 'P')
-          {
-            x = get_value();                    //x-Position
+          case 'B':                             //Backlight
             if (Test_char(',')) return 1;
-            y = get_value();                    //y-Position
-            if (Test_char(',')) return 1;
-            if (y == 1) myLCD.PCF8574_LCDGOTO(LCDLineNumberOne, x);
-            else if (y == 2) myLCD.PCF8574_LCDGOTO(LCDLineNumberTwo, x);
-            else if (y == 3) myLCD.PCF8574_LCDGOTO(LCDLineNumberThree, x);
+            p = get_value();
+            if (p != 1 ) {
+              LCD_Backlight = false;
+              //myLCD.PCF8574_LCDBackLightSet(false);
+            }
             else
-              myLCD.PCF8574_LCDGOTO(LCDLineNumberFour, x);
-          }
+              LCD_Backlight = true;
+            myLCD.PCF8574_LCDBackLightSet(LCD_Backlight);
+            myLCD.PCF8574_LCDHome();
+            break;
+
+          case 'G':                             //Goto
+            if (Test_char(',')) return 1;
+            p = get_value();
+            if (Test_char(',')) return 1;
+            z = get_value();
+            if (z == 1) myLCD.PCF8574_LCDGOTO(LCDLineNumberOne, p);
+            else if (z == 2) myLCD.PCF8574_LCDGOTO(LCDLineNumberTwo, p);
+            else if (z == 3) myLCD.PCF8574_LCDGOTO(LCDLineNumberThree, p);
+            else
+              myLCD.PCF8574_LCDGOTO(LCDLineNumberFour, p);
+            break;
+
+          case 'I':                             //Init
+            if (Test_char(',')) return 1;
+            p = get_value();
+            if (p == 1) myLCD.PCF8574_LCDInit(LCDCursorTypeOff);
+            else if (p == 2)  myLCD.PCF8574_LCDInit(LCDCursorTypeBlink);
+            else if (p == 3)  myLCD.PCF8574_LCDInit(LCDCursorTypeOn);
+            else
+              myLCD.PCF8574_LCDInit(LCDCursorTypeOnBlink);
+            myLCD.PCF8574_LCDClearScreen();
+            break;
+
+          case 'L':                             //Clear Line Number
+            if (Test_char(',')) return 1;
+            z = get_value();
+            if (z == 1) myLCD.PCF8574_LCDClearLine(LCDLineNumberOne);
+            else if (z == 2) myLCD.PCF8574_LCDClearLine(LCDLineNumberTwo);
+            else if (z == 3) myLCD.PCF8574_LCDClearLine(LCDLineNumberThree);
+            else
+              myLCD.PCF8574_LCDClearLine(LCDLineNumberFour);
+            break;
+
+          case 'M':                             //Move
+            if (Test_char(',')) return 1;
+            z = get_value();
+            if (Test_char(',')) return 1;
+            p = get_value();
+            if (z == 0) myLCD.PCF8574_LCDScroll(LCDMoveRight, p);
+            else myLCD.PCF8574_LCDScroll(LCDMoveLeft, p);
+            break;
+
+          case 'N':                             //Nachkommastellen einstellen
+            if (Test_char(',')) return 1;
+            z = byte(get_value());
+            if (z > 8) {
+              z = 8;                            //Nachkommastellen werden auf 8 begrenzt
+            }
+            else {
+              LCD_NACHKOMMA = z;
+            }
+            break;
+
+          case 'W':
+          case 'P':                             //Print
+            if (Test_char(',')) return 1;
+
+            if (c == 'P')
+            {
+              x = get_value();                    //x-Position
+              if (Test_char(',')) return 1;
+              y = get_value();                    //y-Position
+              if (Test_char(',')) return 1;
+              if (y == 1) myLCD.PCF8574_LCDGOTO(LCDLineNumberOne, x);
+              else if (y == 2) myLCD.PCF8574_LCDGOTO(LCDLineNumberTwo, x);
+              else if (y == 3) myLCD.PCF8574_LCDGOTO(LCDLineNumberThree, x);
+              else
+                myLCD.PCF8574_LCDGOTO(LCDLineNumberFour, x);
+            }
 
 nochmal:
-          if (*txtpos == '"') {               //Text in Anführungszeichen
-            txtpos++;
-            while (*txtpos != '"')
-            {
-              myLCD.PCF8574_LCDSendChar(*txtpos);
+            if (*txtpos == '"') {               //Text in Anführungszeichen
+              txtpos++;
+              while (*txtpos != '"')
+              {
+                myLCD.PCF8574_LCDSendChar(*txtpos);
+                txtpos++;
+              }
               txtpos++;
             }
-            txtpos++;
-          }
-          else {
-            a = get_value();
-            if (string_marker == true) {
-              myLCD.PCF8574_LCDSendString(tempstring);  //Strings
-              string_marker = false;
-              chr = false;
+            else {
+              a = get_value();
+              if (string_marker == true) {
+                myLCD.PCF8574_LCDSendString(tempstring);  //Strings
+                string_marker = false;
+                chr = false;
+              }
+              else if (chr == true) {                     //Chars
+                myLCD.write(int(a));
+                chr = false;
+                string_marker = false;
+              }
+              else
+                myLCD.print(a, LCD_NACHKOMMA);            //Zahlenwerte
             }
-            else if (chr == true) {                     //Chars
-              myLCD.write(int(a));
-              chr = false;
-              string_marker = false;
+            if (*txtpos == ',') {                       //,?
+              myLCD.PCF8574_LCDSendString("   ");
+              if (skip_spaces() == ')')
+              {
+                break;
+              }
+              goto nochmal;
             }
-            else
-              myLCD.print(a, LCD_NACHKOMMA);            //Zahlenwerte
-          }
-          if (*txtpos == ',') {                       //,?
-            myLCD.PCF8574_LCDSendString("   ");
-            if (skip_spaces() == ')')
-            {
-              break;
+            else if (*txtpos == ';') {                  //;?
+              if (skip_spaces() == ')')
+              {
+                break;
+              }
+              goto nochmal;
             }
-            goto nochmal;
-          }
-          else if (*txtpos == ';') {                  //;?
-            if (skip_spaces() == ')')
-            {
-              break;
-            }
-            goto nochmal;
-          }
 
-          break;
+            break;
 
 
-        case 'S':                                     //Set
-          if (set_lcd())
-            return 1;
-          break;
-        default:
-          break;
-      }
-
-      if (Test_char(')')) return 1;
-
-      return 0;
-    }
-
-
-    static int set_lcd(void) {              //LCD(S,X,Y,Adresse)
-
-      if (Test_char(',')) return 1;
-      LCD_SPALTEN = get_value();                //Spalten
-      if (Test_char(',')) return 1;
-      LCD_ZEILEN = get_value();                 //Zeilen
-      if (Test_char(',')) return 1;
-      LCD_ADRESSE = get_value();                //I2C-Adresse
-
-      HD44780LCD myLCD(LCD_ZEILEN, LCD_SPALTEN, LCD_ADRESSE, &myI2C);  // LCD object.rows ,cols ,PCF8574 I2C addr, Interface)
-      EEPROM.write ( 3, LCD_ZEILEN ) ;       // Themen nummer im Flash speichern
-      EEPROM.write ( 4, LCD_SPALTEN ) ;
-      EEPROM.write ( 5, LCD_ADRESSE ) ;
-      EEPROM.commit () ;
-
-      delay(DISPLAY_DELAY_INIT);
-
-      myLCD.PCF8574_LCDInit(LCDCursorTypeOn);
-      myLCD.PCF8574_LCDClearScreen();
-      myLCD.PCF8574_LCDBackLightSet(LCD_Backlight);
-      myLCD.PCF8574_LCDGOTO(LCDLineNumberOne, 0);
-      /*
-        myLCD.PCF8574_LCDSendString("Zille-Soft-GmbH");
-        myLCD.PCF8574_LCDGOTO(LCDLineNumberThree, 0);
-        myLCD.PCF8574_LCDSendString("Neue Zeile!");
-      */
-      return 0;
-    }
-
-    //#######################################################################################################################################
-    //############################################### LED-Befehl ############################################################################
-    //#######################################################################################################################################
-    void colorWipe(uint32_t c, uint8_t wait) {
-      for (uint16_t i = 0; i < strip.numPixels(); i++) {
-        strip.setPixelColor(i, c);
-        strip.show();
-        delay(wait);
-      }
-    }
-
-    // Input a value 0 to 255 to get a color value.
-    // The colours are a transition r - g - b - back to r.
-    uint32_t Wheel(byte WheelPos) {
-      WheelPos = 255 - WheelPos;
-      if (WheelPos < 85) {
-        return strip.Color(255 - WheelPos * 3, 0, WheelPos * 3);
-      }
-      if (WheelPos < 170) {
-        WheelPos -= 85;
-        return strip.Color(0, WheelPos * 3, 255 - WheelPos * 3);
-      }
-      WheelPos -= 170;
-      return strip.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
-    }
-
-    void rainbow(uint8_t wait) {
-      uint16_t i, j;
-
-      for (j = 0; j < 256; j++) {
-        for (i = 0; i < strip.numPixels(); i++) {
-          strip.setPixelColor(i, Wheel((i + j) & 255));
+          case 'S':                                     //Set
+            if (set_lcd())
+              return 1;
+            break;
+          default:
+            break;
         }
-        strip.show();
-        delay(wait);
+
+        if (Test_char(')')) return 1;
+
+        return 0;
       }
-    }
 
 
-    //Theatre-style crawling lights with rainbow effect
-    void theaterChaseRainbow(uint8_t wait) {
-      for (int j = 0; j < 256; j++) {   // cycle all 256 colors in the wheel
-        for (int q = 0; q < 3; q++) {
-          for (uint16_t i = 0; i < strip.numPixels(); i = i + 3) {
-            strip.setPixelColor(i + q, Wheel( (i + j) % 255)); //turn every third pixel on
+      static int set_lcd(void) {              //LCD(S,X,Y,Adresse)
+
+        if (Test_char(',')) return 1;
+        LCD_SPALTEN = get_value();                //Spalten
+        if (Test_char(',')) return 1;
+        LCD_ZEILEN = get_value();                 //Zeilen
+        if (Test_char(',')) return 1;
+        LCD_ADRESSE = get_value();                //I2C-Adresse
+
+        HD44780LCD myLCD(LCD_ZEILEN, LCD_SPALTEN, LCD_ADRESSE, &myI2C);  // LCD object.rows ,cols ,PCF8574 I2C addr, Interface)
+        EEPROM.write ( 3, LCD_ZEILEN ) ;       // Themen nummer im Flash speichern
+        EEPROM.write ( 4, LCD_SPALTEN ) ;
+        EEPROM.write ( 5, LCD_ADRESSE ) ;
+        EEPROM.commit () ;
+
+        delay(DISPLAY_DELAY_INIT);
+
+        myLCD.PCF8574_LCDInit(LCDCursorTypeOn);
+        myLCD.PCF8574_LCDClearScreen();
+        myLCD.PCF8574_LCDBackLightSet(LCD_Backlight);
+        myLCD.PCF8574_LCDGOTO(LCDLineNumberOne, 0);
+        /*
+          myLCD.PCF8574_LCDSendString("Zille-Soft-GmbH");
+          myLCD.PCF8574_LCDGOTO(LCDLineNumberThree, 0);
+          myLCD.PCF8574_LCDSendString("Neue Zeile!");
+        */
+        return 0;
+      }
+
+      //#######################################################################################################################################
+      //############################################### LED-Befehl ############################################################################
+      //#######################################################################################################################################
+      void colorWipe(uint32_t c, uint8_t wait) {
+        for (uint16_t i = 0; i < strip.numPixels(); i++) {
+          strip.setPixelColor(i, c);
+          strip.show();
+          delay(wait);
+        }
+      }
+
+      // Input a value 0 to 255 to get a color value.
+      // The colours are a transition r - g - b - back to r.
+      uint32_t Wheel(byte WheelPos) {
+        WheelPos = 255 - WheelPos;
+        if (WheelPos < 85) {
+          return strip.Color(255 - WheelPos * 3, 0, WheelPos * 3);
+        }
+        if (WheelPos < 170) {
+          WheelPos -= 85;
+          return strip.Color(0, WheelPos * 3, 255 - WheelPos * 3);
+        }
+        WheelPos -= 170;
+        return strip.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
+      }
+
+      void rainbow(uint8_t wait) {
+        uint16_t i, j;
+
+        for (j = 0; j < 256; j++) {
+          for (i = 0; i < strip.numPixels(); i++) {
+            strip.setPixelColor(i, Wheel((i + j) & 255));
           }
           strip.show();
-
           delay(wait);
-
-          for (uint16_t i = 0; i < strip.numPixels(); i = i + 3) {
-            strip.setPixelColor(i + q, 0);      //turn every third pixel off
-          }
         }
       }
-    }
-
-    //Theatre-style crawling lights.
-    void theaterChase(uint32_t c, uint8_t wait) {
-      for (int j = 0; j < 10; j++) { //do 10 cycles of chasing
-        for (int q = 0; q < 3; q++) {
-          for (uint16_t i = 0; i < strip.numPixels(); i = i + 3) {
-            strip.setPixelColor(i + q, c);  //turn every third pixel on
-          }
-          strip.show();
-
-          delay(wait);
-
-          for (uint16_t i = 0; i < strip.numPixels(); i = i + 3) {
-            strip.setPixelColor(i + q, 0);      //turn every third pixel off
-          }
-        }
-      }
-    }
 
 
-    static int LED_Set(void) {
+      //Theatre-style crawling lights with rainbow effect
+      void theaterChaseRainbow(uint8_t wait) {
+        for (int j = 0; j < 256; j++) {   // cycle all 256 colors in the wheel
+          for (int q = 0; q < 3; q++) {
+            for (uint16_t i = 0; i < strip.numPixels(); i = i + 3) {
+              strip.setPixelColor(i + q, Wheel( (i + j) % 255)); //turn every third pixel on
+            }
+            strip.show();
 
-      char c;
-      int n, first, cnt, md;
-      uint8_t r, g, b;
-      uint32_t color;
-      c = spaces();
+            delay(wait);
 
-      if (Test_char('(')) return 1;
-
-      c = *txtpos;
-      expression_error = 0;
-      txtpos++;
-      switch (c) {
-
-        case 'S':                             //LED(S,Anzahl,Pin,Typ)
-          if (Test_char(',')) return 1;       //Komma überspringen
-          LED_COUNT = int(get_value());       //Anzahl LED's
-          strip.updateLength(LED_COUNT);
-          if (Test_char(',')) return 1;       //Komma überspringen
-          LED_PIN = int(get_value());         //Pin
-          strip.setPin(LED_PIN);
-          if (*txtpos == ',') {
-            txtpos++;
-            LED_TYP = int(get_value());
-            switch (LED_TYP) {
-              case 0:
-                strip.updateType(NEO_RGB);
-                break;
-              case 1:
-                strip.updateType(NEO_RBG);
-                break;
-              case 2:
-                strip.updateType(NEO_GRB);
-                break;
-              case 3:
-                strip.updateType(NEO_GBR);
-                break;
-              case 4:
-                strip.updateType(NEO_BRG);
-                break;
-              case 5:
-                strip.updateType(NEO_BGR);
-                break;
-              default:
-                strip.updateType(NEO_GRB);
-                break;
+            for (uint16_t i = 0; i < strip.numPixels(); i = i + 3) {
+              strip.setPixelColor(i + q, 0);      //turn every third pixel off
             }
           }
-          break;
-
-        case 'B':                             //Brightness LED(B,0..255)
-          if (Test_char(',')) return 1;       //Komma überspringen
-          LED_BRIGHTNESS = get_value();
-          strip.setBrightness(int(LED_BRIGHTNESS));
-          break;
-
-        case 'C':                             //Brightness LED(B,0..255)
-          strip.clear();                      //Set all pixels in RAM to 0 (off) -> LED(C)
-          break;
-
-        case 'M':
-          if (Test_char(',')) return 1;
-          md = get_value();                  //Modus
-          if (Test_char(',')) return 1;
-          cnt = get_value();                //2.Parameter
-          if (md == 1) rainbow(cnt);              //Rainbow
-          else if (md == 2) theaterChaseRainbow(cnt); //Theatre Rainbow
-
-          break;
-
-        case 'F':                             //FILL LED(F,r,g,b,start,Anzahl)
-        case 'P':                             //PAINT LED(C,r,g,b,nr)
-        case 'W':                             //WIPE  LED(W,r,g,b,delay)
-        case 'T':                             //THEATRE LED(T,r,g,b,delay)
-          if (Test_char(',')) return 1;
-          r = get_value();
-          if (Test_char(',')) return 1;
-          g = get_value();
-          if (Test_char(',')) return 1;
-          b = get_value();
-          if (Test_char(',')) return 1;
-          n = get_value();
-          color = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
-          if (c == 'P') {
-            strip.setPixelColor(int(n), int(color));
-          }
-          else if (c == 'W') {
-            colorWipe(strip.Color(r, g, b), n);
-          }
-          else if (c == 'T') {
-            theaterChase(strip.Color(r, g, b), n);
-          }
-          else if (c == 'F') {
-            if (Test_char(',')) return 1;
-            cnt = get_value();
-            strip.fill(strip.Color(int(r), int(g), int(b), LED_BRIGHTNESS), int(n), int(cnt));
-          }
-          break;
-
+        }
       }
 
-      if (Test_char(')')) return 1;
-      strip.show();            // Update Pixels
-      return 0;
+      //Theatre-style crawling lights.
+      void theaterChase(uint32_t c, uint8_t wait) {
+        for (int j = 0; j < 10; j++) { //do 10 cycles of chasing
+          for (int q = 0; q < 3; q++) {
+            for (uint16_t i = 0; i < strip.numPixels(); i = i + 3) {
+              strip.setPixelColor(i + q, c);  //turn every third pixel on
+            }
+            strip.show();
 
-    }
+            delay(wait);
 
-    //#######################################################################################################################################
-    //############################################### Zeileneditor ##########################################################################
-    //#######################################################################################################################################
-    void Editor(int lnr) {
+            for (uint16_t i = 0; i < strip.numPixels(); i = i + 3) {
+              strip.setPixelColor(i + q, 0);      //turn every third pixel off
+            }
+          }
+        }
+      }
 
-      linenum = lnr;
-      list_line = findline();
 
-      edit_getline();                            //Zeile nach tempstring kopieren
-      LineEditor.setText(tempstring);            //Zeile ausgeben
-      LineEditor.edit();                         //Editor starten
-      Edit_line = LineEditor.get();              //Zeile editieren
-      txtpos = program_end + sizeof(linenum);    //Zeiger setzen
-      while (*Edit_line)                         //editierte Zeile nach txtpos kopieren
-      {
-        txtpos[0] = *Edit_line;
-        Edit_line++;
+      static int LED_Set(void) {
+
+        char c;
+        int n, first, cnt, md;
+        uint8_t r, g, b;
+        uint32_t color;
+        c = spaces();
+
+        if (Test_char('(')) return 1;
+
+        c = *txtpos;
+        expression_error = 0;
         txtpos++;
-      }
-      txtpos[0] = NL;                             //Zeile abschliessen
-      line_terminator();
+        switch (c) {
 
-      move_line();                               //Zeile in Großbuchstaben umwandeln und ans Ende des Speicher verschieben
-      insert_line();                             //aktualisierte Zeile in Speicher einfügen
-
-    }
-
-
-    //-------------------------------------------- zu editierende Zeile in den Puffer schreiben -----------------------------------------------
-    void edit_getline()
-    {
-      int num, i;
-      LINENUM line_num;
-
-      line_num = *((LINENUM *)(list_line));
-      list_line += sizeof(LINENUM) + sizeof(char);
-      num = line_num;
-
-      i = 0;
-
-      printnum(num, 0);
-      outchar(' ');
-
-      while (*list_line != NL)
-      {
-        tempstring[i] = *list_line;
-        list_line++;
-        i++;
-
-      }
-      tempstring[i] = '\0';
-
-    }
-
-    //#######################################################################################################################################
-    //********************************************************** DIM-Befehl **************************************************************
-    //#######################################################################################################################################
-    int Array_Dim(void) {
-      while (1) {
-
-        if (*txtpos >= 'A' && *txtpos <= 'Z')
-        {
-          int tmp, x, y, z;
-          int stmp, i;
-          word grenze, ort, ad;
-          char c;
-          byte p_data[8], len;
-          bool str = false;
-
-          //len = 4;
-          x = y = z = 0;
-          tmp = (*txtpos - 'A');                                    //Variablennummer
-          txtpos++;
-          while (*txtpos >= 'A' && *txtpos <= 'Z') txtpos++;        //lange Variablennamen
-          if (*txtpos == '$') {
-            len = STR_LEN;
-            str = true;
-            txtpos++;
-          }
-          else {
-            len = sizeof (float);
-          }
-          if (Test_char('(')) return 1;
-          x = abs(get_value());
-          if (*txtpos == ',') {
-            txtpos++;
-            y = abs(get_value());
+          case 'S':                             //LED(S,Anzahl,Pin,Typ)
+            if (Test_char(',')) return 1;       //Komma überspringen
+            LED_COUNT = int(get_value());       //Anzahl LED's
+            strip.updateLength(LED_COUNT);
+            if (Test_char(',')) return 1;       //Komma überspringen
+            LED_PIN = int(get_value());         //Pin
+            strip.setPin(LED_PIN);
             if (*txtpos == ',') {
               txtpos++;
-              z = abs(get_value());
+              LED_TYP = int(get_value());
+              switch (LED_TYP) {
+                case 0:
+                  strip.updateType(NEO_RGB);
+                  break;
+                case 1:
+                  strip.updateType(NEO_RBG);
+                  break;
+                case 2:
+                  strip.updateType(NEO_GRB);
+                  break;
+                case 3:
+                  strip.updateType(NEO_GBR);
+                  break;
+                case 4:
+                  strip.updateType(NEO_BRG);
+                  break;
+                case 5:
+                  strip.updateType(NEO_BGR);
+                  break;
+                default:
+                  strip.updateType(NEO_GRB);
+                  break;
+              }
             }
-          }
-          if (Test_char(')')) return 1;                            //Überprüfung der generellen Feldgrenzen
+            break;
 
-          grenze = (z + 1) * (y + 1) * (x + 1) * len;
-          if (grenze > (32256) ) {                                 //Feldgrenze überschritten maximal 32256 Bytes
-            syntaxerror(outofmemory);
-            return 1;
-          }
+          case 'B':                             //Brightness LED(B,0..255)
+            if (Test_char(',')) return 1;       //Komma überspringen
+            LED_BRIGHTNESS = get_value();
+            strip.setBrightness(int(LED_BRIGHTNESS));
+            break;
 
-          if (str) {                                              //Überprüfung unter Berücksichtigung des schon zugewiesenen Array-Speichers
-            ad = Var_Neu_Platz + grenze;
-            if (ad > (32256))                                     //überprüfung, ob noch Platz vorhanden ist maximal 32256 Bytes
-            {
-              syntaxerror(outofmemory);
-              return 1;
-            }
-            else
-            {
-              ort = STR_TBL + (tmp * 8);
-            }
-          }
+          case 'C':                             //Brightness LED(B,0..255)
+            strip.clear();                      //Set all pixels in RAM to 0 (off) -> LED(C)
+            break;
 
-          else
-          {
-            ad = Var_Neu_Platz + grenze;                          //Überprüfung unter Berücksichtigung des schon zugewiesenen Array-Speichers
-            if (ad > (32256)) {                                   //überprüfung, ob noch Platz vorhanden ist maximal 32256 Bytes
-              syntaxerror(outofmemory);
-              return 1;
-            }
-            else
-            {
-              ort = VAR_TBL + (tmp * 8);
-            }
-          }
+          case 'M':
+            if (Test_char(',')) return 1;
+            md = get_value();                  //Modus
+            if (Test_char(',')) return 1;
+            cnt = get_value();                //2.Parameter
+            if (md == 1) rainbow(cnt);              //Rainbow
+            else if (md == 2) theaterChaseRainbow(cnt); //Theatre Rainbow
 
-          p_data[0] = highByte(Var_Neu_Platz);                     //Adresse im FRAM
-          p_data[1] = lowByte(Var_Neu_Platz);
-          p_data[2] = highByte(x);
-          p_data[3] = lowByte(x);
-          p_data[4] = y;
-          p_data[5] = z;
-          SPI_RAM_write(ort, p_data, 6);
-          Var_Neu_Platz += grenze;//* len);
+            break;
+
+          case 'F':                             //FILL LED(F,r,g,b,start,Anzahl)
+          case 'P':                             //PAINT LED(C,r,g,b,nr)
+          case 'W':                             //WIPE  LED(W,r,g,b,delay)
+          case 'T':                             //THEATRE LED(T,r,g,b,delay)
+            if (Test_char(',')) return 1;
+            r = get_value();
+            if (Test_char(',')) return 1;
+            g = get_value();
+            if (Test_char(',')) return 1;
+            b = get_value();
+            if (Test_char(',')) return 1;
+            n = get_value();
+            color = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+            if (c == 'P') {
+              strip.setPixelColor(int(n), int(color));
+            }
+            else if (c == 'W') {
+              colorWipe(strip.Color(r, g, b), n);
+            }
+            else if (c == 'T') {
+              theaterChase(strip.Color(r, g, b), n);
+            }
+            else if (c == 'F') {
+              if (Test_char(',')) return 1;
+              cnt = get_value();
+              strip.fill(strip.Color(int(r), int(g), int(b), LED_BRIGHTNESS), int(n), int(cnt));
+            }
+            break;
+
         }
 
-        if (*txtpos != ',') return 0;                              //kein weiteres dim
-        txtpos++;                                                  //nächstes Dim
-      }//while(1)
+        if (Test_char(')')) return 1;
+        strip.show();            // Update Pixels
+        return 0;
 
-      syntaxerror(syntaxmsg);
-      return 1;
-    }
+      }
 
-    //#######################################################################################################################################
-    //----------------------------------------------------------- OPTION-Befehl -------------------------------------------------------------
-    //#######################################################################################################################################
-    int Option(void) {
-      byte p[6];
-      scantable(options);                                                  //Optionstabelle lesen
-      char fu = table_index;
-      int i, adr;
+      //#######################################################################################################################################
+      //############################################### Zeileneditor ##########################################################################
+      //#######################################################################################################################################
+      void Editor(int lnr) {
 
-      if (Test_char('=')) return 1;                                        //nach der Option kommt ein '='
+        linenum = lnr;
+        list_line = findline();
 
-      switch (fu) {
+        edit_getline();                            //Zeile nach tempstring kopieren
+        LineEditor.setText(tempstring);            //Zeile ausgeben
+        LineEditor.edit();                         //Editor starten
+        Edit_line = LineEditor.get();              //Zeile editieren
+        txtpos = program_end + sizeof(linenum);    //Zeiger setzen
+        while (*Edit_line)                         //editierte Zeile nach txtpos kopieren
+        {
+          txtpos[0] = *Edit_line;
+          Edit_line++;
+          txtpos++;
+        }
+        txtpos[0] = NL;                             //Zeile abschliessen
+        line_terminator();
 
-        case OPT_FONT:
-          p[0] = get_value();
-          EEPROM.write(2, p[0]);          //Font-Nummer im Flash speichern
-          EEPROM.write(17, 0);            //THEME-Marker löschen
-          EEPROM.commit () ;
-          set_font(p[0]);                 //setze Font
-          break;
+        move_line();                               //Zeile in Großbuchstaben umwandeln und ans Ende des Speicher verschieben
+        insert_line();                             //aktualisierte Zeile in Speicher einfügen
 
-        case OPT_COLOR:
-          p[0] = get_value();
-          if (Test_char(',')) return 1;
-          p[1] = get_value();
-          EEPROM.write(0, p[0]);          //Vordergrundfarbe im Flash speichern
-          EEPROM.write(1, p[1]);          //Hintergrundfarbe im Flash speichern
-          EEPROM.write(17, 0);            //THEME-Marker löschen
-          EEPROM.commit () ;
-          Vordergrund = p[0];
-          Hintergrund = p[1];
-          fbcolor(Vordergrund, Hintergrund); //Farben setzen
-          if (EEPROM.read(100) != erststart_marker) {                              //marker-setzen, das werte im EEprom stehen
-            EEPROM.write ( 100, erststart_marker) ;
-            EEPROM.commit () ;
-          }
-          break;
-
-        case OPT_SDCARD:
-          p[0] = get_value();             //SCK,MISO,MOSI,CS
-          if (Test_char(',')) return 1;
-          p[1] = get_value();
-          if (Test_char(',')) return 1;
-          p[2] = get_value();
-          if (Test_char(',')) return 1;
-          p[3] = get_value();
-          EEPROM.write(6, p[0]);          //SCK-PIN im Flash speichern
-          EEPROM.write(7, p[1]);          //MISO-PIN im Flash speichern
-          EEPROM.write(8, p[2]);          //MOSI-PIN im Flash speichern
-          EEPROM.write(9, p[3]);          //CS-PIN im Flash speichern ->CS ist fest auf GND
-          EEPROM.write(10, SD_SET);       //Marker, das Pinkonfiguration im EEprom abgelegt wurde
-          EEPROM.commit () ;
-          break;
-
-        case OPT_EEP:                       //Adresse des verwendeten EEPROM's
-          p[0] = get_value();
-          //if (Test_char(',')) return 1;
-          //p[1] = get_value();
-          EEPROM.write(11, p[0]);          //EEPROM-Adresse im Flash speichern
-          //EEPROM.write(12, p[1]);          //SCL im Flash speichern
-          EEPROM.write(13, IIC_SET);       //Marker, das Pinkonfiguration im EEprom abgelegt wurde
-          EEPROM.commit () ;
-          EEprom_ADDR = p[0];             //EEPROM Adresse sofort setzen
-          break;
-
-        case OPT_KEYBOARD:
-          p[0] = get_value();
-          EEPROM.write(14, p[0]);          //Nummer des Keyboard-Layouts 1=US, 2=UK, 3=GE, 4=IT, 5=ES, 6=FR, 7=BE, 8=NO, 9=JP
-          EEPROM.write(15, KEY_SET);       //Key-Marker für Tastatur-Layout
-          EEPROM.commit();
-          Set_Layout();                    //layout sofort setzen
-          break;
-
-        case OPT_THEME:
-          p[0] = get_value();
-          EEPROM.write(16, p[0]);          //Nummer des Themes
-          EEPROM.write(17, THEME_SET);     //THEME-Marker
-          EEPROM.commit();
-          set_theme(p[0]);
-          if (EEPROM.read(100) != erststart_marker) {                              //marker-setzen, das werte im EEprom stehen
-            EEPROM.write ( 100, erststart_marker) ;
-            EEPROM.commit () ;
-          }
-          break;
-
-        case OPT_PATH:                    //Arbeits-Pfad im EEPROM-Platz 20-50 (max. 30 Zeichen)
-          cmd_chdir();
-          adr = 20;
-          i = 0;
-          EEPROM.write(19, PATH_SET);
-          EEPROM.commit();
-          while (sd_pfad[i]) {
-            EEPROM.write (adr++, sd_pfad[i++]);
-            EEPROM.commit();
-          }
-          EEPROM.write(adr, 0);
-          EEPROM.commit();
-
-          break;
-
-        default:
-          break;
       }
 
 
-      if (fu == OPT_UNKNOWN)                                              //am ende angekommen, Option nicht gefunden
+      //-------------------------------------------- zu editierende Zeile in den Puffer schreiben -----------------------------------------------
+      void edit_getline()
       {
+        int num, i;
+        LINENUM line_num;
+
+        line_num = *((LINENUM *)(list_line));
+        list_line += sizeof(LINENUM) + sizeof(char);
+        num = line_num;
+
+        i = 0;
+
+        printnum(num, 0);
+        outchar(' ');
+
+        while (*list_line != NL)
+        {
+          tempstring[i] = *list_line;
+          list_line++;
+          i++;
+
+        }
+        tempstring[i] = '\0';
+
+      }
+
+      //#######################################################################################################################################
+      //********************************************************** DIM-Befehl **************************************************************
+      //#######################################################################################################################################
+      int Array_Dim(void) {
+        while (1) {
+
+          if (*txtpos >= 'A' && *txtpos <= 'Z')
+          {
+            int tmp, x, y, z;
+            int stmp, i;
+            word grenze, ort, ad;
+            char c;
+            byte p_data[8], len;
+            bool str = false;
+
+            //len = 4;
+            x = y = z = 0;
+            tmp = (*txtpos - 'A');                                    //Variablennummer
+            txtpos++;
+            while (*txtpos >= 'A' && *txtpos <= 'Z') txtpos++;        //lange Variablennamen
+            if (*txtpos == '$') {
+              len = STR_LEN;
+              str = true;
+              txtpos++;
+            }
+            else {
+              len = sizeof (float);
+            }
+            if (Test_char('(')) return 1;
+            x = abs(get_value());
+            if (*txtpos == ',') {
+              txtpos++;
+              y = abs(get_value());
+              if (*txtpos == ',') {
+                txtpos++;
+                z = abs(get_value());
+              }
+            }
+            if (Test_char(')')) return 1;                            //Überprüfung der generellen Feldgrenzen
+
+            grenze = (z + 1) * (y + 1) * (x + 1) * len;
+            if (grenze > (32256) ) {                                 //Feldgrenze überschritten maximal 32256 Bytes
+              syntaxerror(outofmemory);
+              return 1;
+            }
+
+            if (str) {                                              //Überprüfung unter Berücksichtigung des schon zugewiesenen Array-Speichers
+              ad = Var_Neu_Platz + grenze;
+              if (ad > (32256))                                     //überprüfung, ob noch Platz vorhanden ist maximal 32256 Bytes
+              {
+                syntaxerror(outofmemory);
+                return 1;
+              }
+              else
+              {
+                ort = STR_TBL + (tmp * 8);
+              }
+            }
+
+            else
+            {
+              ad = Var_Neu_Platz + grenze;                          //Überprüfung unter Berücksichtigung des schon zugewiesenen Array-Speichers
+              if (ad > (32256)) {                                   //überprüfung, ob noch Platz vorhanden ist maximal 32256 Bytes
+                syntaxerror(outofmemory);
+                return 1;
+              }
+              else
+              {
+                ort = VAR_TBL + (tmp * 8);
+              }
+            }
+
+            p_data[0] = highByte(Var_Neu_Platz);                     //Adresse im FRAM
+            p_data[1] = lowByte(Var_Neu_Platz);
+            p_data[2] = highByte(x);
+            p_data[3] = lowByte(x);
+            p_data[4] = y;
+            p_data[5] = z;
+            SPI_RAM_write(ort, p_data, 6);
+            Var_Neu_Platz += grenze;//* len);
+          }
+
+          if (*txtpos != ',') return 0;                              //kein weiteres dim
+          txtpos++;                                                  //nächstes Dim
+        }//while(1)
+
         syntaxerror(syntaxmsg);
         return 1;
       }
-      return 0;
-    }
 
-    void Set_Layout(void) {
+      //#######################################################################################################################################
+      //----------------------------------------------------------- OPTION-Befehl -------------------------------------------------------------
+      //#######################################################################################################################################
+      int Option(void) {
+        byte p[6];
+        scantable(options);                                                  //Optionstabelle lesen
+        char fu = table_index;
+        int i, adr;
 
-      switch (Keyboard_lang) {
-        case 1:
-          PS2Controller.keyboard() -> setLayout(&fabgl::USLayout);                    //amerikanische Tastatur
-          break;
-        case 2:
-          PS2Controller.keyboard() -> setLayout(&fabgl::UKLayout);                    //britische Tastatur
-          break;
-        case 3:
-          PS2Controller.keyboard() -> setLayout(&fabgl::GermanLayout);                //deutsche Tastatur
-          break;
-        case 4:
-          PS2Controller.keyboard() -> setLayout(&fabgl::ItalianLayout);               //italienische Tastatur
-          break;
-        case 5:
-          PS2Controller.keyboard() -> setLayout(&fabgl::SpanishLayout);               //spanische Tastatur
-          break;
-        case 6:
-          PS2Controller.keyboard() -> setLayout(&fabgl::FrenchLayout);                //französische Tastatur
-          break;
-        case 7:
-          PS2Controller.keyboard() -> setLayout(&fabgl::BelgianLayout);               //belgische Tastatur
-          break;
-        case 8:
-          PS2Controller.keyboard() -> setLayout(&fabgl::NorwegianLayout);             //norwegische Tastatur
-          break;
-        case 9:
-          PS2Controller.keyboard() -> setLayout(&fabgl::JapaneseLayout);              //japanische Tastatur
-          break;
-        default:
-          PS2Controller.keyboard() -> setLayout(&fabgl::GermanLayout);                //deutsche Tastatur
-          break;
+        if (Test_char('=')) return 1;                                        //nach der Option kommt ein '='
 
-      }
+        switch (fu) {
 
-    }
+          case OPT_FONT:
+            p[0] = get_value();
+            EEPROM.write(2, p[0]);          //Font-Nummer im Flash speichern
+            EEPROM.write(17, 0);            //THEME-Marker löschen
+            EEPROM.commit () ;
+            set_font(p[0]);                 //setze Font
+            break;
 
-    //#######################################################################################################################################
-    //**************************************************************** Seriell-Funktionen ***************************************************
-    //#######################################################################################################################################
-
-    int cmd_serial(void) {
-      float value;
-      char c;
-      if (Test_char('_')) return 1;                       //Unterstrich für folgenden Befehlsbuchstaben
-      c = spaces();                                       //Befehlsbuchstabe lesen
-      txtpos++;
-
-      switch (c) {
-
-        case 'S':
-          if (Test_char('(')) return 1;
-          prx = get_value();                              //RX-Pin
-          if (prx > 0) {
+          case OPT_COLOR:
+            p[0] = get_value();
             if (Test_char(',')) return 1;
-            ptx = get_value();                            //TX-Pin
-            if (Test_char(',')) return 1;
-            pbd = get_value();                            //Baud-Rate
-            if (Test_char(')')) return 1;
-            if (Portcheck(prx, ptx, pbd)) return 0;       //Überprüfung der Portnummern und der Baudrate
-            Serial1.begin(pbd, SERIAL_8N1, prx, ptx);     //Com-Port öffnen
-            Serial1.setRxBufferSize(SERIAL_SIZE_RX);      //Puffer auf 1024 bytes
-            ser_marker = true;
-            delay(200);
-            return 0;
-          }
-          else
-          {
-            if (Test_char(')')) return 1;                 //COM S(0) schliesst den Com-Port
-            Serial1.end();
-            ser_marker = false;
-            return 0;
-          }
-          break;
-
-        case 'P':
-        case 'W':
-          if (ser_marker) {
-            if (PW_OUT(c)) {
-              syntaxerror(syntaxmsg);
-              return 1;
+            p[1] = get_value();
+            EEPROM.write(0, p[0]);          //Vordergrundfarbe im Flash speichern
+            EEPROM.write(1, p[1]);          //Hintergrundfarbe im Flash speichern
+            EEPROM.write(17, 0);            //THEME-Marker löschen
+            EEPROM.commit () ;
+            Vordergrund = p[0];
+            Hintergrund = p[1];
+            fbcolor(Vordergrund, Hintergrund); //Farben setzen
+            if (EEPROM.read(100) != erststart_marker) {                              //marker-setzen, das werte im EEprom stehen
+              EEPROM.write ( 100, erststart_marker) ;
+              EEPROM.commit () ;
             }
-            return 0;
-          }
-          while (*txtpos != NL && *txtpos != ':') txtpos++;
-          syntaxerror(commsg);
-          break;
+            break;
+          /*
+            case OPT_SDCARD:
+            p[0] = get_value();             //SCK,MISO,MOSI,CS
+            if (Test_char(',')) return 1;
+            p[1] = get_value();
+            if (Test_char(',')) return 1;
+            p[2] = get_value();
+            if (Test_char(',')) return 1;
+            p[3] = get_value();
+            EEPROM.write(6, p[0]);          //SCK-PIN im Flash speichern
+            EEPROM.write(7, p[1]);          //MISO-PIN im Flash speichern
+            EEPROM.write(8, p[2]);          //MOSI-PIN im Flash speichern
+            EEPROM.write(9, p[3]);          //CS-PIN im Flash speichern ->CS ist fest auf GND
+            EEPROM.write(10, SD_SET);       //Marker, das Pinkonfiguration im EEprom abgelegt wurde
+            EEPROM.commit () ;
+            break;
+          */
 
-        case 'T':                     //Transfer Programm zum PC
-          if (ser_marker) {
-            list_send = true;
-            list_out();
-            list_send = false;
-            return 0;
-          }
-          syntaxerror(commsg);
-          break;
+          case OPT_EEP:                       //Adresse des verwendeten EEPROM's
+            p[0] = get_value();
+            //if (Test_char(',')) return 1;
+            //p[1] = get_value();
+            EEPROM.write(11, p[0]);          //EEPROM-Adresse im Flash speichern
+            //EEPROM.write(12, p[1]);          //SCL im Flash speichern
+            EEPROM.write(13, IIC_SET);       //Marker, das Pinkonfiguration im EEprom abgelegt wurde
+            EEPROM.commit () ;
+            EEprom_ADDR = p[0];             //EEPROM Adresse sofort setzen
+            break;
+          /*
+                  case OPT_KEYBOARD:
+                    p[0] = get_value();
+                    EEPROM.write(14, p[0]);          //Nummer des Keyboard-Layouts 1=US, 2=UK, 3=GE, 4=IT, 5=ES, 6=FR, 7=BE, 8=NO, 9=JP
+                    EEPROM.write(15, KEY_SET);       //Key-Marker für Tastatur-Layout
+                    EEPROM.commit();
+                    Set_Layout();                    //layout sofort setzen
+                    break;
+          */
 
-        default:
-          break;
-      }
-      return 0;
-    }
-
-    int Portcheck(uint8_t r, uint8_t t, uint32_t b) {
-
-      if (b >= 1200 && b <= 115200) {
-        if (r == 2 || r == 12 || r == 26 || r == 27 || r == 34 || r == 35 || r == 36) {
-          if (t == 2 || t == 12 || t == 26 || t == 27) return 0;          // alles ok
-        }
-      }
-      syntaxerror(comsetmsg);
-      return 1;                                                             //Fehler
-    }
-
-    int PW_OUT(char c) {
-      float a;
-      char d;
-      int k = 0;
-
-      if (Test_char('(')) return 1;
-
-      while (!k) {
-        d = spaces();
-        switch (d) {
-
-          case ',':
-            Serial1.print("        ");
-            txtpos++;
-            if (*txtpos == NL) k = 2;
+          case OPT_THEME:
+            p[0] = get_value();
+            EEPROM.write(16, p[0]);          //Nummer des Themes
+            EEPROM.write(17, THEME_SET);     //THEME-Marker
+            EEPROM.commit();
+            set_theme(p[0]);
+            if (EEPROM.read(100) != erststart_marker) {                              //marker-setzen, das werte im EEprom stehen
+              EEPROM.write ( 100, erststart_marker) ;
+              EEPROM.commit () ;
+            }
             break;
 
-          case ';':
-            txtpos++;
-            if (*txtpos == NL) k = 2;
-            break;
+          case OPT_PATH:                    //Arbeits-Pfad im EEPROM-Platz 20-50 (max. 30 Zeichen)
+            cmd_chdir();
+            adr = 20;
+            i = 0;
+            EEPROM.write(19, PATH_SET);
+            EEPROM.commit();
+            while (sd_pfad[i]) {
+              EEPROM.write (adr++, sd_pfad[i++]);
+              EEPROM.commit();
+            }
+            EEPROM.write(adr, 0);
+            EEPROM.commit();
 
-          case '"':
-            if (serial_quoted_string()) k = 2;
-            break;
-
-          case '\'':
-            k = 2;
-            break;
-
-          case ':':
-            txtpos++;
-            k = 2;
-            break;
-
-          case ')':
-            txtpos++;
-            k = 1;
             break;
 
           default:
-            a = get_value();
-            if (expression_error) k = 2;
-
-            if (string_marker == true) {
-              Serial1.print(tempstring);                            //Strings
-              string_marker = false;
-              chr = false;
-            }
-            else if (chr == true) {                                 //Chars
-              Serial1.write(int(a));
-              chr = false;
-              string_marker = false;
-            }
-            else {                                                  //Zahlenwerte
-              serout_marker = true;
-              printnum(a, Zahlenformat);                            //Zahl
-              serout_marker = false;
-            }
-
-        }//switch(d)
-
-      }//while(!k)
+            break;
+        }
 
 
-      if (k == 2) return 1;
-      if (c == 'P')  Serial1.println();                              //P ->Zeilenumbruch
-      return 0;
-    }
-
-
-    static char serial_quoted_string(void)
-    {
-      int i = 0;
-      char quote = *txtpos;
-      if (quote != '"' && quote != '\'')
-        return 1;
-      txtpos++;
-
-
-      while (txtpos[i] != quote)                                    // Checken, ob abschließendes Anführungszeichen vorhanden ist
-      {
-        if (txtpos[i] == NL) {
+        if (fu == OPT_UNKNOWN)                                              //am ende angekommen, Option nicht gefunden
+        {
+          syntaxerror(syntaxmsg);
           return 1;
         }
-        i++;
+        return 0;
       }
 
-      // Zeichenusgabe
-      while (*txtpos != quote)
-      {
-        Serial1.print(*txtpos);
+      void Set_Layout(void) {
+
+        switch (Keyboard_lang) {
+          case 1:
+            PS2Controller.keyboard() -> setLayout(&fabgl::USLayout);                    //amerikanische Tastatur
+            break;
+          case 2:
+            PS2Controller.keyboard() -> setLayout(&fabgl::UKLayout);                    //britische Tastatur
+            break;
+          case 3:
+            PS2Controller.keyboard() -> setLayout(&fabgl::GermanLayout);                //deutsche Tastatur
+            break;
+          case 4:
+            PS2Controller.keyboard() -> setLayout(&fabgl::ItalianLayout);               //italienische Tastatur
+            break;
+          case 5:
+            PS2Controller.keyboard() -> setLayout(&fabgl::SpanishLayout);               //spanische Tastatur
+            break;
+          case 6:
+            PS2Controller.keyboard() -> setLayout(&fabgl::FrenchLayout);                //französische Tastatur
+            break;
+          case 7:
+            PS2Controller.keyboard() -> setLayout(&fabgl::BelgianLayout);               //belgische Tastatur
+            break;
+          case 8:
+            PS2Controller.keyboard() -> setLayout(&fabgl::NorwegianLayout);             //norwegische Tastatur
+            break;
+          case 9:
+            PS2Controller.keyboard() -> setLayout(&fabgl::JapaneseLayout);              //japanische Tastatur
+            break;
+          default:
+            PS2Controller.keyboard() -> setLayout(&fabgl::GermanLayout);                //deutsche Tastatur
+            break;
+
+        }
+
+      }
+
+      //#######################################################################################################################################
+      //**************************************************************** Seriell-Funktionen ***************************************************
+      //#######################################################################################################################################
+
+      int cmd_serial(void) {
+        float value;
+        char c;
+        if (Test_char('_')) return 1;                       //Unterstrich für folgenden Befehlsbuchstaben
+        c = spaces();                                       //Befehlsbuchstabe lesen
         txtpos++;
-      }
-      txtpos++;                                                   // überspringe Anführungszeichen
 
-      return 0;
-    }
+        switch (c) {
 
-    //#######################################################################################################################################
-    //********************************************************** PIC-Befehl ****************************************************
-    //#######################################################################################################################################
-    int show_Pic(void) {
-      long ad, n_bytes;
-      int x, y, iv, pn;
-      int dx, dy, ddx, ddy, px, py, vv, vh;
-      float scal;
-      byte w, a, buf[4];
-      char c;
-      char *filename;
-
-      dx = 0;
-      dy = 0;
-      ddx = 0;
-      ddy = 0;
-      iv = 0;
-      vv = GFX.getHeight();
-      vh = GFX.getWidth();
-      px = vv;
-      py = vh;
-      pn = 490000 / (vv * vh);                            //Anzahl der im Speicher ablegbaren Bilder berechnen
-      if (Test_char('_')) return 1;                       //Unterstrich für folgenden Befehlsbuchstaben
-      c = spaces();                                       //Befehlsbuchstabe lesen
-      txtpos++;
-      switch (c) {
-
-        //****************************************************** PIC_D(PIC_Nr<,swap Backcolor><,X,Y>) ******************************************
-        case 'D':                                         //Grafik im FRAM auf dem Bildschirm ausgeben
-          if (Test_char('(')) return 1;
-          ad = get_value();
-          if (ad > 4) ad = 4;
-          ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz (320x240) bzw.0..2 (400x300)
-          if (*txtpos == ',') {                           //Modus
-            txtpos++;
-            iv = get_value();
-          }
-          if (*txtpos == ',') {                           //Komma?, dann x,y-Position eingeben
-            txtpos++;
-            dx = get_value();                             //x
-            if (Test_char(',')) return 1;                 //Komma überspringen
-            dy = get_value();                             //y
-          }
-          if (Test_char(')')) return 1;
-          spi_fram.read(FRAM_OFFSET + ad, buf, 4);         //Dimension lesen
-          px = buf[0] + (buf[1] << 8);
-          py = buf[2] + (buf[3] << 8);
-          ad += 4;
-          for (y = dy + py - 1 ; y > dy - 1; y--) {
-            for (x = dx; x < (dx + px); x++) {
-              w = spi_fram.read8(FRAM_OFFSET + ad++);
-              fcolor(w);
-              if (x < vh && y < vv) GFX.setPixel(x, y);
+          case 'S':
+            if (Test_char('(')) return 1;
+            prx = get_value();                              //RX-Pin
+            if (prx > 0) {
+              if (Test_char(',')) return 1;
+              ptx = get_value();                            //TX-Pin
+              if (Test_char(',')) return 1;
+              pbd = get_value();                            //Baud-Rate
+              if (Test_char(')')) return 1;
+              if (Portcheck(prx, ptx, pbd)) return 0;       //Überprüfung der Portnummern und der Baudrate
+              Serial1.begin(pbd, SERIAL_8N1, prx, ptx);     //Com-Port öffnen
+              Serial1.setRxBufferSize(SERIAL_SIZE_RX);      //Puffer auf 1024 bytes
+              ser_marker = true;
+              delay(200);
+              return 0;
             }
+            else
+            {
+              if (Test_char(')')) return 1;                 //COM S(0) schliesst den Com-Port
+              Serial1.end();
+              ser_marker = false;
+              return 0;
+            }
+            break;
+
+          case 'P':
+          case 'W':
+            if (ser_marker) {
+              if (PW_OUT(c)) {
+                syntaxerror(syntaxmsg);
+                return 1;
+              }
+              return 0;
+            }
+            while (*txtpos != NL && *txtpos != ':') txtpos++;
+            syntaxerror(commsg);
+            break;
+
+          case 'T':                     //Transfer Programm zum PC
+            if (ser_marker) {
+              list_send = true;
+              list_out();
+              list_send = false;
+              return 0;
+            }
+            syntaxerror(commsg);
+            break;
+
+          default:
+            break;
+        }
+        return 0;
+      }
+
+      int Portcheck(uint8_t r, uint8_t t, uint32_t b) {
+
+        if (b >= 1200 && b <= 115200) {
+          if (r == 2 || r == 12 || r == 26 || r == 27 || r == 34 || r == 35 || r == 36) {
+            if (t == 2 || t == 12 || t == 26 || t == 27) return 0;          // alles ok
           }
-          if (iv > 0) GFX.swapRectangle(dx, dy , dx + px - 1, dy + py - 1); //swap Backcolor
-          break;
+        }
+        syntaxerror(comsetmsg);
+        return 1;                                                             //Fehler
+      }
 
-        //****************************************************** PIC_E(X,Y,XX,YY,Filename.bmp) ******************************************
-        case 'E':                                       //Export -> BMP
-          if (Test_char('(')) return 1;
-          dx = get_value();                             //x
-          if (Test_char(',')) return 1;                 //Komma überspringen
-          dy = get_value();                             //y
-          if (Test_char(',')) return 1;
-          px = get_value();                             //xx
-          if (Test_char(',')) return 1;
-          py = get_value();                             //yy
-          if (Test_char(',')) return 1;                 //Komma überspringen
-          get_value();                                  //Dateiname in tempstring
-          if (Test_char(')')) return 1;
-          export_pic(dx, dy, px, py, tempstring);
-          break;
+      int PW_OUT(char c) {
+        float a;
+        char d;
+        int k = 0;
 
-        //****************************************************** PIC_I(X,Y,Filename.bmp) ******************************************
-        case 'I':                                         //Import <- BMP
-          if (Test_char('(')) return 1;
-          dx = get_value();                               //x
-          if (Test_char(',')) return 1;                   //Komma überspringen
-          dy = get_value();                               //y
-          if (Test_char(',')) return 1;                   //Komma überspringen
-          get_value();                                    //Dateiname in tempstring
-          scal = 1;
-          if (*txtpos == ',') {
-            txtpos++;
-            scal = get_value();
-            if (scal > 1) scal = 1;                       //Skalierung auf 1 begrenzen
+        if (Test_char('(')) return 1;
+
+        while (!k) {
+          d = spaces();
+          switch (d) {
+
+            case ',':
+              Serial1.print("        ");
+              txtpos++;
+              if (*txtpos == NL) k = 2;
+              break;
+
+            case ';':
+              txtpos++;
+              if (*txtpos == NL) k = 2;
+              break;
+
+            case '"':
+              if (serial_quoted_string()) k = 2;
+              break;
+
+            case '\'':
+              k = 2;
+              break;
+
+            case ':':
+              txtpos++;
+              k = 2;
+              break;
+
+            case ')':
+              txtpos++;
+              k = 1;
+              break;
+
+            default:
+              a = get_value();
+              if (expression_error) k = 2;
+
+              if (string_marker == true) {
+                Serial1.print(tempstring);                            //Strings
+                string_marker = false;
+                chr = false;
+              }
+              else if (chr == true) {                                 //Chars
+                Serial1.write(int(a));
+                chr = false;
+                string_marker = false;
+              }
+              else {                                                  //Zahlenwerte
+                serout_marker = true;
+                printnum(a, Zahlenformat);                            //Zahl
+                serout_marker = false;
+              }
+
+          }//switch(d)
+
+        }//while(!k)
+
+
+        if (k == 2) return 1;
+        if (c == 'P')  Serial1.println();                              //P ->Zeilenumbruch
+        return 0;
+      }
+
+
+      static char serial_quoted_string(void)
+      {
+        int i = 0;
+        char quote = *txtpos;
+        if (quote != '"' && quote != '\'')
+          return 1;
+        txtpos++;
+
+
+        while (txtpos[i] != quote)                                    // Checken, ob abschließendes Anführungszeichen vorhanden ist
+        {
+          if (txtpos[i] == NL) {
+            return 1;
           }
-          if (Test_char(')')) return 1;
-          import_pic(dx, dy, tempstring, scal);
-          break;
+          i++;
+        }
 
-        //****************************************************** PIC_L(PIC_Nr,Filename) ******************************************
-        case 'L':                                         //Load PIC_RAW-Data
-          if (Test_char('(')) return 1;
-          ad = get_value();                               //Adresse im Speicher
-          if (ad > 4) ad = 4;
-          ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz
-          if (Test_char(',')) return 1;                   //Komma überspringen
-          get_value();                                    //Dateiname in tempstring
-          if (Test_char(')')) return 1;
-          load_pic(FRAM_OFFSET + ad, tempstring);
-          break;
+        // Zeichenusgabe
+        while (*txtpos != quote)
+        {
+          Serial1.print(*txtpos);
+          txtpos++;
+        }
+        txtpos++;                                                   // überspringe Anführungszeichen
 
-        //****************************************************** PIC_S(PIC_Nr,Filename) ******************************************
-        case 'S':                                         //Save PIC_RAW-Data
-          if (Test_char('(')) return 1;
-          ad = get_value();                               //Adresse im Speicher
-          if (ad > 4) ad = 4;
-          ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz
-          if (Test_char(',')) return 1;                   //Komma überspringen
-          get_value();                                    //Dateiname in tempstring
-          if (Test_char(')')) return 1;
-          spi_fram.read(FRAM_OFFSET + ad, buf, 4);         //Dimension lesen
-          px = buf[0] + (buf[1] << 8);
-          py = buf[2] + (buf[3] << 8);
-          n_bytes = (px * py) + 4;                        //x*y=Biddaten + 4 Bytes der Dimension
-          save_pic(FRAM_OFFSET + ad, n_bytes, tempstring);
-          break;
+        return 0;
+      }
 
-        //****************************************************** PIC_P(PIC_Nr,X,Y,XX,YY) ******************************************
-        case 'P':                                         //Grafikbildschirm in FRAM speichern
-          if (Test_char('(')) return 1;
-          ad = get_value();
-          if (ad > 4) ad = 4;
-          ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz
-          if (*txtpos == ',') {                           //Komma?, dann x,y-Position eingeben
-            txtpos++;
+      //#######################################################################################################################################
+      //********************************************************** PIC-Befehl ****************************************************
+      //#######################################################################################################################################
+      int show_Pic(void) {
+        long ad, n_bytes;
+        int x, y, iv, pn;
+        int dx, dy, ddx, ddy, px, py, vv, vh;
+        float scal;
+        byte w, a, buf[4];
+        char c;
+        char *filename;
+
+        dx = 0;
+        dy = 0;
+        ddx = 0;
+        ddy = 0;
+        iv = 0;
+        vv = GFX.getHeight();
+        vh = GFX.getWidth();
+        px = vv;
+        py = vh;
+        pn = 490000 / (vv * vh);                            //Anzahl der im Speicher ablegbaren Bilder berechnen
+        if (Test_char('_')) return 1;                       //Unterstrich für folgenden Befehlsbuchstaben
+        c = spaces();                                       //Befehlsbuchstabe lesen
+        txtpos++;
+        switch (c) {
+
+          //****************************************************** PIC_D(PIC_Nr<,swap Backcolor><,X,Y>) ******************************************
+          case 'D':                                         //Grafik im FRAM auf dem Bildschirm ausgeben
+            if (Test_char('(')) return 1;
+            ad = get_value();
+            if (ad > 4) ad = 4;
+            ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz (320x240) bzw.0..2 (400x300)
+            if (*txtpos == ',') {                           //Modus
+              txtpos++;
+              iv = get_value();
+            }
+            if (*txtpos == ',') {                           //Komma?, dann x,y-Position eingeben
+              txtpos++;
+              dx = get_value();                             //x
+              if (Test_char(',')) return 1;                 //Komma überspringen
+              dy = get_value();                             //y
+            }
+            if (Test_char(')')) return 1;
+            spi_fram.read(FRAM_OFFSET + ad, buf, 4);         //Dimension lesen
+            px = buf[0] + (buf[1] << 8);
+            py = buf[2] + (buf[3] << 8);
+            ad += 4;
+            for (y = dy + py - 1 ; y > dy - 1; y--) {
+              for (x = dx; x < (dx + px); x++) {
+                w = spi_fram.read8(FRAM_OFFSET + ad++);
+                fcolor(w);
+                if (x < vh && y < vv) GFX.setPixel(x, y);
+              }
+            }
+            if (iv > 0) GFX.swapRectangle(dx, dy , dx + px - 1, dy + py - 1); //swap Backcolor
+            break;
+
+          //****************************************************** PIC_E(X,Y,XX,YY,Filename.bmp) ******************************************
+          case 'E':                                       //Export -> BMP
+            if (Test_char('(')) return 1;
             dx = get_value();                             //x
             if (Test_char(',')) return 1;                 //Komma überspringen
             dy = get_value();                             //y
@@ -7802,1047 +7681,1114 @@ nochmal:
             px = get_value();                             //xx
             if (Test_char(',')) return 1;
             py = get_value();                             //yy
-          }
-          if (Test_char(')')) return 1;
-          ddx = px - dx;
-          ddy = py - dy;
-
-          buf[0] = lowByte(ddx);
-          buf[1] = highByte(ddx);
-          buf[2] = lowByte(ddy);
-          buf[3] = highByte (ddy);
-          SPI_RAM_write(FRAM_OFFSET + ad, buf, 4);       //XY-Dimension
-          ad += 4;
-          for (y = dy + ddy ; y > dy ; y--) {
-            for (x = dx; x < (dx + ddx); x++) {
-              if (x < vh && y < vv)
-              {
-                buf[0] = GFX.getPixel(x, y).R;
-                buf[1] = GFX.getPixel(x, y).G;
-                buf[2] = GFX.getPixel(x, y).B;
-                //    B                  G                     R
-                a = (buf[2] / 85) + ((buf[1] / 85) << 2) + ((buf[0] / 85) << 4); //einzelne Farbanteile in 64-Farbwert zurückwandeln
-              }
-              else a = 0;
-              SPI_RAM_write8(FRAM_OFFSET + ad++, a);
-
-            }
-          }
-          break;
-        default:
-          break;
-
-      }//switch
-      fcolor(Vordergrund);
-      string_marker = false;
-      return 0;
-    }
-
-    //****************************************************** PIC_E(X,Y,XX,YY,Filename.bmp) ******************************************
-
-    int export_pic(long x, long y, long xx, long yy, char *file) {
-      byte i, r, g, b, cl;
-      uint32_t pic_size, pic, weite, hoehe;
-      //                       0     1    2      3    4     5    6    7    8    9    10    11    12  13   14    15   16   17    18    19    20   21   22    23   24  25   26    27    28   29    30  31   32   33   34   35     36   37
-      byte bmp_header[54] = {0x42, 0x4D, 0x36, 0x84, 0x03, 0x0, 0x0, 0x0, 0x0, 0x0, 0x36, 0x00, 0x0, 0x0, 0x28, 0x0, 0x0, 0x0, 0x40, 0x01, 0x0, 0x0, 0xF0, 0x0, 0x0, 0x0, 0x01, 0x0, 0x18, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2C, 0x01, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-      //                       B    M     |  ---  Size ---- |   |    Reseved     |   |   bfoffbits    |   |   bisize       |    |   Width        |    |   Height      |   |Planes| |BitCnt| |  Compress    |    |   size Img    |
-      int rest, dx, dy;
-      int durchlaeufe, tm;
-      char k;
-
-      pic = (xx - x) * (yy - y) * 3;    //Bildgrösse inkl.Header
-      pic_size = pic + 54;              //Bildgrösse
-      //Dateigrösse
-      bmp_header[2] = pic_size;
-      bmp_header[3] = pic_size >> 8;
-      bmp_header[4] = pic_size >> 16;
-      bmp_header[5] = pic_size >> 24;
-      //Width
-      weite = xx - x;
-      bmp_header[18] = weite;
-      bmp_header[19] = weite >> 8;
-      bmp_header[20] = weite >> 16;
-      bmp_header[21] = weite >> 24;
-      //Height
-      hoehe = yy - y;
-      bmp_header[22] = hoehe;
-      bmp_header[23] = hoehe >> 8;
-      bmp_header[24] = hoehe >> 16;
-      bmp_header[25] = hoehe >> 24;
-      //Bildgrösse
-      bmp_header[34] = pic;
-      bmp_header[35] = pic >> 8;
-      bmp_header[36] = pic >> 16;
-      bmp_header[37] = pic >> 24;
-
-
-
-      spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-      // remove the old file if it exists
-      if ( SD.exists( String(sd_pfad) + String(tempstring))) {
-        printmsg("File exist, overwrite? (y/n)", 0);
-
-        while (1)
-        {
-          k = wait_key(false);
-          if (k == 'y' || k == 'n')
+            if (Test_char(',')) return 1;                 //Komma überspringen
+            get_value();                                  //Dateiname in tempstring
+            if (Test_char(')')) return 1;
+            export_pic(dx, dy, px, py, tempstring);
             break;
-        }
-        if (k == 'y') {
-          SD.remove( String(sd_pfad) + String(tempstring));
-          outchar(k);
 
+          //****************************************************** PIC_I(X,Y,Filename.bmp) ******************************************
+          case 'I':                                         //Import <- BMP
+            if (Test_char('(')) return 1;
+            dx = get_value();                               //x
+            if (Test_char(',')) return 1;                   //Komma überspringen
+            dy = get_value();                               //y
+            if (Test_char(',')) return 1;                   //Komma überspringen
+            get_value();                                    //Dateiname in tempstring
+            scal = 1;
+            if (*txtpos == ',') {
+              txtpos++;
+              scal = get_value();
+              if (scal > 1) scal = 1;                       //Skalierung auf 1 begrenzen
+            }
+            if (Test_char(')')) return 1;
+            import_pic(dx, dy, tempstring, scal);
+            break;
+
+          //****************************************************** PIC_L(PIC_Nr,Filename) ******************************************
+          case 'L':                                         //Load PIC_RAW-Data
+            if (Test_char('(')) return 1;
+            ad = get_value();                               //Adresse im Speicher
+            if (ad > 4) ad = 4;
+            ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz
+            if (Test_char(',')) return 1;                   //Komma überspringen
+            get_value();                                    //Dateiname in tempstring
+            if (Test_char(')')) return 1;
+            load_pic(FRAM_OFFSET + ad, tempstring);
+            break;
+
+          //****************************************************** PIC_S(PIC_Nr,Filename) ******************************************
+          case 'S':                                         //Save PIC_RAW-Data
+            if (Test_char('(')) return 1;
+            ad = get_value();                               //Adresse im Speicher
+            if (ad > 4) ad = 4;
+            ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz
+            if (Test_char(',')) return 1;                   //Komma überspringen
+            get_value();                                    //Dateiname in tempstring
+            if (Test_char(')')) return 1;
+            spi_fram.read(FRAM_OFFSET + ad, buf, 4);         //Dimension lesen
+            px = buf[0] + (buf[1] << 8);
+            py = buf[2] + (buf[3] << 8);
+            n_bytes = (px * py) + 4;                        //x*y=Biddaten + 4 Bytes der Dimension
+            save_pic(FRAM_OFFSET + ad, n_bytes, tempstring);
+            break;
+
+          //****************************************************** PIC_P(PIC_Nr,X,Y,XX,YY) ******************************************
+          case 'P':                                         //Grafikbildschirm in FRAM speichern
+            if (Test_char('(')) return 1;
+            ad = get_value();
+            if (ad > 4) ad = 4;
+            ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz
+            if (*txtpos == ',') {                           //Komma?, dann x,y-Position eingeben
+              txtpos++;
+              dx = get_value();                             //x
+              if (Test_char(',')) return 1;                 //Komma überspringen
+              dy = get_value();                             //y
+              if (Test_char(',')) return 1;
+              px = get_value();                             //xx
+              if (Test_char(',')) return 1;
+              py = get_value();                             //yy
+            }
+            if (Test_char(')')) return 1;
+            ddx = px - dx;
+            ddy = py - dy;
+
+            buf[0] = lowByte(ddx);
+            buf[1] = highByte(ddx);
+            buf[2] = lowByte(ddy);
+            buf[3] = highByte (ddy);
+            SPI_RAM_write(FRAM_OFFSET + ad, buf, 4);       //XY-Dimension
+            ad += 4;
+            for (y = dy + ddy ; y > dy ; y--) {
+              for (x = dx; x < (dx + ddx); x++) {
+                if (x < vh && y < vv)
+                {
+                  buf[0] = GFX.getPixel(x, y).R;
+                  buf[1] = GFX.getPixel(x, y).G;
+                  buf[2] = GFX.getPixel(x, y).B;
+                  //    B                  G                     R
+                  a = (buf[2] / 85) + ((buf[1] / 85) << 2) + ((buf[0] / 85) << 4); //einzelne Farbanteile in 64-Farbwert zurückwandeln
+                }
+                else a = 0;
+                SPI_RAM_write8(FRAM_OFFSET + ad++, a);
+
+              }
+            }
+            break;
+          default:
+            break;
+
+        }//switch
+        fcolor(Vordergrund);
+        string_marker = false;
+        return 0;
+      }
+
+      //****************************************************** PIC_E(X,Y,XX,YY,Filename.bmp) ******************************************
+
+      int export_pic(long x, long y, long xx, long yy, char *file) {
+        byte i, r, g, b, cl;
+        uint32_t pic_size, pic, weite, hoehe;
+        //                       0     1    2      3    4     5    6    7    8    9    10    11    12  13   14    15   16   17    18    19    20   21   22    23   24  25   26    27    28   29    30  31   32   33   34   35     36   37
+        byte bmp_header[54] = {0x42, 0x4D, 0x36, 0x84, 0x03, 0x0, 0x0, 0x0, 0x0, 0x0, 0x36, 0x00, 0x0, 0x0, 0x28, 0x0, 0x0, 0x0, 0x40, 0x01, 0x0, 0x0, 0xF0, 0x0, 0x0, 0x0, 0x01, 0x0, 0x18, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2C, 0x01, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+        //                       B    M     |  ---  Size ---- |   |    Reseved     |   |   bfoffbits    |   |   bisize       |    |   Width        |    |   Height      |   |Planes| |BitCnt| |  Compress    |    |   size Img    |
+        int rest, dx, dy;
+        int durchlaeufe, tm;
+        char k;
+
+        pic = (xx - x) * (yy - y) * 3;    //Bildgrösse inkl.Header
+        pic_size = pic + 54;              //Bildgrösse
+        //Dateigrösse
+        bmp_header[2] = pic_size;
+        bmp_header[3] = pic_size >> 8;
+        bmp_header[4] = pic_size >> 16;
+        bmp_header[5] = pic_size >> 24;
+        //Width
+        weite = xx - x;
+        bmp_header[18] = weite;
+        bmp_header[19] = weite >> 8;
+        bmp_header[20] = weite >> 16;
+        bmp_header[21] = weite >> 24;
+        //Height
+        hoehe = yy - y;
+        bmp_header[22] = hoehe;
+        bmp_header[23] = hoehe >> 8;
+        bmp_header[24] = hoehe >> 16;
+        bmp_header[25] = hoehe >> 24;
+        //Bildgrösse
+        bmp_header[34] = pic;
+        bmp_header[35] = pic >> 8;
+        bmp_header[36] = pic >> 16;
+        bmp_header[37] = pic >> 24;
+
+
+
+        spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+        // remove the old file if it exists
+        if ( SD.exists( String(sd_pfad) + String(tempstring))) {
+          printmsg("File exist, overwrite? (y/n)", 0);
+
+          while (1)
+          {
+            k = wait_key(false);
+            if (k == 'y' || k == 'n')
+              break;
+          }
+          if (k == 'y') {
+            SD.remove( String(sd_pfad) + String(tempstring));
+            outchar(k);
+
+          }
+          else
+          {
+            outchar(k);
+            line_terminator();
+            sd_ende();                                             //SD-Card unmount
+            warmstart();
+            return 0;
+          }
         }
-        else
+        fp = SD.open( String(sd_pfad) + String(file), FILE_WRITE);
+        for (i = 0; i < 54; i++) {
+          fp.write(bmp_header[i]);
+        }
+
+        for (dy = y + yy - 1; dy > (y - 1); dy--) {
+          for (dx = x; dx < x + xx; dx++) {
+            r = GFX.getPixel(dx, dy).R;
+            g = GFX.getPixel(dx, dy).G;
+            b = GFX.getPixel(dx, dy).B;
+            fp.write( b );
+            fp.write( g );
+            fp.write( r );
+          }
+        }
+        fp.close();
+        sd_ende();                                                //SD-Card unmount
+
+        return 0;
+      }
+      //****************************************************** PIC_I(X,Y,Filename.bmp) ******************************************
+      int import_pic(int x, int y, char *file, float sc) {
+        byte r, g, b, cl, buf[3];
+        float xtmp, ytmp, dy, dx, rx;
+        uint32_t i, sf, vv, vh, xx, yy, skipx, pic;
+        byte bmp_header[54];
+        uint32_t stepx, stepy, restx, sx, sy;
+        char k;
+
+        spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);             //SCK,MISO,MOSI,SS 13 //HSPI1
+
+        if ( !SD.exists(String(sd_pfad) + String(tempstring)))
         {
-          outchar(k);
-          line_terminator();
-          sd_ende();                                             //SD-Card unmount
-          warmstart();
+          syntaxerror(sdfilemsg);
+          sd_ende();                                                  //SD-Card unmount
           return 0;
         }
-      }
-      fp = SD.open( String(sd_pfad) + String(file), FILE_WRITE);
-      for (i = 0; i < 54; i++) {
-        fp.write(bmp_header[i]);
-      }
+        fp = SD.open( String(sd_pfad) + String(file), FILE_READ);
+        fp.read(bmp_header, 54);                                      //BMP-Header einlesen
+        skipx = 54;                                                   //nach dem Header geht's los mit Daten
 
-      for (dy = y + yy - 1; dy > (y - 1); dy--) {
-        for (dx = x; dx < x + xx; dx++) {
-          r = GFX.getPixel(dx, dy).R;
-          g = GFX.getPixel(dx, dy).G;
-          b = GFX.getPixel(dx, dy).B;
-          fp.write( b );
-          fp.write( g );
-          fp.write( r );
+        if (bmp_header[0] != 0x42 || bmp_header[1] != 0x4D)           //keine BMP-Datei, dann Abbruch!
+        {
+          syntaxerror(bmpfilemsg);
+          sd_ende();                                                  //SD-Card unmount
+          return 0;
         }
-      }
-      fp.close();
-      sd_ende();                                                //SD-Card unmount
+        vv = GFX.getHeight();
+        vh = GFX.getWidth();
+        //Weite
+        xx = bmp_header[21] << 24;
+        xx = xx + bmp_header[20] << 16;
+        xx = xx + bmp_header[19] << 8;
+        xx = xx + bmp_header[18];
+        bmp_width = xx;
+        //Hoehe
+        yy = bmp_header[25] << 24;
+        yy = yy + bmp_header[24] << 16;
+        yy = yy + bmp_header[23] << 8;
+        yy = yy + bmp_header[22];
+        bmp_height = yy;
+        //color_tiefe;
+        cl = bmp_header[28];
 
-      return 0;
-    }
-    //****************************************************** PIC_I(X,Y,Filename.bmp) ******************************************
-    int import_pic(int x, int y, char *file, float sc) {
-      byte r, g, b, cl, buf[3];
-      float xtmp, ytmp, dy, dx, rx;
-      uint32_t i, sf, vv, vh, xx, yy, skipx, pic;
-      byte bmp_header[54];
-      uint32_t stepx, stepy, restx, sx, sy;
-      char k;
+        //Groesse auf Bildschirmauflösung skalieren
+        if (xx >= vh && yy >= vv && sc <= 1) {
+          xtmp = float(xx) / vh * (1 / sc);
+          ytmp = float(yy) / vv * (1 / sc);
+          restx = xx % vh;
+        }
+        else {
+          xtmp = ytmp = 1;
+          restx = 0;
+        }
 
-      spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);             //SCK,MISO,MOSI,SS 13 //HSPI1
+        stepx = xtmp;
+        stepy = ytmp;
 
-      if ( !SD.exists(String(sd_pfad) + String(tempstring)))
-      {
-        syntaxerror(sdfilemsg);
-        sd_ende();                                                  //SD-Card unmount
-        return 0;
-      }
-      fp = SD.open( String(sd_pfad) + String(file), FILE_READ);
-      fp.read(bmp_header, 54);                                      //BMP-Header einlesen
-      skipx = 54;                                                   //nach dem Header geht's los mit Daten
+        if (ytmp > xtmp) {
+          xtmp = ytmp;
+        }
+        else {
+          ytmp = xtmp;
+        }
 
-      if (bmp_header[0] != 0x42 || bmp_header[1] != 0x4D)           //keine BMP-Datei, dann Abbruch!
-      {
-        syntaxerror(bmpfilemsg);
-        sd_ende();                                                  //SD-Card unmount
-        return 0;
-      }
-      vv = GFX.getHeight();
-      vh = GFX.getWidth();
-      //Weite
-      xx = bmp_header[21] << 24;
-      xx = xx + bmp_header[20] << 16;
-      xx = xx + bmp_header[19] << 8;
-      xx = xx + bmp_header[18];
-      bmp_width = xx;
-      //Hoehe
-      yy = bmp_header[25] << 24;
-      yy = yy + bmp_header[24] << 16;
-      yy = yy + bmp_header[23] << 8;
-      yy = yy + bmp_header[22];
-      bmp_height = yy;
-      //color_tiefe;
-      cl = bmp_header[28];
+        for (dy = yy - 1 ; dy > -1; dy -= stepy) {
+          for (dx = 0; dx < xx; dx += stepx) {
+            fp.read(buf, 3);                                     //Pixelfarben lesen (blau,grün,rot)
+            sx = (dx / xtmp) + x;
+            sy = (dy / ytmp) + y;
 
-      //Groesse auf Bildschirmauflösung skalieren
-      if (xx >= vh && yy >= vv && sc <= 1) {
-        xtmp = float(xx) / vh * (1 / sc);
-        ytmp = float(yy) / vv * (1 / sc);
-        restx = xx % vh;
-      }
-      else {
-        xtmp = ytmp = 1;
-        restx = 0;
-      }
-
-      stepx = xtmp;
-      stepy = ytmp;
-
-      if (ytmp > xtmp) {
-        xtmp = ytmp;
-      }
-      else {
-        ytmp = xtmp;
-      }
-
-      for (dy = yy - 1 ; dy > -1; dy -= stepy) {
-        for (dx = 0; dx < xx; dx += stepx) {
-          fp.read(buf, 3);                                     //Pixelfarben lesen (blau,grün,rot)
-          sx = (dx / xtmp) + x;
-          sy = (dy / ytmp) + y;
-
-          if (sx < vh && sy < vv) {                            //nur im Bildschirmbereich pixeln
-            GFX.setPenColor(buf[2], buf[1], buf[0]);
-            GFX.setPixel(sx, sy);
+            if (sx < vh && sy < vv) {                            //nur im Bildschirmbereich pixeln
+              GFX.setPenColor(buf[2], buf[1], buf[0]);
+              GFX.setPixel(sx, sy);
+            }
+            skipx += stepx * 3;                                  //ist das Bild > Bildschirmbreite, Pixel*Skalierung überspringen
+            fp.seek(skipx);
           }
-          skipx += stepx * 3;                                  //ist das Bild > Bildschirmbreite, Pixel*Skalierung überspringen
+          if (restx) {                                           //bei ungeraden Formaten Restpixel überspringen
+            rx = xx - dx;
+            if (rx > 0) skipx += abs((xx - dx) * 3);
+            else skipx -= abs(xx - dx) * 3;
+          }
+          skipx += (stepy - 1) * xx * 3;                         //nächste Bildzeile
           fp.seek(skipx);
         }
-        if (restx) {                                           //bei ungeraden Formaten Restpixel überspringen
-          rx = xx - dx;
-          if (rx > 0) skipx += abs((xx - dx) * 3);
-          else skipx -= abs(xx - dx) * 3;
+
+        fp.close();
+        sd_ende();                                               //SD-Card unmount
+        return 0;
+      }
+      //******************************************************* PIC_S(PIC_NR,Filename) *************************************
+      int save_pic(long adr, long n, char *file) {
+        byte c[1024];
+        char k;
+        int rest;
+        int durchlaeufe, tm;
+        if (n > 1024) durchlaeufe = n / 1024;
+        rest = n % 1024;
+
+        spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+        // remove the old file if it exists
+        if ( SD.exists( String(sd_pfad) + String(tempstring))) {
+          printmsg("File exist, overwrite? (y/n)", 0);
+          while (1)
+          {
+            k = wait_key(false);
+            if (k == 'y' || k == 'n')
+              break;
+          }
+          if (k == 'y') {
+            SD.remove( String(sd_pfad) + String(tempstring));
+            outchar(k);
+          }
+          else
+          {
+            outchar(k);
+            line_terminator();
+            sd_ende();                                             //SD-Card unmount
+            warmstart();
+            return 0;
+          }
         }
-        skipx += (stepy - 1) * xx * 3;                         //nächste Bildzeile
-        fp.seek(skipx);
+
+        fp = SD.open( String(sd_pfad) + String(file), FILE_WRITE);
+        fp.close();
+        sd_ende();                                                //SD-Card unmount
+
+        for (int i = 0; i < durchlaeufe; i++) {
+          spi_fram.read(adr, c, 1024);
+          adr += 1024;
+          spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+          fp = SD.open( String(sd_pfad) + String(file), FILE_APPEND);
+          for (int s = 0; s < 1024; s++) {
+            fp.write( c[s] );
+          }
+          fp.close();
+          sd_ende();                                                //SD-Card unmount
+        }
+        if (rest > 0) {
+          spi_fram.read(adr, c, rest);
+          spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+          fp = SD.open( String(sd_pfad) + String(file), FILE_APPEND);
+          for (int s = 0; s < rest; s++) {
+            fp.write( c[s] );
+          }
+          fp.close();
+          sd_ende();                                                //SD-Card unmount
+        }
+        return 0;
       }
 
-      fp.close();
-      sd_ende();                                               //SD-Card unmount
-      return 0;
-    }
-    //******************************************************* PIC_S(PIC_NR,Filename) *************************************
-    int save_pic(long adr, long n, char *file) {
-      byte c[1024];
-      char k;
-      int rest;
-      int durchlaeufe, tm;
-      if (n > 1024) durchlaeufe = n / 1024;
-      rest = n % 1024;
+      //******************************************* PIC_L(PIC_NR,Filename) ******************************************
+      int load_pic(long adr, char *file) {
+        byte c[1024];
+        int rest, rx, ry;
+        int durchlaeufe;
+        long n, sc = 0;
 
-      spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-      // remove the old file if it exists
-      if ( SD.exists( String(sd_pfad) + String(tempstring))) {
-        printmsg("File exist, overwrite? (y/n)", 0);
-        while (1)
+        spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+        if ( !SD.exists(String(sd_pfad) + String(tempstring)))
         {
-          k = wait_key(false);
-          if (k == 'y' || k == 'n')
+          syntaxerror(sdfilemsg);
+          sd_ende();                                                //SD-Card unmount
+          return 1;
+        }
+        else {
+          fp = SD.open( String(sd_pfad) + String(file), FILE_READ);
+        }
+        for (int s = 0; s < 4; s++) {
+          c[s] = fp.read();
+        }
+        fp.close();
+        sd_ende();                                             //SD-Card unmount
+        rx = c[0] + (c[1] << 8);
+        ry = c[2] + (c[3] << 8);
+        n = (rx * ry) + 4;
+        if (n > 1024) durchlaeufe = n / 1024;
+        rest = n % 1024;
+
+        for (int i = 0; i < durchlaeufe; i++) {
+          spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+          fp = SD.open( String(sd_pfad) + String(file), FILE_READ);
+          fp.seek(sc);
+          for (int s = 0; s < 1024; s++) {
+            c[s] = fp.read();
+          }
+          sc = fp.position();
+          fp.close();
+          sd_ende();                                                //SD-Card unmount
+          SPI_RAM_write(adr, c, 1024);
+          adr += 1024;
+        }
+        if (rest > 0) {
+          spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
+          fp = SD.open( String(sd_pfad) + String(file), FILE_READ);
+          fp.seek(sc);
+          for (int s = 0; s < rest; s++) {
+            c[s] = fp.read();
+          }
+          fp.close();
+          sd_ende();                                                //SD-Card unmount
+          SPI_RAM_write(adr, c, rest);         //Dimension lesen
+        }
+        return 0;
+      }
+      //#######################################################################################################################################
+
+
+
+      //#######################################################################################################################################
+      //-----------------------------------------Befehl GRID_typ(x,y,x_zell,y_zell,x_pixel_step,y_pixelstep,frame_color,grid_color,pixel_raster,scale,arrow,frame) ----------------------
+      //#######################################################################################################################################
+      int make_grid(void) {
+        int x_grid, y_grid, x_zell, y_zell, x_stp, y_stp;
+        int i, a, gc, fc, pr, xdiff, ydiff, sc , arrow, frame;
+        char typ;
+        pr = 0;                                       //Pixelraster
+        sc = 0;                                       //Skala
+        if (Test_char('_')) return 1;
+        typ = spaces();
+        txtpos++;
+        switch (typ) {
+          case 'G':                                   //Gitter-Raster
+            if (Test_char('R')) return 1;
+            break;
+          case 'K':                                   //Kartesisches Koordinatensystem
+            if (Test_char('T')) return 1;
+            break;
+          case 'X':                                   //XY-Diagramm
+            if (Test_char('Y')) return 1;
+            break;
+          case 'U':                                   //UI-Diagramm
+            if (Test_char('I')) return 1;
+            break;
+          default:
+
             break;
         }
-        if (k == 'y') {
-          SD.remove( String(sd_pfad) + String(tempstring));
-          outchar(k);
-        }
-        else
-        {
-          outchar(k);
-          line_terminator();
-          sd_ende();                                             //SD-Card unmount
-          warmstart();
-          return 0;
-        }
-      }
 
-      fp = SD.open( String(sd_pfad) + String(file), FILE_WRITE);
-      fp.close();
-      sd_ende();                                                //SD-Card unmount
-
-      for (int i = 0; i < durchlaeufe; i++) {
-        spi_fram.read(adr, c, 1024);
-        adr += 1024;
-        spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-        fp = SD.open( String(sd_pfad) + String(file), FILE_APPEND);
-        for (int s = 0; s < 1024; s++) {
-          fp.write( c[s] );
-        }
-        fp.close();
-        sd_ende();                                                //SD-Card unmount
-      }
-      if (rest > 0) {
-        spi_fram.read(adr, c, rest);
-        spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-        fp = SD.open( String(sd_pfad) + String(file), FILE_APPEND);
-        for (int s = 0; s < rest; s++) {
-          fp.write( c[s] );
-        }
-        fp.close();
-        sd_ende();                                                //SD-Card unmount
-      }
-      return 0;
-    }
-
-    //******************************************* PIC_L(PIC_NR,Filename) ******************************************
-    int load_pic(long adr, char *file) {
-      byte c[1024];
-      int rest, rx, ry;
-      int durchlaeufe;
-      long n, sc = 0;
-
-      spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-      if ( !SD.exists(String(sd_pfad) + String(tempstring)))
-      {
-        syntaxerror(sdfilemsg);
-        sd_ende();                                                //SD-Card unmount
-        return 1;
-      }
-      else {
-        fp = SD.open( String(sd_pfad) + String(file), FILE_READ);
-      }
-      for (int s = 0; s < 4; s++) {
-        c[s] = fp.read();
-      }
-      fp.close();
-      sd_ende();                                             //SD-Card unmount
-      rx = c[0] + (c[1] << 8);
-      ry = c[2] + (c[3] << 8);
-      n = (rx * ry) + 4;
-      if (n > 1024) durchlaeufe = n / 1024;
-      rest = n % 1024;
-
-      for (int i = 0; i < durchlaeufe; i++) {
-        spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-        fp = SD.open( String(sd_pfad) + String(file), FILE_READ);
-        fp.seek(sc);
-        for (int s = 0; s < 1024; s++) {
-          c[s] = fp.read();
-        }
-        sc = fp.position();
-        fp.close();
-        sd_ende();                                                //SD-Card unmount
-        SPI_RAM_write(adr, c, 1024);
-        adr += 1024;
-      }
-      if (rest > 0) {
-        spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-        fp = SD.open( String(sd_pfad) + String(file), FILE_READ);
-        fp.seek(sc);
-        for (int s = 0; s < rest; s++) {
-          c[s] = fp.read();
-        }
-        fp.close();
-        sd_ende();                                                //SD-Card unmount
-        SPI_RAM_write(adr, c, rest);         //Dimension lesen
-      }
-      return 0;
-    }
-    //#######################################################################################################################################
-
-
-
-    //#######################################################################################################################################
-    //-----------------------------------------Befehl GRID_typ(x,y,x_zell,y_zell,x_pixel_step,y_pixelstep,frame_color,grid_color,pixel_raster,scale,arrow,frame) ----------------------
-    //#######################################################################################################################################
-    int make_grid(void) {
-      int x_grid, y_grid, x_zell, y_zell, x_stp, y_stp;
-      int i, a, gc, fc, pr, xdiff, ydiff, sc , arrow, frame;
-      char typ;
-      pr = 0;                                       //Pixelraster
-      sc = 0;                                       //Skala
-      if (Test_char('_')) return 1;
-      typ = spaces();
-      txtpos++;
-      switch (typ) {
-        case 'G':                                   //Gitter-Raster
-          if (Test_char('R')) return 1;
-          break;
-        case 'K':                                   //Kartesisches Koordinatensystem
-          if (Test_char('T')) return 1;
-          break;
-        case 'X':                                   //XY-Diagramm
-          if (Test_char('Y')) return 1;
-          break;
-        case 'U':                                   //UI-Diagramm
-          if (Test_char('I')) return 1;
-          break;
-        default:
-
-          break;
-      }
-
-      if (Test_char('(')) return 1;
-      x_grid = get_value();           //x-Position
-      if (Test_char(',')) return 1;
-      y_grid = get_value();           //y-Position
-      if (Test_char(',')) return 1;
-      x_zell = get_value();           //Anzahl Zellen in x-Richtung
-      if (Test_char(',')) return 1;
-      y_zell = get_value();           //Anzahl Zellen in y-Richtung
-      if (Test_char(',')) return 1;
-      x_stp = get_value();            //Rastergrösse in x-Richtung (pixel)
-      if (Test_char(',')) return 1;
-      y_stp = get_value();            //Rastergrösse in y-Richtung (pixel)
-      if (Test_char(',')) return 1;
-      fc = get_value();               //Farbe der Achsen und des Rahmens
-      if (Test_char(',')) return 1;
-      gc = get_value();               //Farbe des Rasters
-      if (*txtpos == ',') {           //Pixelraster (Pixelabstand im Raster)
-        txtpos++;
-        pr = get_value();
-        if (*txtpos == ',') {         //Skale hinzufügen
+        if (Test_char('(')) return 1;
+        x_grid = get_value();           //x-Position
+        if (Test_char(',')) return 1;
+        y_grid = get_value();           //y-Position
+        if (Test_char(',')) return 1;
+        x_zell = get_value();           //Anzahl Zellen in x-Richtung
+        if (Test_char(',')) return 1;
+        y_zell = get_value();           //Anzahl Zellen in y-Richtung
+        if (Test_char(',')) return 1;
+        x_stp = get_value();            //Rastergrösse in x-Richtung (pixel)
+        if (Test_char(',')) return 1;
+        y_stp = get_value();            //Rastergrösse in y-Richtung (pixel)
+        if (Test_char(',')) return 1;
+        fc = get_value();               //Farbe der Achsen und des Rahmens
+        if (Test_char(',')) return 1;
+        gc = get_value();               //Farbe des Rasters
+        if (*txtpos == ',') {           //Pixelraster (Pixelabstand im Raster)
           txtpos++;
-          sc = get_value();
-          if (*txtpos == ',') {       //Pfeile anzeigen
+          pr = get_value();
+          if (*txtpos == ',') {         //Skale hinzufügen
             txtpos++;
-            arrow = get_value();
-            if (*txtpos == ',') {     //Rahmen darstellen
+            sc = get_value();
+            if (*txtpos == ',') {       //Pfeile anzeigen
               txtpos++;
-              frame = get_value();
+              arrow = get_value();
+              if (*txtpos == ',') {     //Rahmen darstellen
+                txtpos++;
+                frame = get_value();
+              }
             }
           }
         }
-      }
-      if (Test_char(')')) return 1;
+        if (Test_char(')')) return 1;
 
-      Grid[0] = x_grid;
-      Grid[1] = y_grid;
-      Grid[2] = x_grid + (x_stp * x_zell);
-      Grid[3] = y_grid + (y_stp * y_zell);
-      Grid[4] = x_zell;
-      Grid[5] = y_zell;
-      Grid[6] = x_stp;
-      Grid[7] = y_stp;
-      Grid[8] = fc;
-      Grid[9] = gc;
+        Grid[0] = x_grid;
+        Grid[1] = y_grid;
+        Grid[2] = x_grid + (x_stp * x_zell);
+        Grid[3] = y_grid + (y_stp * y_zell);
+        Grid[4] = x_zell;
+        Grid[5] = y_zell;
+        Grid[6] = x_stp;
+        Grid[7] = y_stp;
+        Grid[8] = fc;
+        Grid[9] = gc;
 
-      //-------------------------------- RS=Raster ---------------------------------------------------------------------------------
+        //-------------------------------- RS=Raster ---------------------------------------------------------------------------------
 
-      i = x_grid;
-      a = 0;
-      //-------------------- Grid zeichnen ---------------------------------------------------
-      fcolor(gc);
-      while (a < x_zell + 1) {
-        //------------- Raster zeichnen --------------------
-        if (pr) pixel_line(i, y_grid, i, y_grid + (y_stp * y_zell), pr);
-        else GFX.drawLine(i, y_grid, i, y_grid + (y_stp * y_zell));
-        fcolor(fc);
-        //---------- Skala zeichnen ------------------------
-        if (sc) {
-          if (typ == 'K' || typ == 'X') {
-            ydiff = y_grid + ((Grid[3] - Grid[1]) / 2);
-            GFX.drawLine(i, ydiff - 2, i, ydiff + 2);
-
-          }
-          else {
-            ydiff = y_grid + Grid[3] - Grid[1];
-            GFX.drawLine(i, ydiff - 2, i, ydiff + 2);
-
-          }
-        }
+        i = x_grid;
+        a = 0;
+        //-------------------- Grid zeichnen ---------------------------------------------------
         fcolor(gc);
-        i += x_stp;
-        a++;
-      }
-      a = 0;
-      i = y_grid;
-      while (a < y_zell + 1) {
-        //------------- Raster zeichnen --------------------
-        if (pr) pixel_line(x_grid, i, x_grid + (x_stp * x_zell), i, pr);
-        else GFX.drawLine(x_grid, i, x_grid + (x_stp * x_zell), i);
-        //---------- Skala zeichnen ------------------------
-        if (sc) {
+        while (a < x_zell + 1) {
+          //------------- Raster zeichnen --------------------
+          if (pr) pixel_line(i, y_grid, i, y_grid + (y_stp * y_zell), pr);
+          else GFX.drawLine(i, y_grid, i, y_grid + (y_stp * y_zell));
           fcolor(fc);
-          if (typ == 'K') {
-            xdiff = x_grid + ((Grid[2] - Grid[0]) / 2);
-            GFX.drawLine(xdiff - 2, i, xdiff + 2, i);
+          //---------- Skala zeichnen ------------------------
+          if (sc) {
+            if (typ == 'K' || typ == 'X') {
+              ydiff = y_grid + ((Grid[3] - Grid[1]) / 2);
+              GFX.drawLine(i, ydiff - 2, i, ydiff + 2);
+
+            }
+            else {
+              ydiff = y_grid + Grid[3] - Grid[1];
+              GFX.drawLine(i, ydiff - 2, i, ydiff + 2);
+
+            }
+          }
+          fcolor(gc);
+          i += x_stp;
+          a++;
+        }
+        a = 0;
+        i = y_grid;
+        while (a < y_zell + 1) {
+          //------------- Raster zeichnen --------------------
+          if (pr) pixel_line(x_grid, i, x_grid + (x_stp * x_zell), i, pr);
+          else GFX.drawLine(x_grid, i, x_grid + (x_stp * x_zell), i);
+          //---------- Skala zeichnen ------------------------
+          if (sc) {
+            fcolor(fc);
+            if (typ == 'K') {
+              xdiff = x_grid + ((Grid[2] - Grid[0]) / 2);
+              GFX.drawLine(xdiff - 2, i, xdiff + 2, i);
+
+            }
+            else if (typ == 'X' || typ == 'U') {
+              GFX.drawLine(x_grid - 2, i, x_grid + 2, i);
+
+            }
 
           }
-          else if (typ == 'X' || typ == 'U') {
-            GFX.drawLine(x_grid - 2, i, x_grid + 2, i);
-
-          }
-
+          fcolor(gc);
+          i += y_stp;
+          a++;
         }
-        fcolor(gc);
-        i += y_stp;
-        a++;
-      }
-      //--------------------- Rahmen zeichnen ------------------------------------------------
-      fcolor(fc);
+        //--------------------- Rahmen zeichnen ------------------------------------------------
+        fcolor(fc);
 
-      if (typ == 'R' || frame == 1) {
-        //zweimal Rahmen (einmal um einen Pixel versetzt, damit er etwas breiter ist)
-        GFX.drawRectangle(x_grid, y_grid, x_grid + (x_stp * x_zell), y_grid + (y_stp * y_zell));
-        GFX.drawRectangle(x_grid - 1, y_grid - 1, x_grid + (x_stp * x_zell) + 1, y_grid + (y_stp * y_zell) + 1);
-      }
-
-      if (typ == 'K' || typ == 'X') {                 //x-Achse
-        xdiff = x_grid + Grid[2] - Grid[0];
-        ydiff = y_grid + ((Grid[3] - Grid[1]) / 2);
-        GFX.drawLine(x_grid, ydiff, xdiff, ydiff);
-        Grid[10] = ydiff;  //y-Position der x-Skale
-
-        //----------- Pfeil zeichnen ---------------
-        if (arrow) {
-          bcolor(fc);
-          Point points[3] = { {xdiff, ydiff - 3}, {xdiff + 6, ydiff}, {xdiff, ydiff + 3} };
-          GFX.fillPath(points, 3);
-          bcolor(Hintergrund);
+        if (typ == 'R' || frame == 1) {
+          //zweimal Rahmen (einmal um einen Pixel versetzt, damit er etwas breiter ist)
+          GFX.drawRectangle(x_grid, y_grid, x_grid + (x_stp * x_zell), y_grid + (y_stp * y_zell));
+          GFX.drawRectangle(x_grid - 1, y_grid - 1, x_grid + (x_stp * x_zell) + 1, y_grid + (y_stp * y_zell) + 1);
         }
 
-        if (typ == 'K') {                               //y-Achse
-          xdiff = x_grid + ((Grid[2] - Grid[0]) / 2);
-          ydiff = y_grid + Grid[3] - Grid[1];
-          GFX.drawLine(xdiff, y_grid, xdiff, ydiff);
-          Grid[11] = xdiff;  //x-Position der y-Skale
+        if (typ == 'K' || typ == 'X') {                 //x-Achse
+          xdiff = x_grid + Grid[2] - Grid[0];
+          ydiff = y_grid + ((Grid[3] - Grid[1]) / 2);
+          GFX.drawLine(x_grid, ydiff, xdiff, ydiff);
+          Grid[10] = ydiff;  //y-Position der x-Skale
+
           //----------- Pfeil zeichnen ---------------
           if (arrow) {
             bcolor(fc);
-            Point points[3] = { {xdiff - 3, y_grid}, {xdiff, y_grid - 6}, {xdiff + 3, y_grid} };
+            Point points[3] = { {xdiff, ydiff - 3}, {xdiff + 6, ydiff}, {xdiff, ydiff + 3} };
             GFX.fillPath(points, 3);
             bcolor(Hintergrund);
           }
+
+          if (typ == 'K') {                               //y-Achse
+            xdiff = x_grid + ((Grid[2] - Grid[0]) / 2);
+            ydiff = y_grid + Grid[3] - Grid[1];
+            GFX.drawLine(xdiff, y_grid, xdiff, ydiff);
+            Grid[11] = xdiff;  //x-Position der y-Skale
+            //----------- Pfeil zeichnen ---------------
+            if (arrow) {
+              bcolor(fc);
+              Point points[3] = { {xdiff - 3, y_grid}, {xdiff, y_grid - 6}, {xdiff + 3, y_grid} };
+              GFX.fillPath(points, 3);
+              bcolor(Hintergrund);
+            }
+          }
+          else if (typ == 'X' ||  typ == 'U') {           //y-Achse
+            ydiff = y_grid + Grid[3] - Grid[1];
+            GFX.drawLine(x_grid, y_grid, x_grid, ydiff);
+            Grid[11] = x_grid;  //x-Position der y-Skale
+            //----------- Pfeil zeichnen ---------------
+            if (arrow) {
+              bcolor(fc);
+              Point points[3] = { {x_grid - 3, y_grid}, {x_grid, y_grid - 6}, {x_grid + 3, y_grid} };
+              GFX.fillPath(points, 3);
+              bcolor(Hintergrund);
+            }
+
+          }
+
         }
-        else if (typ == 'X' ||  typ == 'U') {           //y-Achse
+        else if (typ  == 'U') {
           ydiff = y_grid + Grid[3] - Grid[1];
-          GFX.drawLine(x_grid, y_grid, x_grid, ydiff);
+          xdiff = x_grid + Grid[2] - Grid[0];
+          GFX.drawLine(x_grid, ydiff, xdiff, ydiff);          //x-Achse
+          GFX.drawLine(x_grid, y_grid, x_grid, ydiff);        //y-Achse
+          Grid[10] = ydiff;   //y-Position der x-Skale
           Grid[11] = x_grid;  //x-Position der y-Skale
-          //----------- Pfeil zeichnen ---------------
+
           if (arrow) {
             bcolor(fc);
             Point points[3] = { {x_grid - 3, y_grid}, {x_grid, y_grid - 6}, {x_grid + 3, y_grid} };
             GFX.fillPath(points, 3);
+
+            Point pointe[3] =  { {xdiff, ydiff - 3}, {xdiff + 6, ydiff}, {xdiff, ydiff + 3} };
+            GFX.fillPath(pointe, 3);
             bcolor(Hintergrund);
           }
 
         }
 
-      }
-      else if (typ  == 'U') {
-        ydiff = y_grid + Grid[3] - Grid[1];
-        xdiff = x_grid + Grid[2] - Grid[0];
-        GFX.drawLine(x_grid, ydiff, xdiff, ydiff);          //x-Achse
-        GFX.drawLine(x_grid, y_grid, x_grid, ydiff);        //y-Achse
-        Grid[10] = ydiff;   //y-Position der x-Skale
-        Grid[11] = x_grid;  //x-Position der y-Skale
-
-        if (arrow) {
-          bcolor(fc);
-          Point points[3] = { {x_grid - 3, y_grid}, {x_grid, y_grid - 6}, {x_grid + 3, y_grid} };
-          GFX.fillPath(points, 3);
-
-          Point pointe[3] =  { {xdiff, ydiff - 3}, {xdiff + 6, ydiff}, {xdiff, ydiff + 3} };
-          GFX.fillPath(pointe, 3);
-          bcolor(Hintergrund);
-        }
-
-      }
-
-      fcolor(Vordergrund);
-      return 0;
-    }
-
-    //------------------------------------------ Pixellinie zeichnen ----------------------------------------------------------------
-    void pixel_line(int x, int y, int xx, int yy, uint8_t pix) {
-      for (int a = x; a < xx + 1; a) {
-        for (int b = y; b < yy + 1; b) {
-          GFX.setPixel(a, b);
-          b += pix;
-        }
-        a += pix;
-      }
-
-    }
-    //#######################################################################################################################################
-
-    //#######################################################################################################################################
-    //-------------------------------------------- Befehl TEXT(x,y,font,String)--------------------------------------------------------------
-    int draw_text(void) {
-      int x_text, y_text, fnt;
-
-      if (Test_char('(')) return 1;
-      x_text = get_value();
-      if (Test_char(',')) return 1;
-      y_text = get_value();
-      if (Test_char(',')) return 1;
-      fnt = get_value();
-      if (Test_char(',')) return 1;
-      get_value();                      //text in tempstring
-      if (Test_char(')')) return 1;
-      drawing_text(fnt, x_text, y_text);
-      return 0;
-    }
-
-    void drawing_text(int fnt, int x_text, int y_text)
-    {
-      switch (fnt) {
-        case 0:
-          //GFX.drawTextWithEllipsis(&fabgl::FONT_8x8, x_text, y_text, tempstring, 100);
-          GFX.drawText(&fabgl::FONT_8x8, x_text, y_text, tempstring);
-          break;
-        case 1:
-          GFX.drawText(&fabgl::FONT_5x8, x_text, y_text, tempstring);
-          break;
-        case 2:
-          GFX.drawText(&fabgl::FONT_6x8, x_text, y_text, tempstring);
-          break;
-        case 3:
-          GFX.drawText(&fabgl::FONT_LCD_8x14, x_text, y_text, tempstring);
-          break;
-        case 4:
-          GFX.drawText(&fabgl::FONT_10x20, x_text, y_text, tempstring);
-          break;
-        case 5:
-          GFX.drawText(&fabgl::FONT_BLOCK_8x14, x_text, y_text, tempstring);
-          break;
-        case 6:
-          GFX.drawText(&fabgl::FONT_BROADWAY_8x14, x_text, y_text, tempstring);
-          break;
-        case 7:
-          GFX.drawText(&fabgl::FONT_OLDENGL_8x16, x_text, y_text, tempstring);
-          break;
-        case 8:
-          GFX.drawText(&fabgl::FONT_BIGSERIF_8x16, x_text, y_text, tempstring);
-          break;
-        case 9:
-          GFX.drawText(&fabgl::FONT_SANSERIF_8x14, x_text, y_text, tempstring);
-          break;
-        case 10:
-          GFX.drawText(&fabgl::FONT_COURIER_8x14, x_text, y_text, tempstring);
-          break;
-        case 11:
-          GFX.drawText(&fabgl::FONT_SLANT_8x14, x_text, y_text, tempstring);
-          break;
-        case 12:
-          GFX.drawText(&fabgl::FONT_WIGGLY_8x16, x_text, y_text, tempstring);
-          break;
-        case 13:
-          GFX.drawText(&fabgl::FONT_6x10, x_text, y_text, tempstring);
-          break;
-        case 14:
-          GFX.drawText(&fabgl::FONT_BIGSERIF_8x14, x_text, y_text, tempstring);
-          break;
-        case 15:
-          GFX.drawText(&fabgl::FONT_4x6, x_text, y_text, tempstring);
-          break;
-        case 16:
-          GFX.drawText(&fabgl::FONT_6x12, x_text, y_text, tempstring);
-          break;
-        case 17:
-          GFX.drawText(&fabgl::FONT_7x13, x_text, y_text, tempstring);
-          break;
-        case 18:
-          GFX.drawText(&fabgl::FONT_7x14, x_text, y_text, tempstring);
-          break;
-        case 19:
-          GFX.drawText(&fabgl::FONT_8x9, x_text, y_text, tempstring);
-          break;
-        case 20:
-          GFX.drawText(&fabgl::FONT_COMPUTER_8x14, x_text, y_text, tempstring);
-          break;
-        case 21:
-          GFX.drawText(&fabgl::FONT_SANSERIF_8x14, x_text, y_text, tempstring);
-          break;
-        case 22:
-          GFX.drawText(&fabgl::FONT_6x10, x_text, y_text, tempstring);
-          break;
-        case 23:
-          GFX.drawText(&fabgl::FONT_9x15, x_text, y_text, tempstring);
-          break;
-        case 24:
-          GFX.drawText(&fabgl::FONT_8x16, x_text, y_text, tempstring);
-          break;
-        default:
-          GFX.drawText(&fabgl::FONT_6x8, x_text, y_text, tempstring);
-          break;
-      }
-      string_marker = false;
-
-    }
-    //#######################################################################################################################################
-    //------------------------------------------------ Befehl WIN(nr,x,y,xx,yy,color) -------------------------------------------------------
-    //#######################################################################################################################################
-
-    int win(void) {
-      char c;
-      int nr, a, vv, vh;
-
-      vv = GFX.getHeight();
-      vh = GFX.getWidth();
-      if (*txtpos == NL || *txtpos == ':') {                   //WINDOW ohne Parameter setzt das Hauptfenster
-        if (Frame_nr) {                                        //befinde ich mich in einem Fenster? dann Cursor-Positon merken
-          Frame_curtmpx[Frame_nr] = tc.getCursorCol();
-          Frame_curtmpy[Frame_nr] = tc.getCursorRow();
-        }
-
-        Frame_nr = 0;
-        win_set_cursor(0);
+        fcolor(Vordergrund);
         return 0;
       }
 
-      if (Test_char('(')) return 1;                             //Window(nr) ->setze Fenster
-      if (Frame_nr) {                                           //befinde ich mich in einem Fenster? dann Cursor-Positon merken
-        Frame_curtmpx[Frame_nr] = tc.getCursorCol();
-        Frame_curtmpy[Frame_nr] = tc.getCursorRow();
+      //------------------------------------------ Pixellinie zeichnen ----------------------------------------------------------------
+      void pixel_line(int x, int y, int xx, int yy, uint8_t pix) {
+        for (int a = x; a < xx + 1; a) {
+          for (int b = y; b < yy + 1; b) {
+            GFX.setPixel(a, b);
+            b += pix;
+          }
+          a += pix;
+        }
+
       }
-      nr = abs(get_value());
+      //#######################################################################################################################################
 
-      if (nr < 0) {
-        syntaxerror(valmsg);
-        return 1;
+      //#######################################################################################################################################
+      //-------------------------------------------- Befehl TEXT(x,y,font,String)--------------------------------------------------------------
+      int draw_text(void) {
+        int x_text, y_text, fnt;
+
+        if (Test_char('(')) return 1;
+        x_text = get_value();
+        if (Test_char(',')) return 1;
+        y_text = get_value();
+        if (Test_char(',')) return 1;
+        fnt = get_value();
+        if (Test_char(',')) return 1;
+        get_value();                      //text in tempstring
+        if (Test_char(')')) return 1;
+        drawing_text(fnt, x_text, y_text);
+        return 0;
       }
 
-      if (nr > 5) nr = 5;
-      Frame_nr = nr;                                            //setze aktuelles Fenster
-      if (*txtpos == ')') {
-        txtpos++;
+      void drawing_text(int fnt, int x_text, int y_text)
+      {
+        switch (fnt) {
+          case 0:
+            //GFX.drawTextWithEllipsis(&fabgl::FONT_8x8, x_text, y_text, tempstring, 100);
+            GFX.drawText(&fabgl::FONT_8x8, x_text, y_text, tempstring);
+            break;
+          case 1:
+            GFX.drawText(&fabgl::FONT_5x8, x_text, y_text, tempstring);
+            break;
+          case 2:
+            GFX.drawText(&fabgl::FONT_6x8, x_text, y_text, tempstring);
+            break;
+          case 3:
+            GFX.drawText(&fabgl::FONT_LCD_8x14, x_text, y_text, tempstring);
+            break;
+          case 4:
+            GFX.drawText(&fabgl::FONT_10x20, x_text, y_text, tempstring);
+            break;
+          case 5:
+            GFX.drawText(&fabgl::FONT_BLOCK_8x14, x_text, y_text, tempstring);
+            break;
+          case 6:
+            GFX.drawText(&fabgl::FONT_BROADWAY_8x14, x_text, y_text, tempstring);
+            break;
+          case 7:
+            GFX.drawText(&fabgl::FONT_OLDENGL_8x16, x_text, y_text, tempstring);
+            break;
+          case 8:
+            GFX.drawText(&fabgl::FONT_BIGSERIF_8x16, x_text, y_text, tempstring);
+            break;
+          case 9:
+            GFX.drawText(&fabgl::FONT_SANSERIF_8x14, x_text, y_text, tempstring);
+            break;
+          case 10:
+            GFX.drawText(&fabgl::FONT_COURIER_8x14, x_text, y_text, tempstring);
+            break;
+          case 11:
+            GFX.drawText(&fabgl::FONT_SLANT_8x14, x_text, y_text, tempstring);
+            break;
+          case 12:
+            GFX.drawText(&fabgl::FONT_WIGGLY_8x16, x_text, y_text, tempstring);
+            break;
+          case 13:
+            GFX.drawText(&fabgl::FONT_6x10, x_text, y_text, tempstring);
+            break;
+          case 14:
+            GFX.drawText(&fabgl::FONT_BIGSERIF_8x14, x_text, y_text, tempstring);
+            break;
+          case 15:
+            GFX.drawText(&fabgl::FONT_4x6, x_text, y_text, tempstring);
+            break;
+          case 16:
+            GFX.drawText(&fabgl::FONT_6x12, x_text, y_text, tempstring);
+            break;
+          case 17:
+            GFX.drawText(&fabgl::FONT_7x13, x_text, y_text, tempstring);
+            break;
+          case 18:
+            GFX.drawText(&fabgl::FONT_7x14, x_text, y_text, tempstring);
+            break;
+          case 19:
+            GFX.drawText(&fabgl::FONT_8x9, x_text, y_text, tempstring);
+            break;
+          case 20:
+            GFX.drawText(&fabgl::FONT_COMPUTER_8x14, x_text, y_text, tempstring);
+            break;
+          case 21:
+            GFX.drawText(&fabgl::FONT_SANSERIF_8x14, x_text, y_text, tempstring);
+            break;
+          case 22:
+            GFX.drawText(&fabgl::FONT_6x10, x_text, y_text, tempstring);
+            break;
+          case 23:
+            GFX.drawText(&fabgl::FONT_9x15, x_text, y_text, tempstring);
+            break;
+          case 24:
+            GFX.drawText(&fabgl::FONT_8x16, x_text, y_text, tempstring);
+            break;
+          default:
+            GFX.drawText(&fabgl::FONT_6x8, x_text, y_text, tempstring);
+            break;
+        }
+        string_marker = false;
 
-        if (nr == 0) {                                          //Window(0) setzt ebenfalls das Hauptfenster
+      }
+      //#######################################################################################################################################
+      //------------------------------------------------ Befehl WIN(nr,x,y,xx,yy,color) -------------------------------------------------------
+      //#######################################################################################################################################
+
+      int win(void) {
+        char c;
+        int nr, a, vv, vh;
+
+        vv = GFX.getHeight();
+        vh = GFX.getWidth();
+        if (*txtpos == NL || *txtpos == ':') {                   //WINDOW ohne Parameter setzt das Hauptfenster
+          if (Frame_nr) {                                        //befinde ich mich in einem Fenster? dann Cursor-Positon merken
+            Frame_curtmpx[Frame_nr] = tc.getCursorCol();
+            Frame_curtmpy[Frame_nr] = tc.getCursorRow();
+          }
+
           Frame_nr = 0;
           win_set_cursor(0);
           return 0;
         }
 
-        Terminal.enableCursor(false);                           //Cursor ausschalten um Fehldarstellungen zu verhindern
-        make_win(nr, Frame_col[nr]);                            //fenster neu zeichnen
-        fbcolor(Frame_vcol[nr], Frame_hcol[nr]);                //Vordergrund und Hintergrundfarbe des Fensters setzen
-        if (Frame_title[nr]) {
-          strcpy(tempstring, Frame_ttext[nr]);
-          drawing_text(fontsatz, Frame_x[nr] + x_char[fontsatz], Frame_y[nr] - 3);
+        if (Test_char('(')) return 1;                             //Window(nr) ->setze Fenster
+        if (Frame_nr) {                                           //befinde ich mich in einem Fenster? dann Cursor-Positon merken
+          Frame_curtmpx[Frame_nr] = tc.getCursorCol();
+          Frame_curtmpy[Frame_nr] = tc.getCursorRow();
         }
-        tc.setCursorPos(Frame_curtmpx[nr], Frame_curtmpy[nr]);  //Cursorposition setzen
-        Terminal.enableCursor(onoff);                           //Cursor in vorherigen Zustand setzen
-        return 0;
-      }
+        nr = abs(get_value());
 
-      if (Test_char(',')) return 1;
-      a = get_value();
-      Frame_x[nr] = abs(a * x_char[fontsatz]);
-      if (Frame_x[nr] > vh) Frame_xx[nr] = vh;
+        if (nr < 0) {
+          syntaxerror(valmsg);
+          return 1;
+        }
 
-      if (Test_char(',')) return 1;
-
-      a = get_value();
-      Frame_y[nr] = abs(a * y_char[fontsatz]);
-      if (Frame_y[nr] > vv ) Frame_y[nr] = vv;
-
-      if (Test_char(',')) return 1;                             //Fenster erstellen
-
-      a = get_value();
-      Frame_xx[nr] = abs(a * x_char[fontsatz]);
-      if (Frame_xx[nr] > vh) Frame_xx[nr] = vh;
-
-      if (Test_char(',')) return 1;
-
-      a = get_value();
-      Frame_yy[nr] = abs(a * y_char[fontsatz]);
-      if (Frame_yy[nr] > vv ) Frame_y[nr] = vv;
-
-      if (*txtpos == ',') {                                                //optionale Werte
-        txtpos++;
-        Frame_col[nr] = get_value();                                       //optionale Rahmen-Farbe
-
-        if (*txtpos == ',') {
+        if (nr > 5) nr = 5;
+        Frame_nr = nr;                                            //setze aktuelles Fenster
+        if (*txtpos == ')') {
           txtpos++;
-          get_value();                                                     //optionaler Fenstertitel
-          Frame_title[nr] = true;
-          strcpy(Frame_ttext[nr], tempstring);
-        }
-      }
-      if (Test_char(')')) return 1;
 
-      Frame_vcol[nr] = Vordergrund;                                        //Vordergrund und Hintergrundfarbe wie Hauptfenster
-      Frame_hcol[nr] = Hintergrund;
+          if (nr == 0) {                                          //Window(0) setzt ebenfalls das Hauptfenster
+            Frame_nr = 0;
+            win_set_cursor(0);
+            return 0;
+          }
 
-      make_win(nr, Frame_col[Frame_nr]);                                   //Fenster erstellen
-      win_cls(nr);                                                         //Fensterinhalt löschen
-      fbcolor(Frame_vcol[nr], Frame_hcol[nr]);                             //Vordergrund und Hintergrundfarbe des Fensters setzen
-      if (Frame_title[nr]) {
-        drawing_text(fontsatz, Frame_x[nr] + x_char[fontsatz], Frame_y[nr] - (y_char[fontsatz] / 2) + 1);
-      }
-
-      win_dimension(nr);                                                   //Cursorposition errechnen
-      win_set_cursor(Frame_nr);                                            //Cursor setzen
-
-      return 0;
-
-    }
-
-    //----------------------------------------------- Window-Cursor-Initialwerte errechnen --------------------------------------------------
-
-    void win_dimension(int nr)                                            //Cursor-Initial-Koordinaten errechnen
-    {
-      Frame_curx[nr] = (Frame_x[nr] / x_char[fontsatz]) + 2;
-      Frame_cury[nr] = (Frame_y[nr] / y_char[fontsatz]) + 2;
-    }
-
-    //----------------------------------------------- Window-Rahmen erstellen ---------------------------------------------------------------
-    void make_win(int nr, int col) {                                      //Fensterrahmen erstellen
-      if (col > -1) {                                                     //Werte > -1 erzeugen einen farbigen Rahmen, -1=Rahmen unsichtbar
-        fcolor(col);
-        GFX.drawRectangle(Frame_x[nr], Frame_y[nr], Frame_xx[nr], Frame_yy[nr]);
-        fcolor(Vordergrund);
-      }
-    }
-
-    //----------------------------------------------- Window-Cursor setzen ------------------------------------------------------------------
-
-    void win_set_cursor(int nr) {                                         //Cursor im Fenster setzen
-      fbcolor(Frame_vcol[nr], Frame_hcol[nr]);
-      Frame_curtmpx[nr] = Frame_curx[nr];
-      Frame_curtmpy[nr] = Frame_cury[nr];
-      tc.setCursorPos(Frame_curx[nr], Frame_cury[nr]);
-    }
-
-    //----------------------------------------------- Window-Parameter löschen --------------------------------------------------------------
-    void del_window(void) {                                             //Fensterparameter löschen
-      for (int i = 1; i < 6; i++) {
-        Frame_x[i]        = 0;
-        Frame_y[i]        = 0;
-        Frame_xx[i]       = 0;
-        Frame_yy[i]       = 0;
-        Frame_curx[i]     = 0;              //X-Cursor Initialwert
-        Frame_curtmpx[i]  = 0;              //X-Cursor temporärer Wert
-        Frame_curtmpy[i]  = 0;              //Y-Cursor temporärer Wert
-        Frame_cury[i]     = 0;              //Y-Cursor Initialwert
-        Frame_col[i]      = 0;
-        Frame_vcol[i]     = Vordergrund;
-        Frame_hcol[i]     = Hintergrund;
-        Frame_title[i]    = false;
-        memset(Frame_ttext[i], '\0', sizeof(Frame_ttext[i]));  //Fenster-Titel-String
-      }
-    }
-
-    //----------------------------------------------- Window-Fensterinhalt eine Zeile nach oben scrollen ------------------------------------
-    void move_up(int nr) {
-      int vx, vy, bx, by, cx, cy;
-      fbcolor(Frame_vcol[nr], Frame_hcol[nr]);                                                                //Fensterfarben setzen
-      Terminal.enableCursor(false);                                                                           //Cursor abschalten
-      vx = Frame_x[nr] + x_char[fontsatz];
-      vy = Frame_y[nr] + y_char[fontsatz] + y_char[fontsatz];
-      bx = Frame_x[nr] + x_char[fontsatz];
-      by = Frame_y[nr] + y_char[fontsatz];
-      cx = Frame_xx[nr] - Frame_x[nr];
-      cy = Frame_yy[nr] - Frame_y[nr] - y_char[fontsatz] - y_char[fontsatz];
-      GFX.copyRect(vx, vy, bx, by, cx, cy);                                                                   //Bereich 2.Zeile bis letzte Zeile eine Zeile höher kopieren
-      GFX.fillRectangle(Frame_x[nr] + 1, Frame_yy[nr] - y_char[fontsatz], Frame_xx[nr] - 1, Frame_yy[nr] - 1); //letzte Zeile löschen
-      Terminal.enableCursor(onoff);                                                                           //Cursor wieder in vorherigen Zustand versetzen
-    }
-
-    //------------------------------------------------ CLS im Window ------------------------------------------------------------------------
-
-    void win_cls(int nr) {
-      int zeilen;
-      fbcolor(Frame_vcol[nr], Frame_hcol[nr]);
-      Terminal.enableCursor(false);                                                             //Cursor abschalten um Fehldarstellungen zu verhindern
-      GFX.fillRectangle(Frame_x[nr] + 1, Frame_y[nr] + 1, Frame_xx[nr] - 1, Frame_yy[nr] - 1);  //Fensterbereich innerhalb des Rahmens löschen
-      if (Frame_title[nr]) {                                                                    //Titel vorhanden?
-        strcpy(tempstring, Frame_ttext[nr]);                                                    //Titeltext nach tempstring kopieren
-        drawing_text(fontsatz, Frame_x[nr] + x_char[fontsatz], Frame_y[nr] - 3);                //Titeltext ausgeben
-      }
-      win_set_cursor(nr);                                                                       //initial Cursorposition im Fenster setzen
-      Terminal.enableCursor(onoff);                                                             //Cursor wieder setzen
-    }
-
-
-    //##############################################################################################################################################
-    //----------------------------------------------------------- Utility-Funktionstasten ----------------------------------------------------------
-    //##############################################################################################################################################
-    //########################################################### ASCII-Zeichen ausgeben ###########################################################
-
-    void char_out(int lo, int hi) {
-      int z = 0;
-      int i;
-      char tx[10];
-
-      for ( i = lo; i < hi ; i++ )
-      {
-        printnum(i, 0);
-        outchar('=');
-        outchar(char(i));
-        outchar(' ');
-        z++;
-        if (z == 6) {
-          z = 0;
-          line_terminator();
-        }
-      }
-      fbcolor(Vordergrund, Hintergrund);
-      line_terminator();
-      printmsg("OK>", 0);
-    }
-    //########################################################### Farbcodes ausgeben ###########################################################
-    
-    void color_out(void) {
-      int z = 0;
-      char tx[10];
-
-      for (int i = 0; i < 64 ; i++)
-      {
-        if (i == 0) fbcolor(63, 0);
-        else
-        {
-          fbcolor(0, i);
-          delay(5);                             //kleine Pause, sonst wird die Farbe nicht korrekt gesetzt
-        }
-        outchar(' ');
-        printnum(i, 0);
-        outchar(' ');
-        z++;
-
-        if (z == 8) {
-          z = 0;
-          line_terminator();
+          Terminal.enableCursor(false);                           //Cursor ausschalten um Fehldarstellungen zu verhindern
+          make_win(nr, Frame_col[nr]);                            //fenster neu zeichnen
+          fbcolor(Frame_vcol[nr], Frame_hcol[nr]);                //Vordergrund und Hintergrundfarbe des Fensters setzen
+          if (Frame_title[nr]) {
+            strcpy(tempstring, Frame_ttext[nr]);
+            drawing_text(fontsatz, Frame_x[nr] + x_char[fontsatz], Frame_y[nr] - 3);
+          }
+          tc.setCursorPos(Frame_curtmpx[nr], Frame_curtmpy[nr]);  //Cursorposition setzen
+          Terminal.enableCursor(onoff);                           //Cursor in vorherigen Zustand setzen
+          return 0;
         }
 
-      }
-      fbcolor(Vordergrund, Hintergrund);
-      line_terminator();
-      printmsg("OK>", 0);
-    }
+        if (Test_char(',')) return 1;
+        a = get_value();
+        Frame_x[nr] = abs(a * x_char[fontsatz]);
+        if (Frame_x[nr] > vh) Frame_xx[nr] = vh;
 
+        if (Test_char(',')) return 1;
 
-    //################################################## Systemparameter anzeigen ###########################################################
-    void show_systemparameters(void) {
-      Terminal.println();
-      Terminal.write("BuiltTime : ");
-      Terminal.write(BuiltTime);
-      Terminal.println();
-      Terminal.write("Keyboard  : ");
-      Terminal.print(Keyboard_lang, DEC);
-      Terminal.write("=");
-      Terminal.write(Keylayout[Keyboard_lang]);
-      Terminal.println();
-      Terminal.write("Eeprom-Adr: #");
-      Terminal.print(EEPROM.read(11), HEX);
-      Terminal.println();
-      Terminal.write("Workpath  : ");
-      Terminal.print(sd_pfad);
-      line_terminator();
-      printmsg("OK>", 0);
-    }    
-    //***************************************************** Testbereich - Fill *****************************************************************
-    /*
-      //------------------------------------------ Befehl Fill --------------------------------------------------------------------------------------
-      int fill_area(int x, int y) {
-        int xx, yy, xl, xr, yo, yu;
-        bool d, xl_m, xr_m = false;
+        a = get_value();
+        Frame_y[nr] = abs(a * y_char[fontsatz]);
+        if (Frame_y[nr] > vv ) Frame_y[nr] = vv;
 
-        xl = x;
-        xr = x;
-        yo = y;
-        yu = y;
-        d = false;
+        if (Test_char(',')) return 1;                             //Fenster erstellen
 
-        while (!d) {
+        a = get_value();
+        Frame_xx[nr] = abs(a * x_char[fontsatz]);
+        if (Frame_xx[nr] > vh) Frame_xx[nr] = vh;
 
-          if (Test_pixel(xl, yo, 0) == 0){//Hintergrund) {         //hat Pixel die Hintergrundfarbe?
-            if (xl >= 0 && xl < GFX.getWidth() && yo >= 0) {   //innerhalb der Grenzen bleiben
-              GFX.setPixel(xl, yo);                           //dann setze Pixel
-              delay(1);
-              xl--;                                           //ein Pixel nach links
-            }
-            else xl_m = true;                                 //ausserhalb der Grenzen - abbruch
+        if (Test_char(',')) return 1;
+
+        a = get_value();
+        Frame_yy[nr] = abs(a * y_char[fontsatz]);
+        if (Frame_yy[nr] > vv ) Frame_y[nr] = vv;
+
+        if (*txtpos == ',') {                                                //optionale Werte
+          txtpos++;
+          Frame_col[nr] = get_value();                                       //optionale Rahmen-Farbe
+
+          if (*txtpos == ',') {
+            txtpos++;
+            get_value();                                                     //optionaler Fenstertitel
+            Frame_title[nr] = true;
+            strcpy(Frame_ttext[nr], tempstring);
           }
-          else {                                              //Pixel gesetzt = rand links detektiert - abbruch
-            xl_m = true;
-          }
-
-          if (Test_pixel(xr, yo, 0) == 0){//Hintergrund) {    //hat Pixel die Hintergrundfarbe?
-            if (xr >= 0 && xr < GFX.getWidth() && yo >= 0) {  //innerhalb der Grenzen bleiben
-              GFX.setPixel(xr, yo);                           //dann setze Pixel
-              xr++;                                           //ein Pixxel nach rechts
-            }
-            else xr_m = true;                                 //Grenzen erreicht, dann abbruch
-
-          }
-          else {                                              //rand rechts detektiert, dann abbruch
-            xr_m = true;
-          }
-
-          if (xr_m && xl_m)                                   //Grenzen rechtss und links erreicht
-          {
-            if (Test_pixel(x, yo - 1, 0) == 0)//Hintergrund)      //test Pixel eine Zeile höher
-            {
-              yo--;                                           //eine Zeile höher
-              xr_m = false;                                   //rechten Grenzmarker zurücksetzen
-              xl_m = false;                                   //linken Grenzmarker zurücksetzen
-
-              //x = xr - xl ;                                 //mitte neu errechnen
-              xr = x;
-              xl = x;
-            }
-            else {
-              d = true;
-            }
-          }
-
-
         }
-        //x = xr - 1 - xl - 1;
-        xl = x;
-        xr = x;
-        yu = y;
-        d = false;
+        if (Test_char(')')) return 1;
 
-        while (!d) {
-          if (Test_pixel(xl, yu, 1) !=Vordergrund){//Hintergrund) {
-            if (xl >= 0 && xl < GFX.getWidth() && yu < GFX.getHeight()) {
-              GFX.setPixel(xl, yu);
-              xl--;
-            }
-            else xl_m = true;
+        Frame_vcol[nr] = Vordergrund;                                        //Vordergrund und Hintergrundfarbe wie Hauptfenster
+        Frame_hcol[nr] = Hintergrund;
 
-          }
-          else {                        //rand links detektiert
-            xl_m = true;
-          }
-
-          if (Test_pixel(xr, yu, 1) !=Vordergrund){//Hintergrund) {
-            if (xr >= 0 && xr < GFX.getWidth() && yu < GFX.getHeight()) {
-              GFX.setPixel(xr, yu);
-              xr++;
-            }
-            else xr_m = true;
-
-          }
-          else {                        //rand rechts detektiert
-            xr_m = true;
-          }
-
-          if (xr_m && xl_m)
-          { //rand links und rechts erreicht dann eine Zeile tiefer
-            if (Test_pixel(x, yu + 1, 0) == 0)//Hintergrund)
-            {
-              yu++;
-              xr_m = false;
-              xl_m = false;
-              //x = xr - 1 - xl -1;
-              xr = x;
-              xl = x;
-            }
-            else {
-              d = true;
-            }
-          }
-
+        make_win(nr, Frame_col[Frame_nr]);                                   //Fenster erstellen
+        win_cls(nr);                                                         //Fensterinhalt löschen
+        fbcolor(Frame_vcol[nr], Frame_hcol[nr]);                             //Vordergrund und Hintergrundfarbe des Fensters setzen
+        if (Frame_title[nr]) {
+          drawing_text(fontsatz, Frame_x[nr] + x_char[fontsatz], Frame_y[nr] - (y_char[fontsatz] / 2) + 1);
         }
-        fcolor(Vordergrund);
+
+        win_dimension(nr);                                                   //Cursorposition errechnen
+        win_set_cursor(Frame_nr);                                            //Cursor setzen
+
         return 0;
+
       }
 
-    */
+      //----------------------------------------------- Window-Cursor-Initialwerte errechnen --------------------------------------------------
 
-
-
-    //------------------------------------------------- Prüfe, ob Pixel gesetzt ist --------------------------------------------------------------
-    //->modes=0 - test Pixel gesetzt(1) oder nicht(0); modes=1 gibt die Farbe des Pixels zurück
-
-    int Test_pixel(int x, int y, bool modes) {
-      int buf[3], c;
-      if (x >= 0 && x < GFX.getWidth() && y >= 0 && y < GFX.getHeight()) {
-        buf[0] = GFX.getPixel(x, y).R;
-        buf[1] = GFX.getPixel(x, y).G;
-        buf[2] = GFX.getPixel(x, y).B;
+      void win_dimension(int nr)                                            //Cursor-Initial-Koordinaten errechnen
+      {
+        Frame_curx[nr] = (Frame_x[nr] / x_char[fontsatz]) + 2;
+        Frame_cury[nr] = (Frame_y[nr] / y_char[fontsatz]) + 2;
       }
-      c = (buf[2] / 85) + ((buf[1] / 85) << 2) + ((buf[0] / 85) << 4);
-      if (!modes) {
-        if (c == Hintergrund) //einzelne Farbanteile in 64-Farbwert zurückwandeln
-          return 0;           //Pixel nicht gesetzt
-        else
-          return 1;           //Pixel gesetzt
+
+      //----------------------------------------------- Window-Rahmen erstellen ---------------------------------------------------------------
+      void make_win(int nr, int col) {                                      //Fensterrahmen erstellen
+        if (col > -1) {                                                     //Werte > -1 erzeugen einen farbigen Rahmen, -1=Rahmen unsichtbar
+          fcolor(col);
+          GFX.drawRectangle(Frame_x[nr], Frame_y[nr], Frame_xx[nr], Frame_yy[nr]);
+          fcolor(Vordergrund);
+        }
       }
-      else return c;          //Farbe des Pixels
-    }
+
+      //----------------------------------------------- Window-Cursor setzen ------------------------------------------------------------------
+
+      void win_set_cursor(int nr) {                                         //Cursor im Fenster setzen
+        fbcolor(Frame_vcol[nr], Frame_hcol[nr]);
+        Frame_curtmpx[nr] = Frame_curx[nr];
+        Frame_curtmpy[nr] = Frame_cury[nr];
+        tc.setCursorPos(Frame_curx[nr], Frame_cury[nr]);
+      }
+
+      //----------------------------------------------- Window-Parameter löschen --------------------------------------------------------------
+      void del_window(void) {                                             //Fensterparameter löschen
+        for (int i = 1; i < 6; i++) {
+          Frame_x[i]        = 0;
+          Frame_y[i]        = 0;
+          Frame_xx[i]       = 0;
+          Frame_yy[i]       = 0;
+          Frame_curx[i]     = 0;              //X-Cursor Initialwert
+          Frame_curtmpx[i]  = 0;              //X-Cursor temporärer Wert
+          Frame_curtmpy[i]  = 0;              //Y-Cursor temporärer Wert
+          Frame_cury[i]     = 0;              //Y-Cursor Initialwert
+          Frame_col[i]      = 0;
+          Frame_vcol[i]     = Vordergrund;
+          Frame_hcol[i]     = Hintergrund;
+          Frame_title[i]    = false;
+          memset(Frame_ttext[i], '\0', sizeof(Frame_ttext[i]));  //Fenster-Titel-String
+        }
+      }
+
+      //----------------------------------------------- Window-Fensterinhalt eine Zeile nach oben scrollen ------------------------------------
+      void move_up(int nr) {
+        int vx, vy, bx, by, cx, cy;
+        fbcolor(Frame_vcol[nr], Frame_hcol[nr]);                                                                //Fensterfarben setzen
+        Terminal.enableCursor(false);                                                                           //Cursor abschalten
+        vx = Frame_x[nr] + x_char[fontsatz];
+        vy = Frame_y[nr] + y_char[fontsatz] + y_char[fontsatz];
+        bx = Frame_x[nr] + x_char[fontsatz];
+        by = Frame_y[nr] + y_char[fontsatz];
+        cx = Frame_xx[nr] - Frame_x[nr];
+        cy = Frame_yy[nr] - Frame_y[nr] - y_char[fontsatz] - y_char[fontsatz];
+        GFX.copyRect(vx, vy, bx, by, cx, cy);                                                                   //Bereich 2.Zeile bis letzte Zeile eine Zeile höher kopieren
+        GFX.fillRectangle(Frame_x[nr] + 1, Frame_yy[nr] - y_char[fontsatz], Frame_xx[nr] - 1, Frame_yy[nr] - 1); //letzte Zeile löschen
+        Terminal.enableCursor(onoff);                                                                           //Cursor wieder in vorherigen Zustand versetzen
+      }
+
+      //------------------------------------------------ CLS im Window ------------------------------------------------------------------------
+
+      void win_cls(int nr) {
+        int zeilen;
+        fbcolor(Frame_vcol[nr], Frame_hcol[nr]);
+        Terminal.enableCursor(false);                                                             //Cursor abschalten um Fehldarstellungen zu verhindern
+        GFX.fillRectangle(Frame_x[nr] + 1, Frame_y[nr] + 1, Frame_xx[nr] - 1, Frame_yy[nr] - 1);  //Fensterbereich innerhalb des Rahmens löschen
+        if (Frame_title[nr]) {                                                                    //Titel vorhanden?
+          strcpy(tempstring, Frame_ttext[nr]);                                                    //Titeltext nach tempstring kopieren
+          drawing_text(fontsatz, Frame_x[nr] + x_char[fontsatz], Frame_y[nr] - 3);                //Titeltext ausgeben
+        }
+        win_set_cursor(nr);                                                                       //initial Cursorposition im Fenster setzen
+        Terminal.enableCursor(onoff);                                                             //Cursor wieder setzen
+      }
+
+
+      //##############################################################################################################################################
+      //----------------------------------------------------------- Utility-Funktionstasten ----------------------------------------------------------
+      //##############################################################################################################################################
+      //########################################################### ASCII-Zeichen ausgeben ###########################################################
+
+      void char_out(int lo, int hi) {
+        int z = 0;
+        int i;
+        char tx[10];
+
+        for ( i = lo; i < hi ; i++ )
+        {
+          printnum(i, 0);
+          outchar('=');
+          outchar(char(i));
+          outchar(' ');
+          z++;
+          if (z == 6) {
+            z = 0;
+            line_terminator();
+          }
+        }
+        fbcolor(Vordergrund, Hintergrund);
+        line_terminator();
+        printmsg("OK>", 0);
+      }
+      //########################################################### Farbcodes ausgeben ###########################################################
+
+      void color_out(void) {
+        int z = 0;
+        char tx[10];
+
+        for (int i = 0; i < 64 ; i++)
+        {
+          if (i == 0) fbcolor(63, 0);
+          else
+          {
+            fbcolor(0, i);
+            delay(5);                             //kleine Pause, sonst wird die Farbe nicht korrekt gesetzt
+          }
+          outchar(' ');
+          printnum(i, 0);
+          outchar(' ');
+          z++;
+
+          if (z == 8) {
+            z = 0;
+            line_terminator();
+          }
+
+        }
+        fbcolor(Vordergrund, Hintergrund);
+        line_terminator();
+        printmsg("OK>", 0);
+      }
+
+
+      //################################################## Systemparameter anzeigen ###########################################################
+      void show_systemparameters(void) {
+        Terminal.println();
+        Terminal.write("BuiltTime : ");
+        Terminal.write(BuiltTime);
+        Terminal.println();
+        Terminal.write("Keyboard  : ");
+        Terminal.print(Keyboard_lang, DEC);
+        Terminal.write("=");
+        Terminal.write(Keylayout[Keyboard_lang]);
+        Terminal.println();
+        Terminal.write("Eeprom-Adr: #");
+        Terminal.print(EEPROM.read(11), HEX);
+        Terminal.println();
+        Terminal.write("Workpath  : ");
+        Terminal.print(sd_pfad);
+        line_terminator();
+        printmsg("OK>", 0);
+      }
+      //***************************************************** Testbereich - Fill *****************************************************************
+      /*
+        //------------------------------------------ Befehl Fill --------------------------------------------------------------------------------------
+        int fill_area(int x, int y) {
+          int xx, yy, xl, xr, yo, yu;
+          bool d, xl_m, xr_m = false;
+
+          xl = x;
+          xr = x;
+          yo = y;
+          yu = y;
+          d = false;
+
+          while (!d) {
+
+            if (Test_pixel(xl, yo, 0) == 0){//Hintergrund) {         //hat Pixel die Hintergrundfarbe?
+              if (xl >= 0 && xl < GFX.getWidth() && yo >= 0) {   //innerhalb der Grenzen bleiben
+                GFX.setPixel(xl, yo);                           //dann setze Pixel
+                delay(1);
+                xl--;                                           //ein Pixel nach links
+              }
+              else xl_m = true;                                 //ausserhalb der Grenzen - abbruch
+            }
+            else {                                              //Pixel gesetzt = rand links detektiert - abbruch
+              xl_m = true;
+            }
+
+            if (Test_pixel(xr, yo, 0) == 0){//Hintergrund) {    //hat Pixel die Hintergrundfarbe?
+              if (xr >= 0 && xr < GFX.getWidth() && yo >= 0) {  //innerhalb der Grenzen bleiben
+                GFX.setPixel(xr, yo);                           //dann setze Pixel
+                xr++;                                           //ein Pixxel nach rechts
+              }
+              else xr_m = true;                                 //Grenzen erreicht, dann abbruch
+
+            }
+            else {                                              //rand rechts detektiert, dann abbruch
+              xr_m = true;
+            }
+
+            if (xr_m && xl_m)                                   //Grenzen rechtss und links erreicht
+            {
+              if (Test_pixel(x, yo - 1, 0) == 0)//Hintergrund)      //test Pixel eine Zeile höher
+              {
+                yo--;                                           //eine Zeile höher
+                xr_m = false;                                   //rechten Grenzmarker zurücksetzen
+                xl_m = false;                                   //linken Grenzmarker zurücksetzen
+
+                //x = xr - xl ;                                 //mitte neu errechnen
+                xr = x;
+                xl = x;
+              }
+              else {
+                d = true;
+              }
+            }
+
+
+          }
+          //x = xr - 1 - xl - 1;
+          xl = x;
+          xr = x;
+          yu = y;
+          d = false;
+
+          while (!d) {
+            if (Test_pixel(xl, yu, 1) !=Vordergrund){//Hintergrund) {
+              if (xl >= 0 && xl < GFX.getWidth() && yu < GFX.getHeight()) {
+                GFX.setPixel(xl, yu);
+                xl--;
+              }
+              else xl_m = true;
+
+            }
+            else {                        //rand links detektiert
+              xl_m = true;
+            }
+
+            if (Test_pixel(xr, yu, 1) !=Vordergrund){//Hintergrund) {
+              if (xr >= 0 && xr < GFX.getWidth() && yu < GFX.getHeight()) {
+                GFX.setPixel(xr, yu);
+                xr++;
+              }
+              else xr_m = true;
+
+            }
+            else {                        //rand rechts detektiert
+              xr_m = true;
+            }
+
+            if (xr_m && xl_m)
+            { //rand links und rechts erreicht dann eine Zeile tiefer
+              if (Test_pixel(x, yu + 1, 0) == 0)//Hintergrund)
+              {
+                yu++;
+                xr_m = false;
+                xl_m = false;
+                //x = xr - 1 - xl -1;
+                xr = x;
+                xl = x;
+              }
+              else {
+                d = true;
+              }
+            }
+
+          }
+          fcolor(Vordergrund);
+          return 0;
+        }
+
+      */
+
+
+
+      //------------------------------------------------- Prüfe, ob Pixel gesetzt ist --------------------------------------------------------------
+      //->modes=0 - test Pixel gesetzt(1) oder nicht(0); modes=1 gibt die Farbe des Pixels zurück
+
+      int Test_pixel(int x, int y, bool modes) {
+        int buf[3], c;
+        if (x >= 0 && x < GFX.getWidth() && y >= 0 && y < GFX.getHeight()) {
+          buf[0] = GFX.getPixel(x, y).R;
+          buf[1] = GFX.getPixel(x, y).G;
+          buf[2] = GFX.getPixel(x, y).B;
+        }
+        c = (buf[2] / 85) + ((buf[1] / 85) << 2) + ((buf[0] / 85) << 4);
+        if (!modes) {
+          if (c == Hintergrund) //einzelne Farbanteile in 64-Farbwert zurückwandeln
+            return 0;           //Pixel nicht gesetzt
+          else
+            return 1;           //Pixel gesetzt
+        }
+        else return c;          //Farbe des Pixels
+      }
