@@ -1814,11 +1814,11 @@ void ShowTinyResetMenu()
 // perform the actual update from a given stream
 void performUpdate(Stream &updateSource, size_t updateSize) {
 
-  if (Update.begin(updateSize, U_FLASH, 2, 1, "Basic")) {
+  if (Update.begin(updateSize, U_FLASH, 2, 1, " ")) {
     size_t written = Update.writeStream(updateSource);
 
     if (Update.end()) {
-      SDLprintText("Basic32+ loaded successfully, now Reboot", (30), (160), ID_COLOR_WHITE, ID_COLOR_BLACK); //Serial.println("OTA done!");
+      SDLprintText("Starter loaded successfully, now Reboot", (30), (160), ID_COLOR_WHITE, ID_COLOR_BLACK); //Serial.println("OTA done!");
       if (Update.isFinished()) {
         delay(1000);
         ESP.restart();
@@ -1835,15 +1835,15 @@ void basic_loader(void) {
     SDLprintText("SD-Card Mount-Error!", (30), (160), ID_COLOR_WHITE, ID_COLOR_BLACK);
     return;
   }
-  if ( !SD.exists("/basic.bin") ) SDLprintText("Basic not found!", (30), (160), ID_COLOR_WHITE, ID_COLOR_BLACK);
+  if ( !SD.exists("/run.bin") ) SDLprintText("Starter not found!", (30), (160), ID_COLOR_WHITE, ID_COLOR_BLACK);
 
-  File updateBin = SD.open("/basic.bin");
+  File updateBin = SD.open("/run.bin");
 
   if (updateBin) {
     size_t updateSize = updateBin.size();
 
     if (updateSize > 0) {
-      SDLprintText("load Basic32+", (30), (160), ID_COLOR_WHITE, ID_COLOR_BLACK);
+      SDLprintText("load Starter", (30), (160), ID_COLOR_WHITE, ID_COLOR_BLACK);
       //Serial.println("load Basic32+");
       performUpdate(updateBin, updateSize);
     }

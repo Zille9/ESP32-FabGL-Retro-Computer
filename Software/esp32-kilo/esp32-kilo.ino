@@ -550,12 +550,12 @@ void editorProcessKeypress() {
       
       break;
     case F9_KEY:
-      
+      editorSave(SD);
+      basic_load("/run.bin");
       break;
     
     case ENTER_KEY:
       editorInsertNewline();
-      //editorSave(SPIFFS);
       break;
     case HOME_KEY:
       E.cx = 0;
@@ -573,7 +573,7 @@ void editorProcessKeypress() {
       EEPROM.write(200,colour);
       EEPROM.commit();
       editorSave(SD);
-      basic_load();
+      basic_load("/basic.bin");
       break;
 
     case PAGE_UP:
@@ -784,11 +784,11 @@ void loop() {
 // perform the actual update from a given stream
 void performUpdate(Stream &updateSource, size_t updateSize) {
 
-  if (Update.begin(updateSize, U_FLASH, 2, 1, "Basic")) {
+  if (Update.begin(updateSize, U_FLASH, 2, 1, " ")) {
     size_t written = Update.writeStream(updateSource);
 
     if (Update.end()) {
-      editorSetStatusMessage("   Basic32+ loaded successfully, now Reboot   "); 
+      editorSetStatusMessage("   loaded successfully, now Reboot   "); 
       if (Update.isFinished()) {
         delay(1000);
         ESP.restart();
@@ -797,17 +797,17 @@ void performUpdate(Stream &updateSource, size_t updateSize) {
   }
 }
 
-void basic_load(void) {
+void basic_load(String fn) {
 
-  if ( !SD.exists("/basic.bin") ) editorSetStatusMessage("     Basic not found!     ");
+  if ( !SD.exists(fn) ) editorSetStatusMessage("     Program not found!     ");
 
-  File updateBin = SD.open("/basic.bin");
+  File updateBin = SD.open(fn);
 
   if (updateBin) {
     size_t updateSize = updateBin.size();
 
     if (updateSize > 0) {
-      editorSetStatusMessage("             load Basic32+           ");
+      editorSetStatusMessage("             load Program           ");
       //Serial.println("load Basic32+");
       performUpdate(updateBin, updateSize);
     }

@@ -832,13 +832,13 @@ void ShowTinyScreenAdjustMenu()
 // perform the actual update from a given stream
 void performUpdate(Stream &updateSource, size_t updateSize) {
   Canvas cv(&VGAController);
-  if (Update.begin(updateSize, U_FLASH, 2, 1, "Basic")) {
+  if (Update.begin(updateSize, U_FLASH, 2, 1, " ")) {
     size_t written = Update.writeStream(updateSource);
 
     if (Update.end()) {
       cv.setPenColor(Color::Yellow);
       cv.setBrushColor(Color::Black);   
-      cv.drawText(160,320,"Basic32+ loaded successfully, now Reboot");
+      cv.drawText(160,320,"Starter loaded successfully, now Reboot");
       //vga.setTextColor(WHITE,BLACK);
       //vga.setCursor(10, 80);
   
@@ -862,15 +862,15 @@ void basic_loader(void) {
     //vga.print("SD-Card Mount-Error!");
     return;
   }
-  if ( !SD.exists("/basic.bin") ) {
+  if ( !SD.exists("/run.bin") ) {
     cv.setPenColor(Color::Magenta);
     cv.setBrushColor(Color::Black);   
-    cv.drawText(200,320,"Basic not found!");
+    cv.drawText(200,320,"Starter not found!");
     //vga.print("Basic not found!");
     return;
   }
 
-  File updateBin = SD.open("/basic.bin");
+  File updateBin = SD.open("/run.bin");
 
   if (updateBin) {
     size_t updateSize = updateBin.size();
@@ -878,7 +878,7 @@ void basic_loader(void) {
     if (updateSize > 0) {
       cv.setPenColor(Color::White);
       cv.setBrushColor(Color::Black);   
-      cv.drawText(200,320,"load Basic32+");
+      cv.drawText(200,320,"load Starter");
       //vga.print("load Basic32+");
       //Serial.println("load Basic32+");
       performUpdate(updateBin, updateSize);

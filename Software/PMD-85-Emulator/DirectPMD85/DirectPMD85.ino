@@ -601,11 +601,11 @@ void loop()
 // perform the actual update from a given stream
 void performUpdate(Stream &updateSource, size_t updateSize) {
 
-  if (Update.begin(updateSize, U_FLASH, 2, 1, "Basic")) {
+  if (Update.begin(updateSize, U_FLASH, 2, 1, " ")) {
     size_t written = Update.writeStream(updateSource);
 
     if (Update.end()) {
-      Serial.println("   Basic32+ loaded successfully, now Reboot   "); 
+      Serial.println("   Starter loaded successfully, now Reboot   "); 
       if (Update.isFinished()) {
         delay(1000);
         ESP.restart();
@@ -616,15 +616,15 @@ void performUpdate(Stream &updateSource, size_t updateSize) {
 
 void basic_load(void) {
   file.close();
-  if ( !SD.exists("/basic.bin") ) Serial.println("Basic not found!");
+  if ( !SD.exists("/run.bin") ) Serial.println("Starter not found!");
 
-  file = SD.open("/basic.bin");
+  file = SD.open("/run.bin");
 
   if (file) {
     size_t updateSize = file.size();
 
     if (updateSize > 0) {
-      Serial.println("load Basic32+");
+      Serial.println("load Starter");
       performUpdate(file, updateSize);
     }
     file.close();

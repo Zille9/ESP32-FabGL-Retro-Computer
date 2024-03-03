@@ -430,7 +430,7 @@ void ShowTinySoundMenu()
 // perform the actual update from a given stream
 void performUpdate(Stream &updateSource, size_t updateSize) {
 
-  if (Update.begin(updateSize, U_FLASH, 2, 1, "Basic")) {
+  if (Update.begin(updateSize, U_FLASH, 2, 1, " ")) {
     size_t written = Update.writeStream(updateSource);
 
     if (Update.end()) {
@@ -456,13 +456,13 @@ void basic_loader(void) {
     vga.print("SD-Card Mount-Error!");
     return;
   }
-  if ( !SD.exists("/basic.bin") ) {
+  if ( !SD.exists("/run.bin") ) {
     vga.setTextColor(WHITE,BLACK);
     vga.setCursor(10, 80);
-    vga.print("Basic not found!");
+    vga.print("Starter not found!");
   }
 
-  File updateBin = SD.open("/basic.bin");
+  File updateBin = SD.open("/run.bin");
 
   if (updateBin) {
     size_t updateSize = updateBin.size();
@@ -470,7 +470,7 @@ void basic_loader(void) {
     if (updateSize > 0) {
       vga.setTextColor(WHITE,BLACK);
       vga.setCursor(10, 80);
-      vga.print("load Basic32+");
+      vga.print("load Starter");
       //Serial.println("load Basic32+");
       performUpdate(updateBin, updateSize);
     }

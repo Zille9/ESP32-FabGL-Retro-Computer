@@ -703,13 +703,13 @@ void loop(void) {
 //------------------------------------- Testbereich SD-Update -----------------------------------------------------------------------------
     void load_binary(void) {
 
-      File32 updateBin = SD.open("/basic.bin");
+      File32 updateBin = SD.open("/run.bin");
 
       if (updateBin) {
         size_t updateSize = updateBin.size();
 
         if (updateSize > 0) {
-          Terminal.println("load Basic32+ "+ String(updateSize));
+          Terminal.println("load Starter "+ String(updateSize));
           performUpdate(updateBin, updateSize);
         }
         else {
@@ -724,7 +724,7 @@ void loop(void) {
 
     // perform the actual update from a given stream
     void performUpdate(Stream &updateSource, size_t updateSize) {
-      if (Update.begin(updateSize, U_FLASH, 2, 1, "Basic")) {
+      if (Update.begin(updateSize, U_FLASH, 2, 1, " ")) {
         size_t written = Update.writeStream(updateSource);
         if (written == updateSize) {
           Terminal.println("Written : " + String(written) + " successfully");

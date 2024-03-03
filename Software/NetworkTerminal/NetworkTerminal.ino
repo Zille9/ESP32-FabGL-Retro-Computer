@@ -476,11 +476,11 @@ void loop()
 // perform the actual update from a given stream
 void performUpdate(Stream &updateSource, size_t updateSize) {
 
-  if (Update.begin(updateSize, U_FLASH, 2, 1, "Basic")) {
+  if (Update.begin(updateSize, U_FLASH, 2, 1, " ")) {
     size_t written = Update.writeStream(updateSource);
 
     if (Update.end()) {
-      Terminal.println("   Basic32+ loaded successfully, now Reboot   "); 
+      Terminal.println("   Starter loaded successfully, now Reboot   "); 
       if (Update.isFinished()) {
         delay(1000);
         ESP.restart();
@@ -498,15 +498,15 @@ void basic_load(void) {
     return;
   }
 
-  if ( !SD.exists("/basic.bin") ) Terminal.println("     Basic not found!     ");
+  if ( !SD.exists("/run.bin") ) Terminal.println("     Starter not found!     ");
 
-  File updateBin = SD.open("/basic.bin");
+  File updateBin = SD.open("/run.bin");
 
   if (updateBin) {
     size_t updateSize = updateBin.size();
 
     if (updateSize > 0) {
-      Terminal.println("             load Basic32+           ");
+      Terminal.println("             load Starter           ");
       //Serial.println("load Basic32+");
       performUpdate(updateBin, updateSize);
     }

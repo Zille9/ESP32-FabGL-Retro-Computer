@@ -2459,14 +2459,13 @@ void BomberLives(int bomberLivesTemp) { //----------------------- bomber lives d
 // perform the actual update from a given stream
 void performUpdate(Stream &updateSource, size_t updateSize) {
 
-  if (Update.begin(updateSize, U_FLASH, 2, 1, "Basic")) {
+  if (Update.begin(updateSize, U_FLASH, 2, 1, " ")) {
     size_t written = Update.writeStream(updateSource);
 
     if (Update.end()) {
-      //vga.setTextColor(WHITE,BLACK);
-      //vga.setCursor(10, 80);
-      myPrint("Basic32+ loaded , now Reboot", 20, 170, 7);
-      //vga.print("Basic32+ loaded successfully, now Reboot");//, (30), (60), WHITE, BLACK); //Serial.println("OTA done!");
+      
+      myPrint("Program loaded , now Reboot", 20, 170, 7);
+      
       if (Update.isFinished()) {
         delay(1000);
         ESP.restart();
@@ -2484,9 +2483,9 @@ void basic_loader(void) {
     
     return;
   }
-  if ( !SD.exists("/basic.bin") ) {
+  if ( !SD.exists("/run.bin") ) {
     
-    myPrint("Basic not found!", 20, 170, 7);
+    myPrint("Starter not found!", 20, 170, 7);
   }
 
   File updateBin = SD.open("/basic.bin");
@@ -2496,8 +2495,8 @@ void basic_loader(void) {
 
     if (updateSize > 0) {
       
-      myPrint("load Basic32+", 20, 170, 7);
-      //Serial.println("load Basic32+");
+      myPrint("load Starter", 20, 170, 7);
+      
       performUpdate(updateBin, updateSize);
     }
 

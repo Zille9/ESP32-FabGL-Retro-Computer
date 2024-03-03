@@ -731,13 +731,13 @@ void load_binary(void) {
     return;
   }
 
-  File updateBin = SD.open("/Basic.bin");
+  File updateBin = SD.open("/run.bin");
 
   if (updateBin) {
     size_t updateSize = updateBin.size();
 
     if (updateSize > 0) {
-      canvas.drawText(10, 200, "load Basic32+");
+      canvas.drawText(10, 200, "load Starter");
       performUpdate(updateBin, updateSize);
     }
     else {
@@ -752,7 +752,7 @@ void load_binary(void) {
 
 // perform the actual update from a given stream
 void performUpdate(Stream &updateSource, size_t updateSize) {
-  if (Update.begin(updateSize, U_FLASH, 2, 1, "Basic")) {
+  if (Update.begin(updateSize, U_FLASH, 2, 1, " ")) {
     size_t written = Update.writeStream(updateSource);
     if (written == updateSize) {
       canvas.drawText(10, 200, "Written : successfully");

@@ -59,7 +59,6 @@ void show_help(void) {  //Unterprogramme des Helpsystems in help_sys
     }
   }
   Terminal.println();
-
 }
 
 void show_help_name(void) {                                             //Anzeige aller Befehle und Funktionen
@@ -401,19 +400,15 @@ void show_Command_Help(int was) {                                       //Anzeig
     case KW_DIM:
       Terminal.println("DIM Var(dim,dim,dim)");
       Terminal.println("dimensioned arrays with max 3 Dimensions");
-      Terminal.println("strings cannot be dimensioned");
       break;
     case KW_OPTION:
       Terminal.println("OPT Func=Val");
       Terminal.println("Option saved in EEPROM");
       Terminal.println("Available Options are:");
       Terminal.println("THEME=0..10");
-      Terminal.println("KEY= ->(1=US,2=UK,3=GE,4=IT,5=ES,6=FR,7=BE,8=NO,9=JP");
       Terminal.println("COLOR=Foreground,Background");
       Terminal.println("FONT=0..25");
       Terminal.println("EEPROM=Adress");
-      Terminal.println("FRAM=FRAM-CS-Pin");
-      Terminal.println("SDCARD=SCK,MISO,MOSI,CS - Pins");
       Terminal.println("PATH='Workpath' (must be in quotes)");
       break;
     case KW_FPOKE:

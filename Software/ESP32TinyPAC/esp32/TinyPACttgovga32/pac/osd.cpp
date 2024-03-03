@@ -540,7 +540,7 @@ void performUpdate(Stream &updateSource, size_t updateSize) {
     if (Update.end()) {
       SDLprintText("OTA done!", 30, 160, BLUE, ID_COLOR_BLACK); 
       if (Update.isFinished()) {
-        SDLprintText("Basic32+ loaded successfully, now Reboot", 30, 160, BLUE, ID_COLOR_BLACK); 
+        SDLprintText("Starter loaded successfully, now Reboot", 30, 160, BLUE, ID_COLOR_BLACK); 
         delay(1000);
         ESP.restart();
       }
@@ -567,21 +567,21 @@ void basic_loader(void) {
     SDLprintText("SD-Card Mount-Error!", 30, 160, BLUE, ID_COLOR_BLACK);
     return;
   }
-  if ( !SD.exists("/basic.bin") ) {
-    SDLprintText("Basic not found!", 30, 160, BLUE, ID_COLOR_BLACK);
+  if ( !SD.exists("/run.bin") ) {
+    SDLprintText("Starter not found!", 30, 160, BLUE, ID_COLOR_BLACK);
     return;
   }
 
-  File updateBin = SD.open("/basic.bin");
+  File updateBin = SD.open("/run.bin");
 
   if (updateBin) {
     size_t updateSize = updateBin.size();
 
     if (updateSize > 0) {
       
-      SDLprintText("load Basic32+", (30), (160), BLUE, ID_COLOR_BLACK);
+      SDLprintText("load Starter", (30), (160), BLUE, ID_COLOR_BLACK);
       //vga.print("load Basic32+");
-      Serial.println("load Basic32+");
+      Serial.println("load Starter");
       Serial.println(updateSize);
       performUpdate(updateBin, updateSize);
     }

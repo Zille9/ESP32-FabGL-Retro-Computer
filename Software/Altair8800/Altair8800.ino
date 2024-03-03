@@ -599,16 +599,16 @@ void basicloader(void) {
   if ( !SD.begin( kSD_CS, spiSD )) {                        //SD-Card starten
     Terminal.println("Mount-Error");
   }
-  if ( !SD.exists("/basic.bin") ) Terminal.print("Basic not found");
+  if ( !SD.exists("/basic.bin") ) Terminal.print("Starter not found");
 
   
-  File updateBin = SD.open("/basic.bin");
+  File updateBin = SD.open("/run.bin");
 
   if (updateBin) {
   size_t updateSize = updateBin.size();
 
     if (updateSize > 0) {
-      Terminal.println("load Basic32+");
+      Terminal.println("load Starter");
       performUpdate(updateBin, updateSize);
     }
     else {
@@ -624,7 +624,7 @@ void basicloader(void) {
 // perform the actual update from a given stream
 void performUpdate(Stream &updateSource, size_t updateSize) {
 
-  if (Update.begin(updateSize, U_FLASH, 2, 1, "Basic")) {
+  if (Update.begin(updateSize, U_FLASH, 2, 1, " ")) {
     //Terminal.println("perform Update");
     
     
