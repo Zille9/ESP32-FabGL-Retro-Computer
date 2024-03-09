@@ -74,15 +74,17 @@ static char sd_pfad[2];            //SD-Card Datei-Pfad
 
 int Key_l = 0;
 int Key_r = 0;
+int Key_u = 0;
+int Key_d = 0;
 
-int title_length = 0;
-
+//int title_length = 0;
+uint8_t curGain = 200;    //current loudness
 
 bool Key_esc = false;
 
 // Credential of the local WiFi
-const char* ssid     = "**************";
-const char* password = "**************";
+const char* ssid     = "***********";
+const char* password = "***********";
 
 // URL of internet radio station
 const char *URL[] PROGMEM = {
@@ -113,7 +115,7 @@ const char* title[] PROGMEM = {"Golden Apple", "Hitradio Potsdam", "Countrymusic
                                "Nightline Radio", "Radio Corax", "Radio-F.R.E.I","Radio Stuttgart","Radio Neumuenster","Bermudafunk",
                                "Radio T Chemnitz","Rundfunkkombinat","Buerger-Radio","Dance Wave!","Berliner Rundfunk","ORF Hitradio",
                                "HitRadio FFH","Cafe 80s FM"};
-int    x_position[] PROGMEM = {140 , 122 , 132, 167 , 132, 147, 127, 147 , 137 , 127 , 117 , 147, 122, 122, 127, 147, 117, 142, 142, 147};
+int    x_position[] PROGMEM = {140 , 122 , 132, 167 , 132, 147, 127, 147 , 137 , 127 , 117 , 147, 122, 122, 127, 147, 117, 142, 142, 147}; //194-(10xZeichenzahl)/2+105 ->Anzeige mittig
 int stations = 20;
 int act_station = 0;
 
@@ -130,7 +132,7 @@ void bcolor(int bc) {
   GFX.setBrushColor((bitRead(bc, 5) * 2 + bitRead(bc, 4)) * 64, (bitRead(bc, 3) * 2 + bitRead(bc, 2)) * 64, (bitRead(bc, 1) * 2 + bitRead(bc, 0)) * 64);
 }
 
-
+/*
 // Called when a metadata event occurs (i.e. an ID3 tag, an ICY block, etc.
 void MDCallback(void *cbData, const char *type, bool isUnicode, const char *string)
 {
@@ -144,11 +146,25 @@ void MDCallback(void *cbData, const char *type, bool isUnicode, const char *stri
   s2[sizeof(s2) - 1] = 0;
   //Serial.printf("METADATA(%s) '%s' = '%s'\n", ptr, s1, s2);
   GFX.fillRectangle(105, 120, 299, 139);
-  drawing_text(2, 105, 120, s1);
+  //drawing_text(2, 105, 120, s1);
   drawing_text(2, 105, 132, s2);
   //Serial.flush();
+}//callback function will be called if meta data were found in input stream
+*/
+void MDCallback(void *cbData, const char *type, bool isUnicode, const char *string)
+{ char title[32];
+  if (strstr_P(type, PSTR("Title"))) { 
+    strncpy(title, string, sizeof(title));
+    title[sizeof(title)-1] = 0;
+    //Serial.printf(" %s\n", title);
+    //show the message on the display
+    //newTitle = true;
+    GFX.fillRectangle(105, 130, 299, 139);
+    //drawing_text(2, 105, 120, s1);
+    drawing_text(2, 105, 132, title);
+  
+  };
 }
-
 /*
 // Called when there's a warning or error (like a buffer underflow or decode hiccup)
 void StatusCallback(void *cbData, int code, const char *string)
@@ -165,6 +181,16 @@ void StatusCallback(void *cbData, int code, const char *string)
 }
 */
 
+//change the loudness to current gain
+void setGain(){
+  float v = curGain / 100.0;
+  out->SetGain(v);  //the parameter is the loudness as percent
+  drawing_text(3, 125, 115, "Volume:");
+  GFX.fillRectangle(180, 115, 280, 127);
+  drawing_text(3, 180, 115, String(curGain));
+}
+
+
 void display_Time(void){
   String cbuf;
   getdatetime();
@@ -172,7 +198,7 @@ void display_Time(void){
   {
     GFX.fillRectangle(180, 140, 280, 157);
     if(Zeit[0]<10) cbuf="0";
-    cbuf=String(Zeit[0])+":";
+    cbuf+=String(Zeit[0])+":";
     if(Zeit[1]<10) cbuf+="0";
     cbuf+=String(Zeit[1]);
     drawing_text(3, 180, 143, cbuf);
@@ -202,7 +228,7 @@ void setup()
   Keyboard.begin(GPIO_NUM_33, GPIO_NUM_32);
   PS2Controller.keyboard() -> setLayout(&fabgl::GermanLayout);                //deutsche Tastatur
   delay(200);
-
+  
   PS2Controller.keyboard()-> onVirtualKey = [&](VirtualKey * vk, bool keyDown) {
     if (*vk == VirtualKey::VK_RIGHT) {
       if (keyDown) {
@@ -220,24 +246,25 @@ void setup()
       }
       *vk = VirtualKey::VK_NONE;
     }
-    /*
-        if (*vk == VirtualKey::VK_UP) {
+    
+        if (*vk == VirtualKey::VK_PLUS) {
           if (keyDown) {
-            Key_y--;
-            swap = true;
-            if (Key_y < 0) Key_y = 3;
+            Key_u = 1;
+            curGain++;
+            if (curGain > 200) curGain = 200;
           }
-           vk = VirtualKey::VK_NONE;
+           *vk = VirtualKey::VK_NONE;
         }
-        else if (*vk == VirtualKey::VK_DOWN) {                                               //
+        else if (*vk == VirtualKey::VK_MINUS) {                                               //
           if (keyDown) {
-            Key_y++;
-            swap = true;
-            if (Key_y > 3) Key_y = 0;
+            Key_d = 1;
+            curGain--;
+            if (curGain < 0) curGain = 0;
+            
           }
-           vk = VirtualKey::VK_NONE;
+           *vk = VirtualKey::VK_NONE;
         }
-    */
+    
     else if (*vk == VirtualKey::VK_ESCAPE) {                                               //
       if (keyDown) {
         Key_esc = true;
@@ -301,7 +328,7 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
   GFX.fillRectangle(0, 0, 399, 73);                        //Platz über dem Radio
   fcolor(60);
   drawing_text(4, 45, 10, "*** WEB-RADIO by Zille-Soft ***");
-  drawing_text(0, 132, 30, "Vers1.0 - 03/2024");
+  drawing_text(0, 132, 30, "Vers1.1 - 09/2024");
 
   bcolor(11);
   GFX.fillRectangle(100, 92, 299, 157);                    //Display-Ausschnitt
@@ -337,6 +364,9 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
   getdatetime();                                              //ESP32-interne Uhr stellen für Datei-Zeitstempel
 
   out = new AudioOutputI2S(0, 1);  // use the internal DAC channel 1 (pin25) on ESP32
+  curGain = 50; //default value
+  
+
   startUrl();
 
 }
@@ -365,19 +395,15 @@ void stopPlaying() {
 void startUrl() {
   stopPlaying();  //first close existing streams
   //open input file for selected url
-  //Serial.printf("Active station %s\n",stationlist[actStation].url);
   file = new AudioFileSourceICYStream(URL[act_station]);
   //register callback for meta data
   file->RegisterMetadataCB(MDCallback, NULL);
   //create a new buffer which uses the preallocated memory
   buff = new AudioFileSourceBuffer(file, 8 * 1024);
-  //buff->RegisterStatusCB(StatusCallback, (void*)"buffer");
-  //Serial.printf_P(PSTR("sourcebuffer created - Free mem=%d\n"), ESP.getFreeHeap());
   //create and start a new decoder
   mp3 = new AudioGeneratorMP3();
-  //Serial.printf_P(PSTR("created decoder\n"));
-  //Serial.printf_P("Decoder start...\n");
   mp3->begin(buff, out);
+  setGain();
 }
 
 
@@ -386,19 +412,26 @@ void loop()
   if (mp3->isRunning()) {
     if (!mp3->loop()) {
       mp3->stop();
+      delay(1000);
+      startUrl();
     }
-  } else {
-    delay(1000);
-    mp3->begin(buff, out);
-  }
+  } 
+  //else {
+  //  delay(1000);
+  //  mp3->begin(buff, out);
+  //}
   if (Key_l || Key_r) {
     Key_l = Key_r = 0;
     GFX.fillRectangle(105, 95, 299, 115); //Stationsnamenfeld
-    GFX.fillRectangle(105, 120, 299, 139); //Streamtitelfeld
+    GFX.fillRectangle(105, 130, 299, 139); //Streamtitelfeld
     GFX.fillRectangle(280, 140, 299, 157); //Stationsnummernfeld
     drawing_text(3, 280, 143, String(act_station + 1));
     drawing_text(4, x_position[act_station], 95, String(title[act_station]));     //aktuelle Station mittig anzeigen00
     startUrl();
+  }
+  if (Key_u || Key_d){
+    Key_u = Key_d = 0;
+    setGain();
   }
   if (Key_esc) {
     mp3->stop();
