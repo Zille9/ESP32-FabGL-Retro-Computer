@@ -45,9 +45,14 @@
 // April 2021
 //
 //
-#define BasicVersion "1.99b"
-#define BuiltTime "03.03.2024"
+#define BasicVersion "2.00b"
+#define BuiltTime "09.03.2024"
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v2.00b:09.03.2024          -mp3-Player hinzugefügt - ist noch rudimentär aber funktioniert ->RUN"/filename.mp3"
+//                            -momentan wird der ID3-Tag als Text ausgeworfen
+//                            -ob der Player einen eigenen Befehl (z.Bsp.Play) erhält, ist noch nicht ganz klar (start, stop, pause, nächster- und vorheriger Titel wären nicht schlecht) 
+//                            -
+//
 // v1.99b:03.03.2024          -diverse Definitionen nach cfg.h verschoben (Display-Art, Tastatur-Layout, Pinkonfigurationen usw.)
 //                            -dadurch einige Codezeilen entfernt (ca.50) und einige Options-Funktionen gekürzt (SD-Card-Pins, Tastatur-Layout)
 //                            -Fehler im Editor Kilo entdeckt, wird ein Programm nicht geändert fehlt nach dem Laden im Basic das letzte Zeichen
@@ -153,7 +158,7 @@ byte Editor_marker = 101;  // EEPROM-Platz 101 beinhaltet den Editor-marker (123
 #define kSD_OK    1      //OK-Marker
 File fp;
 
-const char* filetype[] = {".bin", ".bas", ".bmp"};
+const char* filetype[] = {".bin", ".bas", ".bmp", "mp3"};
 const char*  Programs[] PROGMEM = {"Basic32+", "RunCP/M", "CPC-Emu", "ZX81-Emu", "Spectrum-Emu", "KIM1-Emu", "Gameboy-Emu", "VIC-20-Emu", "KILO-Texteditor", "Games", "Vectrex-Emu", "Altair8800-Emu", "Pacman", "Telnet", "PMD-85-Emu", "Invaders"};         //Programme
 const char* filenames[] PROGMEM = {"basic", "cpm", "cpc", "esp81", "zxesp", "kim1", "gameboy", "Vic20", "kilo", "games", "vectrex", "altair", "pacman", "Telnet", "pmd85", "Invaders"}; //Datei-Namen
 
@@ -584,7 +589,7 @@ enum {
   KW_PRINTING,
   KW_WINDOW,
   KW_HELP,
-  KW_FRAME,   
+  KW_FRAME,
   KW_DEFAULT  //81/* hier ist das Ende */
 };
 
@@ -3857,7 +3862,7 @@ interpreteAtTxtpos:
         else show_help_name();
         *txtpos = NL;                     //Zeile muss beendet werden,da bei Eingabe des Befehls nach Help sonst Fehler auftreten (es werden evt. Parameter erwartet)
         break;
-               
+
       case KW_DEFAULT:
         if (var_get())
           continue;
@@ -5630,7 +5635,7 @@ static int inchar()
 
           switch (c) {
             /*
-            case 27:
+              case 27:
               if (Terminal.available() ) {
               d = Terminal.read();
               c = d;
@@ -5638,7 +5643,7 @@ static int inchar()
               //Terminal.print(d,DEC);
               }
               break;
-              */
+            */
             case 0x03:       // ctrl+c        -> BREAK
               current_line = 0;
               sp = program + sizeof(program);
@@ -5804,7 +5809,36 @@ void Show_LED(int p, int lv) {                              //Laufwerksanzeige e
     pinMode(p, INPUT);
   }
 }
+/*
+//#######################################################################################################################################
+//--------------------------------------------- MP3 - Player ----------------------------------------------------------------------------
+//#######################################################################################################################################
 
+void play_mp3(void) {
+  fp = SD.open(String(sd_pfad) + String(tempstring));     //Datei zum Laden öffnen
+  source = new AudioFileSourceSD();
+  //  id3->RegisterMetadataCB(MDCallback, (void*)"ID3");
+  out = new AudioOutputI2S(0, 1);  // use the internal DAC channel 1 (pin25) on ESP32
+  source->open(fp.name());
+  id3 = new AudioFileSourceID3(source);
+  mp3 = new AudioGeneratorMP3();
+  mp3->begin(id3, out);
+  while (!break_marker)           //Abbruch mit ESC
+  {
+    if (mp3->isRunning()) {
+      if (!mp3->loop()) {
+        mp3->stop();
+        break_marker = true;      //am Liedende Ausstieg
+      }
+    }
+  }
+  
+  mp3->stop();
+  break_marker = false;
+  sd_ende();
+}
+
+*/
 //#######################################################################################################################################
 //--------------------------------------------- LOAD - Befehl ---------------------------------------------------------------------------
 //#######################################################################################################################################
@@ -5849,6 +5883,9 @@ static int load_file(void)
       case 2:
         load_binary();
         break;
+      case 3:
+        play_mp3();
+        break;
       default:
         break;
     }
@@ -5859,20 +5896,22 @@ static int load_file(void)
 }
 
 int check_extension() {
-  String cbuf, dbuf, ebuf, fbuf;
-  int a, b, c;
-  c = 0;
+  String cbuf, dbuf;//, ebuf, fbuf, gbuf;
+  int a, b, c, d;
+  d = 0;
   dbuf = String(tempstring);
   dbuf.toUpperCase();                               //String in Grossbuchstaben umwandeln
   cbuf = dbuf.substring(dbuf.length() - 4, dbuf.length());  //in cbuf steht die Dateierweiterung von tempstring
-  ebuf = ".BAS";
-  fbuf = ".BIN";
-  a = cbuf.compareTo(ebuf);
-  b = cbuf.compareTo(fbuf);
-  if (a == 0) c = 1;
-  if (b == 0) c = 2;
+  
+
+  a = cbuf.compareTo(".BAS");
+  b = cbuf.compareTo(".BIN");
+  c = cbuf.compareTo(".MP3");
+  if (a == 0) d = 1;
+  if (b == 0) d = 2;
+  if (c == 0) d = 3;
   //Terminal.println(c);
-  return c;
+  return d;
 }
 
 //#######################################################################################################################################
@@ -6187,6 +6226,7 @@ return 0;
   { int ln = 1;
     int ex = 0;
     String cbuf;
+    const char hi[]="._";
     int was, tmp_col;
     int wd = GFX.getWidth() / x_char[fontsatz];
     int Dateien = 0;
@@ -6224,16 +6264,16 @@ return 0;
         entry.close();
         break;
       }
-      cbuf=String(entry.name());
-      cbuf.toCharArray(tempstring, cbuf.length() + 1);   
-      if(tempstring[1]=='.' /*&& tempstring[2]=='_'*/) hidden_flag = true;
-
+      cbuf = String(entry.name());
+      cbuf.toCharArray(tempstring, cbuf.length() + 1);
+      //if (tempstring[1] == '.' /*&& tempstring[2]=='_'*/) hidden_flag = true;
+      if (strstr(tempstring,hi)) hidden_flag = true;              //versteckte dateien ausblenden
       if (ext == true) {                                          //Sucherweiterung aktiv?
         found = search_file(entry.name());                        //untersuche Dateinamen mit Suchstring
 
-        if (found == true ) 
+        if (found == true )
         {
-          if(hidden_flag == true){                                //unsichtbare Dateien ausblenden
+          if (hidden_flag == true) {                              //unsichtbare Dateien ausblenden
             hidden_flag = false;
             continue;
           }
@@ -6252,9 +6292,9 @@ return 0;
       }
 
       else {
-        if(hidden_flag == true) {                                 //unsichtbare Dateien ausblenden
-        hidden_flag = false;
-        continue;
+        if (hidden_flag == true) {                                //unsichtbare Dateien ausblenden
+          hidden_flag = false;
+          continue;
         }
         printmsg(spacemsg, 0);
         printmsg(entry.name(), 0);                                 //Datei- oder Verzeichnisname ausgeben
@@ -6498,12 +6538,13 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
       if (*vk == VirtualKey::VK_ESCAPE) {
         if (keyDown) {
           break_marker = true;                                                          //ESC abfangen und in Ctrl-C wandeln
-        }
+          
+          }
         *vk = VirtualKey::VK_NONE;
       }
-      else if (*vk == VirtualKey::VK_F1) {                                               
+      else if (*vk == VirtualKey::VK_F1) {
         if (keyDown) {
-          
+
         }
         *vk = VirtualKey::VK_NONE;
       }
@@ -6549,7 +6590,7 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
         *vk = VirtualKey::VK_NONE;
       }
 
-      
+
     };
 
     //Serial.begin(kConsoleBaud);                                                           // open serial port
@@ -8701,99 +8742,99 @@ nochmal:
       else return c;          //Farbe des Pixels
     }
 
-/*
-
-    
-        // ************************************************** App-Starter *********************************************************************************
-        void show_screen(void) {
-          int a, b;
-          String cbuf;
-          int old_key_x, old_key_y;
-
-          Terminal.enableCursor(false);
-          fcolor(60);
-          bcolor(1);
-          tc.setCursorPos(1, 1);
-          GFX.clear();
-          bcolor(11);
-          GFX.fillRectangle(5, 5, 315, 235);                    //Rectangle rect x,y,xx,yy,fill=1
-          bcolor(63);
-          GFX.fillRectangle(10, 10, 310, 230);                    //Rectangle rect x,y,xx,yy,fill=1
-          fcolor(0);
-          int y_pos = VGAController.getScreenHeight() / 8;
-          int x_pos = VGAController.getScreenWidth() / 8;
-
-          cbuf = "* ESP32-App-Starter *";
-          cbuf.toCharArray(tempstring, cbuf.length() + 1);
-          drawing_text(4, 50 , 10);
-
-          b = -1;
-          for (int i = 0; i < filenums; i++) {
-            if (i % 4 == 0) {
-              a = 0;
-              b++;
-            }
-            else {
-              a++;
-            }
-            cbuf = String(filenames[i]) + String(filetype[2]);
-            cbuf.toUpperCase();                               //String in Grossbuchstaben umwandeln
-            cbuf.toCharArray(tempstring, cbuf.length() + 1);
-            status_text(tempstring);
-            import_pic((xx_pos[a] * 8) - 8, (yy_pos[b] * 8) - 47, tempstring, 1);
-
-            cbuf = String(Programs[i]);
-            cbuf.toCharArray(tempstring, cbuf.length() + 1);
-            //status_text(Programs[i]);
-          }
-          // Basic-Icon invertieren und in der Statuszeile anzeigen
-          GFX.swapRectangle((xx_pos[0] * 8) - 8, (yy_pos[0] * 8) - 47, (xx_pos[0] * 8) - 8 + 39, (yy_pos[0] * 8) - 47 + 39); //swap Backcolor
-          status_text(Programs[0]);
+    /*
 
 
-          while (!break_marker)
-          {
-            
-            if (swap) {
-              status_text(Programs[(Key_y * 4) + Key_x]);
+            // ************************************************** App-Starter *********************************************************************************
+            void show_screen(void) {
+              int a, b;
+              String cbuf;
+              int old_key_x, old_key_y;
+
+              Terminal.enableCursor(false);
+              fcolor(60);
+              bcolor(1);
+              tc.setCursorPos(1, 1);
+              GFX.clear();
+              bcolor(11);
+              GFX.fillRectangle(5, 5, 315, 235);                    //Rectangle rect x,y,xx,yy,fill=1
               bcolor(63);
-              GFX.swapRectangle((old_key_x * 8) - 8, (old_key_y * 8) - 47, (old_key_x * 8) - 8 + 39, (old_key_y * 8) - 47 + 39); //swap Backcolor
-              GFX.swapRectangle((xx_pos[Key_x] * 8) - 8, (yy_pos[Key_y] * 8) - 47, (xx_pos[Key_x] * 8) - 8 + 39, (yy_pos[Key_y] * 8) - 47 + 39); //swap Backcolor
-              swap = false;
-            }
-            old_key_x = xx_pos[Key_x];
-            old_key_y = yy_pos[Key_y];
-            delay(100);
-            if (break_marker) break;
-            tc.setCursorPos(1, 1);
-            Terminal.print(break_marker);
-            Terminal.print(Key_enter);
-          }
-          cbuf = String(sd_pfad) + String(filenames[(Key_y * 4) + Key_x]) + String(filetype[0]);
-          cbuf.toUpperCase();                               //String in Grossbuchstaben umwandeln
-          cbuf.toCharArray(tempstring, cbuf.length() + 1);
-          if (break_marker)                                 //ESC?-dann zurück zum Basic
-          {
-            fbcolor(Vordergrund,Hintergrund);
-            Terminal.enableCursor(onoff);
-            GFX.clear();
-            line_terminator();
-            break_marker = false;
-            
-            return ;
-          }
-          //load_binary();                                    //Enter gedrückt-dann lade App
-          
-          return ;
-        }
+              GFX.fillRectangle(10, 10, 310, 230);                    //Rectangle rect x,y,xx,yy,fill=1
+              fcolor(0);
+              int y_pos = VGAController.getScreenHeight() / 8;
+              int x_pos = VGAController.getScreenWidth() / 8;
 
-        void status_text(String txt) {
-          int x = (40 / 2) - (txt.length() / 2);
-          bcolor(11);
-          GFX.fillRectangle(5, 230, 315, 239);                    //Rectangle rect x,y,xx,yy,fill=1
-          tc.setCursorPos(x, 30);
-          bcolor(11);
-          Terminal.print(txt);
-        }
-    
-*/
+              cbuf = "* ESP32-App-Starter *";
+              cbuf.toCharArray(tempstring, cbuf.length() + 1);
+              drawing_text(4, 50 , 10);
+
+              b = -1;
+              for (int i = 0; i < filenums; i++) {
+                if (i % 4 == 0) {
+                  a = 0;
+                  b++;
+                }
+                else {
+                  a++;
+                }
+                cbuf = String(filenames[i]) + String(filetype[2]);
+                cbuf.toUpperCase();                               //String in Grossbuchstaben umwandeln
+                cbuf.toCharArray(tempstring, cbuf.length() + 1);
+                status_text(tempstring);
+                import_pic((xx_pos[a] * 8) - 8, (yy_pos[b] * 8) - 47, tempstring, 1);
+
+                cbuf = String(Programs[i]);
+                cbuf.toCharArray(tempstring, cbuf.length() + 1);
+                //status_text(Programs[i]);
+              }
+              // Basic-Icon invertieren und in der Statuszeile anzeigen
+              GFX.swapRectangle((xx_pos[0] * 8) - 8, (yy_pos[0] * 8) - 47, (xx_pos[0] * 8) - 8 + 39, (yy_pos[0] * 8) - 47 + 39); //swap Backcolor
+              status_text(Programs[0]);
+
+
+              while (!break_marker)
+              {
+
+                if (swap) {
+                  status_text(Programs[(Key_y * 4) + Key_x]);
+                  bcolor(63);
+                  GFX.swapRectangle((old_key_x * 8) - 8, (old_key_y * 8) - 47, (old_key_x * 8) - 8 + 39, (old_key_y * 8) - 47 + 39); //swap Backcolor
+                  GFX.swapRectangle((xx_pos[Key_x] * 8) - 8, (yy_pos[Key_y] * 8) - 47, (xx_pos[Key_x] * 8) - 8 + 39, (yy_pos[Key_y] * 8) - 47 + 39); //swap Backcolor
+                  swap = false;
+                }
+                old_key_x = xx_pos[Key_x];
+                old_key_y = yy_pos[Key_y];
+                delay(100);
+                if (break_marker) break;
+                tc.setCursorPos(1, 1);
+                Terminal.print(break_marker);
+                Terminal.print(Key_enter);
+              }
+              cbuf = String(sd_pfad) + String(filenames[(Key_y * 4) + Key_x]) + String(filetype[0]);
+              cbuf.toUpperCase();                               //String in Grossbuchstaben umwandeln
+              cbuf.toCharArray(tempstring, cbuf.length() + 1);
+              if (break_marker)                                 //ESC?-dann zurück zum Basic
+              {
+                fbcolor(Vordergrund,Hintergrund);
+                Terminal.enableCursor(onoff);
+                GFX.clear();
+                line_terminator();
+                break_marker = false;
+
+                return ;
+              }
+              //load_binary();                                    //Enter gedrückt-dann lade App
+
+              return ;
+            }
+
+            void status_text(String txt) {
+              int x = (40 / 2) - (txt.length() / 2);
+              bcolor(11);
+              GFX.fillRectangle(5, 230, 315, 239);                    //Rectangle rect x,y,xx,yy,fill=1
+              tc.setCursorPos(x, 30);
+              bcolor(11);
+              Terminal.print(txt);
+            }
+
+    */
