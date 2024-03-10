@@ -28,11 +28,11 @@
  #include "PS2Mouse.h"
 #endif
 */
-#ifdef use_lib_sound_ay8912
+//#ifdef use_lib_sound_ay8912
  #include "fabgl.h" //Para fabgl
  #include "fabutils.h" //Para fabgl
  //#include "WiFiGeneric.h" //Quitar para dependencia al compilar
-#endif 
+//#endif 
 
 #include "CPCem.h"
 //#ifdef use_lib_tinybitluni_fast

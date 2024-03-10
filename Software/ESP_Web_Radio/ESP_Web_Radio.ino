@@ -49,6 +49,8 @@ RTC_DS3231 rtc;
 // dies ist die Standard-Konfiguration
 byte SDA_RTC = 3;
 byte SCL_RTC = 1;
+short int EEprom_ADDR = 0x57; //-> Adresse 0x57 ist der EEPROM auf dem RTC3231 Cord
+byte station_eep = 0;         //     // an der Adresse 0x7fff wird die Station gespeichert
 
 unsigned int Datum[4];                   //Datums-Array
 unsigned int Zeit[4];                    //Zeit-Array
@@ -56,9 +58,9 @@ unsigned int tmp_zeit;                   //vergleichswert für Zeitaktualisierun
 // ---------------------------------- SD-Karten-Zugriff--------------------------------------------------------------------------------------------
 #include <SD.h>
 #include <SPI.h>
-const char*  Radio_Pics[] PROGMEM = {"Radio1.bmp", "Radio2.bmp", "Radio3.bmp", "Radio4.bmp", "Radio5.bmp"};         //Pics
+const char*  Radio_Pics[] PROGMEM = {"Radio1.bmp", "Radio2.bmp"};         
 char tempstring[40];                //String Zwischenspeicher
-int filenums = 5;
+int filenums = 2;
 //-------------------------------------- Verwendung der SD-Karte ----------------------------------------------------------------------------------
 //SPI CLASS FOR REDEFINED SPI PINS !
 SPIClass spiSD(HSPI);
@@ -81,10 +83,11 @@ int Key_d = 0;
 uint8_t curGain = 200;    //current loudness
 
 bool Key_esc = false;
+bool Key_save = false;
 
 // Credential of the local WiFi
-const char* ssid     = "***********";
-const char* password = "***********";
+const char* ssid     = "DiabloIII";//"Reinhards iPhone";
+const char* password = "zillesoftgmbh";
 
 // URL of internet radio station
 const char *URL[] PROGMEM = {
@@ -132,25 +135,7 @@ void bcolor(int bc) {
   GFX.setBrushColor((bitRead(bc, 5) * 2 + bitRead(bc, 4)) * 64, (bitRead(bc, 3) * 2 + bitRead(bc, 2)) * 64, (bitRead(bc, 1) * 2 + bitRead(bc, 0)) * 64);
 }
 
-/*
-// Called when a metadata event occurs (i.e. an ID3 tag, an ICY block, etc.
-void MDCallback(void *cbData, const char *type, bool isUnicode, const char *string)
-{
-  const char *ptr = reinterpret_cast<const char *>(cbData);
-  (void) isUnicode; // Punt this ball for now
-  // Note that the type and string may be in PROGMEM, so copy them to RAM for printf
-  char s1[32], s2[32]; //s2 ursprünglich 64
-  strncpy_P(s1, type, sizeof(s1));
-  s1[sizeof(s1) - 1] = 0;
-  strncpy_P(s2, string, sizeof(s2));
-  s2[sizeof(s2) - 1] = 0;
-  //Serial.printf("METADATA(%s) '%s' = '%s'\n", ptr, s1, s2);
-  GFX.fillRectangle(105, 120, 299, 139);
-  //drawing_text(2, 105, 120, s1);
-  drawing_text(2, 105, 132, s2);
-  //Serial.flush();
-}//callback function will be called if meta data were found in input stream
-*/
+
 void MDCallback(void *cbData, const char *type, bool isUnicode, const char *string)
 { char title[32];
   if (strstr_P(type, PSTR("Title"))) { 
@@ -165,21 +150,6 @@ void MDCallback(void *cbData, const char *type, bool isUnicode, const char *stri
   
   };
 }
-/*
-// Called when there's a warning or error (like a buffer underflow or decode hiccup)
-void StatusCallback(void *cbData, int code, const char *string)
-{
-  const char *ptr = reinterpret_cast<const char *>(cbData);
-  // Note that the string may be in PROGMEM, so copy it to RAM for printf
-  char s1[25];
-  strncpy_P(s1, string, sizeof(s1));
-  s1[sizeof(s1) - 1] = 0;
-  GFX.fillRectangle(140, 140, 280, 157);
-  drawing_text(1, 145, 146, String(code));
-  //Serial.printf("STATUS(%s) '%d' = '%s'\n", ptr, code, s1);
-  //Serial.flush();
-}
-*/
 
 //change the loudness to current gain
 void setGain(){
@@ -196,7 +166,7 @@ void display_Time(void){
   getdatetime();
   if(tmp_zeit!=Zeit[1])
   {
-    GFX.fillRectangle(180, 140, 280, 157);
+    GFX.fillRectangle(180, 140, 270, 157);
     if(Zeit[0]<10) cbuf="0";
     cbuf+=String(Zeit[0])+":";
     if(Zeit[1]<10) cbuf+="0";
@@ -212,11 +182,6 @@ void getdatetime()
   Zeit[0] = now.hour();
   Zeit[1] = now.minute();
   Zeit[2] = now.second();
-//  Datum[0] = now.day();
-//  Datum[1] = now.month();
-//  Datum[2] = now.year();
-//  Datum[3] = now.dayOfTheWeek();
-  
 }
 
 
@@ -228,6 +193,8 @@ void setup()
   Keyboard.begin(GPIO_NUM_33, GPIO_NUM_32);
   PS2Controller.keyboard() -> setLayout(&fabgl::GermanLayout);                //deutsche Tastatur
   delay(200);
+
+
   
   PS2Controller.keyboard()-> onVirtualKey = [&](VirtualKey * vk, bool keyDown) {
     if (*vk == VirtualKey::VK_RIGHT) {
@@ -264,13 +231,20 @@ void setup()
           }
            *vk = VirtualKey::VK_NONE;
         }
+        else if (*vk == VirtualKey::VK_s) {                                               // Taste S speichert die aktuelle Station im EEPROM auf dem RTC-Modul
+          if (keyDown) {
+            Key_save=true;
+            
+          }
+           *vk = VirtualKey::VK_NONE;
+        }
     
-    else if (*vk == VirtualKey::VK_ESCAPE) {                                               //
-      if (keyDown) {
-        Key_esc = true;
-      }
-      *vk = VirtualKey::VK_NONE;
-    }
+       else if (*vk == VirtualKey::VK_ESCAPE) {                                               //
+         if (keyDown) {
+           Key_esc = true;
+         }
+         *vk = VirtualKey::VK_NONE;
+       }
 
   };
 
@@ -328,7 +302,7 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
   GFX.fillRectangle(0, 0, 399, 73);                        //Platz über dem Radio
   fcolor(60);
   drawing_text(4, 45, 10, "*** WEB-RADIO by Zille-Soft ***");
-  drawing_text(0, 132, 30, "Vers1.1 - 09/2024");
+  drawing_text(0, 132, 30, "Vers1.2 - 03/2024");
 
   bcolor(11);
   GFX.fillRectangle(100, 92, 299, 157);                    //Display-Ausschnitt
@@ -350,21 +324,27 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
     drawing_text(3, 105, 143, "WIFI-SEARCH..");
     delay(500);
   }
-
-  fcolor(1);
-  bcolor(11);
-  GFX.fillRectangle(105, 140, 299, 157);                    //Display-Ausschnitt - 194 Pixel breit
-  drawing_text(3, 105, 143, "WIFI");
-  drawing_text(3, 285, 143, String(act_station + 1));       //Programmplatz
-  drawing_text(4, x_position[act_station], 95, String(title[act_station]));     //aktuelle Station
   
   // ein I2C-Interface definieren
   myI2C.begin(SDA_RTC, SCL_RTC, 400000); //400kHz
   rtc.begin(&myI2C);
   getdatetime();                                              //ESP32-interne Uhr stellen für Datei-Zeitstempel
+  curGain = 50; //default value
+  
+  byte c = readEEPROM(EEprom_ADDR, 0x7fff );                  // an Adresse 0x7fff im RTC-Modul-EEprom wird die Station gespeichert
+  byte d = readEEPROM(EEprom_ADDR, 0x7ffe );                  // Lautstärkeeinstellung
+  if(c < stations) act_station = c;
+  if(d < 200) curGain = d;
+  
+  fcolor(1);
+  bcolor(11);
+  GFX.fillRectangle(105, 140, 299, 157);                    //Display-Ausschnitt - 194 Pixel breit
+  drawing_text(3, 105, 143, "WIFI");
+  drawing_text(3, 275, 143, String(act_station + 1));       //Programmplatz
+  drawing_text(4, x_position[act_station], 95, String(title[act_station]));     //aktuelle Station
+  
 
   out = new AudioOutputI2S(0, 1);  // use the internal DAC channel 1 (pin25) on ESP32
-  curGain = 50; //default value
   
 
   startUrl();
@@ -416,16 +396,13 @@ void loop()
       startUrl();
     }
   } 
-  //else {
-  //  delay(1000);
-  //  mp3->begin(buff, out);
-  //}
+
   if (Key_l || Key_r) {
     Key_l = Key_r = 0;
     GFX.fillRectangle(105, 95, 299, 115); //Stationsnamenfeld
     GFX.fillRectangle(105, 130, 299, 139); //Streamtitelfeld
-    GFX.fillRectangle(280, 140, 299, 157); //Stationsnummernfeld
-    drawing_text(3, 280, 143, String(act_station + 1));
+    GFX.fillRectangle(275, 140, 299, 157); //Stationsnummernfeld
+    drawing_text(3, 275, 143, String(act_station + 1));
     drawing_text(4, x_position[act_station], 95, String(title[act_station]));     //aktuelle Station mittig anzeigen00
     startUrl();
   }
@@ -436,6 +413,16 @@ void loop()
   if (Key_esc) {
     mp3->stop();
     load_binary();
+  }
+  if(Key_save){
+    writeEEPROM(EEprom_ADDR, 0x7ffe, byte(curGain));                              //Lautstärkeeinstellung speichern
+    writeEEPROM(EEprom_ADDR, 0x7fff, byte(act_station));                          //Station speichern
+    Key_save = false;
+    GFX.fillRectangle(275, 140, 299, 157); //Stationsnummernfeld
+    drawing_text(3, 275, 143, "-S-");      //Savinganzeige
+    delay(500);
+    GFX.fillRectangle(275, 140, 299, 157); //Stationsnummernfeld
+    drawing_text(3, 275, 143, String(act_station + 1));
   }
 }
 
@@ -677,4 +664,30 @@ int import_pic(int x, int y, char *file, float sc) {
   spiSD.end();
   //sd_ende();                                               //SD-Card unmount
   return 0;
+}
+
+//############################################### externer I2C EEPROM/FRAM #################################################################
+void writeEEPROM(int deviceaddress, word eeaddress, byte dat )
+{
+  myI2C.beginTransmission(deviceaddress);
+  myI2C.write((int)(highByte(eeaddress)));   // MSB
+  myI2C.write((int)(lowByte(eeaddress)));    // LSB
+  myI2C.write(dat);
+  myI2C.endTransmission();
+  if (deviceaddress == EEprom_ADDR)                           //bei EEprom muss etwas gewartet werden
+    delay(10);
+}
+
+byte readEEPROM(int deviceaddress, word eeaddress )
+{
+  myI2C.beginTransmission(deviceaddress);
+  myI2C.write((int)(highByte(eeaddress)));   // MSB
+  myI2C.write((int)(lowByte(eeaddress)));    // LSB
+  myI2C.endTransmission();
+  if (deviceaddress == EEprom_ADDR)
+    delay(2);
+  myI2C.requestFrom(deviceaddress, 1);
+  while (myI2C.available() == 0);
+  return myI2C.read();
+  //Serial.println(myI2C.read(), HEX);
 }
