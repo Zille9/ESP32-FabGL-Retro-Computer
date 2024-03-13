@@ -1,18 +1,21 @@
 /*
-// ******************** ESP-Webradio Version 1.0 03/2024 *************************
-// als Betandteil des Basic32+ Projektes als ladbares Programm mit der Grafik-
-// Bibliothek FabGl - Dank an Fabrizio Di Vittorio 
-// Bedienung: <- und -> (Pfeil-)Tasten schaltet durch die Sender (20) 
-// Taste ESC kehrt zum Basic32+ zurück
-// Programm kommt ohne externe I2S Hardware aus, Audio-Ausgabe über Pin 25
-// sonstige Hardwarekonfiguration siehe Basic32+
-// created by R.Zielinski - Berlin
-// Nutzung auf eigene Gefahr!!! :-)
-// *******************************************************************************
+  // ******************** ESP-Webradio Version 1.0 03/2024 *************************
+  // als Betandteil des Basic32+ Projektes als ladbares Programm mit der Grafik-
+  // Bibliothek FabGl - Dank an Fabrizio Di Vittorio
+  // Bedienung: <- und -> (Pfeil-)Tasten schaltet durch die Sender (20)
+  // Taste ESC kehrt zum Basic32+ zurück
+  // Programm kommt ohne externe I2S Hardware aus, Audio-Ausgabe über Pin 25
+  // sonstige Hardwarekonfiguration siehe Basic32+
+  // created by R.Zielinski - Berlin
+  // Nutzung auf eigene Gefahr!!! :-)
+  // *******************************************************************************
 */
 #include <Arduino.h>
 
+#include <Preferences.h>
 #include <WiFi.h>
+
+
 #include "AudioFileSourceICYStream.h"
 #include "AudioFileSourceBuffer.h"
 #include "AudioGeneratorMP3.h"
@@ -20,7 +23,10 @@
 #include "cfg.h"   //********************************************* Konfigurations-Datei *************************************************************
 
 #include "fabgl.h" //********************************************* Bibliotheken zur VGA-Signalerzeugung *********************************************
+
 fabgl::Terminal         Terminal;
+fabgl::LineEditor       LineEditor(&Terminal);
+
 //---------------------------------------- die verschiedenen Grafiktreiber --------------------------------------------------------------------------
 #ifdef AVOUT
 fabgl::CVBS16Controller VGAController;    //AV-Variante
@@ -40,6 +46,8 @@ fabgl::PS2Controller    PS2Controller;
 fabgl::Keyboard Keyboard;
 fabgl::Canvas           GFX(&VGAController);
 TerminalController      tc(&Terminal);
+// where to store WiFi info, etc...
+Preferences preferences;
 
 //------------------------------ I2C Library ------------------------------------------------------------------------------------------------------
 #include <Wire.h>           // for I2C 
@@ -58,7 +66,7 @@ unsigned int tmp_zeit;                   //vergleichswert für Zeitaktualisierun
 // ---------------------------------- SD-Karten-Zugriff--------------------------------------------------------------------------------------------
 #include <SD.h>
 #include <SPI.h>
-const char*  Radio_Pics[] PROGMEM = {"Radio1.bmp", "Radio2.bmp"};         
+const char*  Radio_Pics[] PROGMEM = {"Radio1.bmp", "Radio2.bmp"};
 char tempstring[40];                //String Zwischenspeicher
 int filenums = 2;
 //-------------------------------------- Verwendung der SD-Karte ----------------------------------------------------------------------------------
@@ -84,10 +92,9 @@ uint8_t curGain = 200;    //current loudness
 
 bool Key_esc = false;
 bool Key_save = false;
+bool Key_wifi = false;
 
-// Credential of the local WiFi
-const char* ssid     = "DiabloIII";//"Reinhards iPhone";
-const char* password = "zillesoftgmbh";
+
 
 // URL of internet radio station
 const char *URL[] PROGMEM = {
@@ -114,10 +121,11 @@ const char *URL[] PROGMEM = {
 };
 
 
-const char* title[] PROGMEM = {"Golden Apple", "Hitradio Potsdam", "Countrymusic24", "JennyFM", "Lounge Grooves", "MemoryRadio", 
-                               "Nightline Radio", "Radio Corax", "Radio-F.R.E.I","Radio Stuttgart","Radio Neumuenster","Bermudafunk",
-                               "Radio T Chemnitz","Rundfunkkombinat","Buerger-Radio","Dance Wave!","Berliner Rundfunk","ORF Hitradio",
-                               "HitRadio FFH","Cafe 80s FM"};
+const char* title[] PROGMEM = {"Golden Apple", "Hitradio Potsdam", "Countrymusic24", "JennyFM", "Lounge Grooves", "MemoryRadio",
+                               "Nightline Radio", "Radio Corax", "Radio-F.R.E.I", "Radio Stuttgart", "Radio Neumuenster", "Bermudafunk",
+                               "Radio T Chemnitz", "Rundfunkkombinat", "Buerger-Radio", "Dance Wave!", "Berliner Rundfunk", "ORF Hitradio",
+                               "HitRadio FFH", "Cafe 80s FM"
+                              };
 int    x_position[] PROGMEM = {140 , 122 , 132, 167 , 132, 147, 127, 147 , 137 , 127 , 117 , 147, 122, 122, 127, 147, 117, 142, 142, 147}; //194-(10xZeichenzahl)/2+105 ->Anzeige mittig
 int stations = 20;
 int act_station = 0;
@@ -126,6 +134,14 @@ AudioGeneratorMP3 *mp3;
 AudioFileSourceICYStream *file;
 AudioFileSourceBuffer *buff;
 AudioOutputI2S *out;
+
+
+const char* Edit_line = nullptr;        //Editor-Zeile
+
+char ssid[32] = "";
+char pwd[32]  = "";
+
+
 
 void fcolor(int fc) {
   GFX.setPenColor((bitRead(fc, 5) * 2 + bitRead(fc, 4)) * 64, (bitRead(fc, 3) * 2 + bitRead(fc, 2)) * 64, (bitRead(fc, 1) * 2 + bitRead(fc, 0)) * 64);
@@ -138,21 +154,16 @@ void bcolor(int bc) {
 
 void MDCallback(void *cbData, const char *type, bool isUnicode, const char *string)
 { char title[32];
-  if (strstr_P(type, PSTR("Title"))) { 
+  if (strstr_P(type, PSTR("Title"))) {
     strncpy(title, string, sizeof(title));
-    title[sizeof(title)-1] = 0;
-    //Serial.printf(" %s\n", title);
-    //show the message on the display
-    //newTitle = true;
+    title[sizeof(title) - 1] = 0;
     GFX.fillRectangle(105, 130, 299, 139);
-    //drawing_text(2, 105, 120, s1);
     drawing_text(2, 105, 132, title);
-  
   };
 }
 
 //change the loudness to current gain
-void setGain(){
+void setGain() {
   float v = curGain / 100.0;
   out->SetGain(v);  //the parameter is the loudness as percent
   drawing_text(3, 125, 115, "Volume:");
@@ -161,18 +172,18 @@ void setGain(){
 }
 
 
-void display_Time(void){
+void display_Time(void) {
   String cbuf;
   getdatetime();
-  if(tmp_zeit!=Zeit[1])
+  if (tmp_zeit != Zeit[1])
   {
     GFX.fillRectangle(180, 140, 270, 157);
-    if(Zeit[0]<10) cbuf="0";
-    cbuf+=String(Zeit[0])+":";
-    if(Zeit[1]<10) cbuf+="0";
-    cbuf+=String(Zeit[1]);
+    if (Zeit[0] < 10) cbuf = "0";
+    cbuf += String(Zeit[0]) + ":";
+    if (Zeit[1] < 10) cbuf += "0";
+    cbuf += String(Zeit[1]);
     drawing_text(3, 180, 143, cbuf);
-    tmp_zeit=Zeit[1];
+    tmp_zeit = Zeit[1];
   }
 }
 
@@ -193,9 +204,9 @@ void setup()
   Keyboard.begin(GPIO_NUM_33, GPIO_NUM_32);
   PS2Controller.keyboard() -> setLayout(&fabgl::GermanLayout);                //deutsche Tastatur
   delay(200);
+  preferences.begin("WEBRADIO", false);
 
 
-  
   PS2Controller.keyboard()-> onVirtualKey = [&](VirtualKey * vk, bool keyDown) {
     if (*vk == VirtualKey::VK_RIGHT) {
       if (keyDown) {
@@ -213,38 +224,45 @@ void setup()
       }
       *vk = VirtualKey::VK_NONE;
     }
-    
-        if (*vk == VirtualKey::VK_PLUS) {
-          if (keyDown) {
-            Key_u = 1;
-            curGain++;
-            if (curGain > 200) curGain = 200;
-          }
-           *vk = VirtualKey::VK_NONE;
-        }
-        else if (*vk == VirtualKey::VK_MINUS) {                                               //
-          if (keyDown) {
-            Key_d = 1;
-            curGain--;
-            if (curGain < 0) curGain = 0;
-            
-          }
-           *vk = VirtualKey::VK_NONE;
-        }
-        else if (*vk == VirtualKey::VK_s) {                                               // Taste S speichert die aktuelle Station im EEPROM auf dem RTC-Modul
-          if (keyDown) {
-            Key_save=true;
-            
-          }
-           *vk = VirtualKey::VK_NONE;
-        }
-    
-       else if (*vk == VirtualKey::VK_ESCAPE) {                                               //
-         if (keyDown) {
-           Key_esc = true;
-         }
-         *vk = VirtualKey::VK_NONE;
-       }
+
+    if (*vk == VirtualKey::VK_PLUS) {
+      if (keyDown) {
+        Key_u = 1;
+        curGain++;
+        if (curGain > 200) curGain = 200;
+      }
+      *vk = VirtualKey::VK_NONE;
+    }
+    else if (*vk == VirtualKey::VK_MINUS) {                                               //
+      if (keyDown) {
+        Key_d = 1;
+        curGain--;
+        if (curGain < 0) curGain = 0;
+
+      }
+      *vk = VirtualKey::VK_NONE;
+    }
+    else if (*vk == VirtualKey::VK_F1) {                                               // Taste F1 speichert die aktuelle Station im EEPROM auf dem RTC-Modul
+      if (keyDown) {
+        Key_save = true;
+
+      }
+      *vk = VirtualKey::VK_NONE;
+    }
+    else if (*vk == VirtualKey::VK_F2) {                                               // Taste F1 speichert die aktuelle Station im EEPROM auf dem RTC-Modul
+      if (keyDown) {
+        Key_wifi = true;
+
+      }
+      *vk = VirtualKey::VK_NONE;
+    }
+
+    else if (*vk == VirtualKey::VK_ESCAPE) {                                               //
+      if (keyDown) {
+        Key_esc = true;
+      }
+      *vk = VirtualKey::VK_NONE;
+    }
 
   };
 
@@ -297,7 +315,7 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
   cbuf.toCharArray(tempstring, cbuf.length() + 1);
   import_pic(0, 74, tempstring, 1);
 
-  
+
   bcolor(1);
   GFX.fillRectangle(0, 0, 399, 73);                        //Platz über dem Radio
   fcolor(60);
@@ -305,16 +323,45 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
   drawing_text(0, 132, 30, "Vers1.2 - 03/2024");
 
   bcolor(11);
-  GFX.fillRectangle(100, 92, 299, 157);                    //Display-Ausschnitt
+  fcolor(1);
+  GFX.fillRectangle(100, 92, 299, 157);                    //Display-Ausschnitt löschen
 
-  
+  checkWiFi();
+
+  // ein I2C-Interface definieren
+  myI2C.begin(SDA_RTC, SCL_RTC, 400000); //400kHz
+  rtc.begin(&myI2C);
+  getdatetime();                                              //ESP32-interne Uhr stellen für Datei-Zeitstempel
+  curGain = 50; //default value
+
+  byte c = readEEPROM(EEprom_ADDR, 0x7fff );                  // an Adresse 0x7fff im RTC-Modul-EEprom wird die Station gespeichert
+  byte d = readEEPROM(EEprom_ADDR, 0x7ffe );                  // Lautstärkeeinstellung
+  if (c < stations) act_station = c;
+  if (d < 200) curGain = d;
+
   fcolor(1);
   bcolor(11);
+  GFX.fillRectangle(105, 140, 299, 157);                    //Display-Ausschnitt - 194 Pixel breit
+  drawing_text(3, 105, 143, "WIFI");
+  drawing_text(3, 275, 143, String(act_station + 1));       //Programmplatz
+  drawing_text(4, x_position[act_station], 95, String(title[act_station]));     //aktuelle Station
+
+
+  out = new AudioOutputI2S(0, 1);  // use the internal DAC channel 1 (pin25) on ESP32
+  startUrl();
+
+}
+
+void Wifi_connect(void) {
+  fcolor(1);
+  bcolor(11);
+
   drawing_text(3, 105, 143, "WIFI-SEARCH..");
   WiFi.disconnect();
   WiFi.softAPdisconnect(true);
+
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
+  WiFi.begin(ssid, pwd);
 
   while (WiFi.status() != WL_CONNECTED) {
     fcolor(11);
@@ -324,33 +371,69 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
     drawing_text(3, 105, 143, "WIFI-SEARCH..");
     delay(500);
   }
-  
-  // ein I2C-Interface definieren
-  myI2C.begin(SDA_RTC, SCL_RTC, 400000); //400kHz
-  rtc.begin(&myI2C);
-  getdatetime();                                              //ESP32-interne Uhr stellen für Datei-Zeitstempel
-  curGain = 50; //default value
-  
-  byte c = readEEPROM(EEprom_ADDR, 0x7fff );                  // an Adresse 0x7fff im RTC-Modul-EEprom wird die Station gespeichert
-  byte d = readEEPROM(EEprom_ADDR, 0x7ffe );                  // Lautstärkeeinstellung
-  if(c < stations) act_station = c;
-  if(d < 200) curGain = d;
-  
-  fcolor(1);
-  bcolor(11);
-  GFX.fillRectangle(105, 140, 299, 157);                    //Display-Ausschnitt - 194 Pixel breit
-  drawing_text(3, 105, 143, "WIFI");
-  drawing_text(3, 275, 143, String(act_station + 1));       //Programmplatz
-  drawing_text(4, x_position[act_station], 95, String(title[act_station]));     //aktuelle Station
-  
-
-  out = new AudioOutputI2S(0, 1);  // use the internal DAC channel 1 (pin25) on ESP32
-  
-
-  startUrl();
-
 }
 
+
+bool checkWiFi() {
+
+  if (WiFi.status() == WL_CONNECTED)
+    return true;
+  
+  if (!preferences.getString("SSID", ssid, sizeof(ssid)) || !preferences.getString("WiFiPsw", pwd, sizeof(pwd))) {
+    // ask user for SSID and password
+    input_wifi();
+  }
+  WiFi.begin(ssid, pwd);
+  for (int i = 0; i < 32 && WiFi.status() != WL_CONNECTED; ++i) {
+    fcolor(11);
+    drawing_text(3, 105, 143, "WIFI-SEARCH..");
+    delay(500);
+    fcolor(1);
+    drawing_text(3, 105, 143, "WIFI-SEARCH..");
+    delay(500);
+    if (i == 16)
+      WiFi.reconnect();
+  }
+  bool connected = (WiFi.status() == WL_CONNECTED);
+  if (!connected) {
+    drawing_text(3, 105, 143, "Network-Error");
+    preferences.remove("WiFiPsw");
+  }
+  return connected;
+}
+
+
+void input_wifi(void) {
+  String cbuf;
+  
+
+  bcolor(11);
+  fcolor(1);
+  GFX.fillRectangle(100, 92, 299, 157);                    //Display-Ausschnitt löschen
+  drawing_text(0, 110, 95, "- WIFI-Configuration -");
+  tc.setCursorPos(14, 15);
+  Terminal.print("SSID:");
+  Terminal.enableCursor(true);
+  LineEditor.setText("");                                 //Zeile ausgeben
+  LineEditor.edit();                                      //Editor starten
+  cbuf = LineEditor.get();
+  cbuf.toCharArray(ssid, cbuf.length() + 1);
+
+  tc.setCursorPos(14, 17);
+  Terminal.print("PASS:");
+  LineEditor.setText("");                                  //Zeile ausgeben
+  LineEditor.edit();                                       //Editor starten
+  cbuf = LineEditor.get();                                 //Zeile editieren
+  cbuf.toCharArray(pwd, cbuf.length() + 1);
+  Terminal.enableCursor(false);
+  GFX.fillRectangle(100, 92, 299, 157);                    //Display-Ausschnitt löschen
+  preferences.putString("SSID", ssid);
+  preferences.putString("WiFiPsw", pwd);
+  tc.setCursorPos(14, 17);
+  Terminal.print("now Reboot...");
+  delay(1000);
+  ESP.restart();
+}
 
 //stop playing the input stream release memory, delete instances
 void stopPlaying() {
@@ -395,7 +478,7 @@ void loop()
       delay(1000);
       startUrl();
     }
-  } 
+  }
 
   if (Key_l || Key_r) {
     Key_l = Key_r = 0;
@@ -406,7 +489,7 @@ void loop()
     drawing_text(4, x_position[act_station], 95, String(title[act_station]));     //aktuelle Station mittig anzeigen00
     startUrl();
   }
-  if (Key_u || Key_d){
+  if (Key_u || Key_d) {
     Key_u = Key_d = 0;
     setGain();
   }
@@ -414,7 +497,7 @@ void loop()
     mp3->stop();
     load_binary();
   }
-  if(Key_save){
+  if (Key_save) {
     writeEEPROM(EEprom_ADDR, 0x7ffe, byte(curGain));                              //Lautstärkeeinstellung speichern
     writeEEPROM(EEprom_ADDR, 0x7fff, byte(act_station));                          //Station speichern
     Key_save = false;
@@ -423,6 +506,11 @@ void loop()
     delay(500);
     GFX.fillRectangle(275, 140, 299, 157); //Stationsnummernfeld
     drawing_text(3, 275, 143, String(act_station + 1));
+  }
+  if (Key_wifi) {
+    mp3->stop();
+    input_wifi();
+    startUrl();
   }
 }
 
