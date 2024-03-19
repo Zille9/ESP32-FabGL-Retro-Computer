@@ -141,6 +141,9 @@ void show_Command_Help(int was) {                                       //Anzeig
     case KW_PRINT:
       Terminal.println("PRINT Value, String...");
       Terminal.println("EXAMPLE: PRINT SIN(34)+SQR(18)");
+      Terminal.println("PRINT AT(x,y);Value...");
+      Terminal.println("prints the Value on x,y Position");
+      Terminal.println("x and y are the Textrow-and column");
       break;
     case KW_POKE:
       Terminal.println("POKE Memtype, Adress, Value");
@@ -289,9 +292,9 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("DAC-Output on PIN26 in 0..3.3V");
       break;
     case KW_DRAW:
-      Terminal.println("DRAW(X,Y,Draw)");
-      Terminal.println("DRAW(x,y,0) move the Pen on x,y");
-      Terminal.println("DRAW(x,y,1) draw from old Position to x,y");
+      Terminal.println("DRAW X,Y,Draw");
+      Terminal.println("DRAW x,y,0 move the Pen on x,y");
+      Terminal.println("DRAW x,y,1 draw from old Position to x,y");
       break;
     case KW_SPRITE:
       Terminal.println("SPRT(C,nr)-> create nr Sprites");                                //noch überarbeiten
@@ -504,6 +507,27 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("FRAME x,y,w,h,r");
       Terminal.println("Draws a rectangle with rounded corners");
       Terminal.println("FRAME x,y,w(width),h(height),r(radius)");
+      break;
+    case KW_ARC:
+      Terminal.println("ARC x,y,rmin,rmax,gstart,gend,f");
+      Terminal.println("Draws a Arc on x,y");
+      Terminal.println("ARC x,y,rad_min,rad_max,grad_start,grad_end,fill");
+      break;
+    case KW_SWAP:
+      Terminal.println("SWAP x,y,xx,yy");
+      Terminal.println("SWAP the Fore-and Background-Color");
+      Terminal.println("in the Rectangle x,y,xx,yy");
+      break;
+    case KW_COPY:
+      Terminal.println("COPY x,y,xdest,ydest,w,h");
+      Terminal.println("copy a Rectangle from x,y to xdest,ydest");
+      Terminal.println("with w=width and h=heigt");
+      break;
+    case KW_ANGLE:
+      Terminal.println("ANGLE x,y,grd,l");
+      Terminal.println("draw a line from x,y with angle=grd");
+      Terminal.println("and length=l");
+      break;
     default:
 
       break;
@@ -773,7 +797,7 @@ void show_Function_Help(int was) {
       break;
     case FUNC_GPIX:
       Terminal.println("A=GPX(x,y)");
-      Terminal.println("reads the Color on pos x,y");
+      Terminal.println("reads the Pixel-Color on pos x,y");
       break;
     case FUNC_PIC:
       Terminal.println("A=GPIC(0/1)");

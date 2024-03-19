@@ -44,3 +44,33 @@
 #endif
 //**************** Akku-Alarm *********************************************
 //#define Akkualarm_enabled
+//**************** Soundgenerator *****************************************
+/*
+#if CONFIG_FREERTOS_UNICORE
+#define ARDUINO_RUNNING_CORE 0
+#else
+#define ARDUINO_RUNNING_CORE 1
+#endif
+
+#define PLAY_SOUND_PRIORITY 3
+
+
+enum wavetype { WAVE_SQUARE, WAVE_SINE, WAVE_TRIANGLE, WAVE_SAW, WAVE_NOISE };
+enum modfreqmode { MODFREQ_NONE, MODFREQ_TO_END, MODFREQ_TO_RELEASE, MODFREQ_TO_SUSTAIN  };
+
+struct playsounddata
+{
+  long attack; // time in millis (for now)
+  long decay; // time in millis (for now)
+  int sustain; // 0-127 range (over volume)
+  long release; // time in millis (for now)
+
+  wavetype wave; // square, sine, triangle, saw, noise
+  int volume;
+  int durationms;
+  int freq_start;
+  int freq_end;
+  modfreqmode modfreq;
+
+};
+*/

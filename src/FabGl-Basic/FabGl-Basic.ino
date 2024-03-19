@@ -45,13 +45,21 @@
 // April 2021
 //
 //
-#define BasicVersion "2.00b"
-#define BuiltTime "09.03.2024"
+#define BasicVersion "2.01b"
+#define BuiltTime "19.03.2024"
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v2.01b:19.03.2024          -Grafikbefehl ANGLE erstellt, zeichnet eine Linie von x,y mit dem Winkel w und der länge l -> ANGLE x,y,w,l
+//                            -
+//                            -15882 Zeilen/sek
+//
 // v2.00b:09.03.2024          -mp3-Player hinzugefügt - ist noch rudimentär aber funktioniert ->RUN"/filename.mp3"
 //                            -momentan wird der ID3-Tag als Text ausgeworfen
 //                            -ob der Player einen eigenen Befehl (z.Bsp.Play) erhält, ist noch nicht ganz klar (start, stop, pause, nächster- und vorheriger Titel wären nicht schlecht) 
-//                            -
+//                            -Fehler in der Clear-Routine behoben, es wurden die Variablen im FRam nicht korrekt gelöscht.
+//                            -Grafikbefehl ARC erstellt, zeichnet ein Kreis-Teilstück (Tortenstück) ARC x, y, rmin, rmax, grad_start, grad_end, fill
+//                            -Grafikbefehl COPY erstellt -> kopiert einen Bildschirmbereich an eine andere Stelle COPY x, y, x_dest, y_dest, width, heigh
+//                            -Grafikbefehl SWAP erstellt -> vertauscht die Vorder-und Hintergrundfarbe in einen rechteckigen Bereich SWAP x,y,xx,yy
+//                            -16575 Zeilen/sek.
 //
 // v1.99b:03.03.2024          -diverse Definitionen nach cfg.h verschoben (Display-Art, Tastatur-Layout, Pinkonfigurationen usw.)
 //                            -dadurch einige Codezeilen entfernt (ca.50) und einige Options-Funktionen gekürzt (SD-Card-Pins, Tastatur-Layout)
@@ -106,10 +114,12 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Konfiguration Grafiktreiber und Akku-Überwachung
 #include "cfg.h"   //********************************************* Konfigurations-Datei *************************************************************
-
+//#include <WiFi.h>
 #include "fabgl.h" //********************************************* Bibliotheken zur VGA-Signalerzeugung *********************************************
 fabgl::Terminal         Terminal;
 fabgl::LineEditor       LineEditor(&Terminal);
+//SoundGenerator       soundGenerator;
+//SquareWaveformGenerator swg;
 
 
 //---------------------------------------- die verschiedenen Grafiktreiber --------------------------------------------------------------------------
@@ -137,8 +147,8 @@ TerminalController      tc(&Terminal);
 //---------------------------------------------------- verfügbare Themes ---------------------------------------------------------------------------
 const char * Themes[]    PROGMEM = {"C64", "C128", "CPC", "ATARI 800", "ZX-Spectrum", "KC87", "KC85", "VIC-20", "TRS-80", "ESP32+", "LCD", "User"}; //Theme-Namen
 const char * Keylayout[] PROGMEM = {" ", "US", "UK", "GE", "IT", "ES", "FR", "BE", "NO", "JP"};
-byte x_char[]      PROGMEM = {8, 5, 6, 8,  10, 8,  8,  8,  8,  8,  8,  8,  8,  6,  8,  4, 6,  7,  7,  8, 8, 8, 6, 9, 8, 6}; //x-werte der Fontsätze zur Berechnung der Terminalbreite
-byte y_char[]      PROGMEM = {8, 8, 8, 14, 20, 14, 14, 16, 16, 14, 14, 14, 16, 10, 14, 6, 12, 13, 14, 9, 14, 14, 10, 15, 16, 8}; //y-werte der Fontsätze zur Berechnung der Terminalhöhe
+byte x_char[]      PROGMEM = {8, 5, 6, 8,  10, 8,  8,  8,  8,  8,  8,  8,  8,  6,  8,  4, 6,  7,  7,  8, 8, 8, 6, 9, 8, 8, 6}; //x-werte der Fontsätze zur Berechnung der Terminalbreite
+byte y_char[]      PROGMEM = {8, 8, 8, 14, 20, 14, 14, 16, 16, 14, 14, 14, 16, 10, 14, 6, 12, 13, 14, 9, 14, 14, 10, 15, 16, 8, 8}; //y-werte der Fontsätze zur Berechnung der Terminalhöhe
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //------------------------------------------------------------- Soundgenerator ----------------------------------------------------------------------------
@@ -156,7 +166,7 @@ SPIClass spiSD(HSPI);
 byte Editor_marker = 101;  // EEPROM-Platz 101 beinhaltet den Editor-marker (123)
 #define kSD_Fail  0      //Fehler-Marker
 #define kSD_OK    1      //OK-Marker
-File fp;
+File fp,fpsf;
 
 const char* filetype[] = {".bin", ".bas", ".bmp", "mp3"};
 const char*  Programs[] PROGMEM = {"Basic32+", "RunCP/M", "CPC-Emu", "ZX81-Emu", "Spectrum-Emu", "KIM1-Emu", "Gameboy-Emu", "VIC-20-Emu", "KILO-Texteditor", "Games", "Vectrex-Emu", "Altair8800-Emu", "Pacman", "Telnet", "PMD-85-Emu", "Invaders"};         //Programme
@@ -206,7 +216,8 @@ float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA;
 
 //---------------------------- EEPROM o.FRAM-Chip I2C-Adressen ------------------------------------------------------------------------------------
 
-short int EEprom_ADDR = 0x50; //-> Adresse 0x50 ist der EEPROM auf dem MCP23017 Board
+//short int EEprom_ADDR = 0x50; //-> Adresse 0x50 ist der EEPROM auf dem MCP23017 Board
+short int EEprom_ADDR = 0x57; //-> Adresse 0x57 ist der EEPROM auf dem RTC3231 Cord
 
 
 // ---------------------------- W2812-seriell LED-Treiber -----------------------------------------------------------------------------------------
@@ -325,6 +336,12 @@ static bool Theme_marker = false;       //Theme-Marker, falls Farben geändert
 short int Mode_state = 0;               //aktuelle Auflösung (im EEProm gespeichert)
 
 static bool break_marker = false;      //********** Test für CardKB *****************
+
+uint8_t curGain = 100;                 //current loudness Audiolautstärke
+int Key_l = 0;                         //Tasten für MP3-Player
+int Key_r = 0;
+int Key_u = 0;
+int Key_d = 0;
 
 //------------------------------ Grid-Parameter ---------------------------------------------------------------------------------------------------
 int Grid[15];  //0=x, 1=y, 2=xx, 3=yy, 4=zell_x, 5=zell_y, 6=pix_x, 7=pix_y, 8=frame-col, 9=grid_col
@@ -504,6 +521,10 @@ const static char keywords[] PROGMEM = {
   'W', 'I', 'N', 'D', 'O', 'W' + 0x80,
   'H', 'E', 'L', 'P' + 0x80,
   'F', 'R', 'A', 'M', 'E' + 0x80,
+  'A', 'R', 'C' + 0x80,
+  'S', 'W', 'A', 'P' + 0x80,
+  'C', 'O', 'P', 'Y' + 0x80,
+  'A', 'N', 'G', 'L', 'E' + 0x80,
   0
 };
 
@@ -590,7 +611,11 @@ enum {
   KW_WINDOW,
   KW_HELP,
   KW_FRAME,
-  KW_DEFAULT  //81/* hier ist das Ende */
+  KW_ARC,     //80
+  KW_SWAP,
+  KW_COPY,
+  KW_ANGLE,
+  KW_DEFAULT  //84/* hier ist das Ende */
 };
 
 int KW_WORDS = KW_DEFAULT;
@@ -1940,7 +1965,7 @@ static float expr4(void)
 
 
       case FUNC_GPIX:
-        return Test_pixel(a, b, 1);
+        return Test_pixel(a, b, 0);
         break;
 
       case FUNC_GET:
@@ -3455,7 +3480,27 @@ interpreteAtTxtpos:
         if (line_rec_circ(3, 4))                          // 3=Round, 0..4 Parameter
           continue;
         break;
-
+      
+      case KW_ARC:                                        // ARC x,y,rmin,rmax,gstart,gend,fill
+        if(line_rec_circ(4, 6))
+           continue;
+        break;
+      
+      case KW_SWAP:
+        if(line_rec_circ(5, 3))                           //SWAP x,y,xx,yy ->vertauscht vorder und Hintergrundfarbe eines rechtecks
+           continue;
+        break;
+        
+      case KW_COPY:
+        if(line_rec_circ(6, 5))                           //Copy x,y,x_dest,y_dest, w, h ->Kopiert ein Rechteck von x,y nach x_dest,y_dest mit der Größe w,h
+           continue;
+        break;
+      
+      case KW_ANGLE:
+        if(line_rec_circ(9, 3))
+           continue;
+        break;
+        
       case KW_FONT:                                       // FONT f
         expression_error = 0;
         val = int(get_value());
@@ -3516,7 +3561,7 @@ interpreteAtTxtpos:
         break;
 
       case KW_SCROLL:
-        if (scroll_xy())
+        if(line_rec_circ(8, 1))
           continue;
         break;
 
@@ -3656,11 +3701,9 @@ interpreteAtTxtpos:
         dacWrite(26, int(val / 0.0129));                  //Wert 0-255 (255= 3.3V 128=1.65V) x=wert/0,0129 (3,3/255)
         break;
 
-      case KW_DRAW:
-        if (draws()) {
-          //syntaxerror(syntaxmsg);
+      case KW_DRAW:                                       //Draw x,y,0..1
+        if(line_rec_circ(7, 2))
           continue;
-        }
         break;
 
       case KW_SPRITE:
@@ -4382,7 +4425,7 @@ float rw_array(int num, word table) {
 
 void clear_var()
 {
-  float w_ert = 0;
+  long w_ert = 0;
   byte* bytes = (byte*)&w_ert;
 
   memset(tempstring, '\0', sizeof(tempstring));
@@ -4391,14 +4434,13 @@ void clear_var()
   {
     variables_begin[i] = 0;
   }
-  //for (int i = 0; i < 26; i++)                              //Strings löschen
-  //{
   memset(Stringtable, '\0', sizeof(Stringtable));
-  //}
-  for (int i = 0x7e00; i < 0x7fff; i += 4) SPI_RAM_write(i, bytes, 4);   //Array-Tabelle löschen
+  for (int i = 0; i < 0x7fff; i += 4) SPI_RAM_write(i, bytes, 4); //Variablen im FRam löschen
   Var_Neu_Platz = 0;                                              //Array-Zeiger zurücksetzen
   num_of_datalines = 0;                                           //Datazeilenzähler zurücksetzen
   del_window();                                                   //Fensterparameter löschen
+  Frame_nr = 0;                                                   //Hauptfenster setzen
+
   return;
 }
 
@@ -4411,14 +4453,11 @@ void cmd_new(void) {
   program_start = program;
   program_end = program_start;
   sp = program + sizeof(program);                                     // Needed for printnum
+  
   stack_limit = program + sizeof(program) - STACK_SIZE;               // - ARRAY_SIZE;
   variables_begin = stack_limit - (26 * 27 * VAR_SIZE) ;              //26*27 (2)Buchstaben als Variablen
   memset(program, 0, 1000);                                           //die ersten 1000 Bytes des Speichers löschen
   clear_var();                                                        //Variablen und Array-Tabelle löschen
-  for (int i = 0x0; i < 0x7fff; i += 4) SPI_RAM_write(i, bytes, 4);   //Array-Bereich löschen
-  del_window();                                                       //Fensterparameter löschen
-  Frame_nr = 0;                                                       //Hauptfenster setzen
-  //print_info();                                                       //Start-Bildschirm anzeigen
 }
 
 //#######################################################################################################################################
@@ -4434,13 +4473,13 @@ static int set_theme(int value)
     case 0: //C64
       Vordergrund = 43;
       Hintergrund = 18;
-      set_font(0);
+      set_font(25);
       break;
 
     case 1: //C128
       Vordergrund = 25;
       Hintergrund = 21;
-      set_font(0);
+      set_font(25);
       break;
 
     case 2: //CPC
@@ -4651,31 +4690,6 @@ again:
   return 0;
 }
 
-//#######################################################################################################################################
-//--------------------------------------------- SCROLL - Befehl -------------------------------------------------------------------------
-//#######################################################################################################################################
-
-static int scroll_xy(void)
-{
-  short int par[6];
-
-  expression_error = 0;
-  par[0] = get_value();
-  if (expression_error) return 1;
-  if (Test_char(',')) return 1;
-
-  expression_error = 0;
-  par[1] = get_value();
-  if (expression_error) return 1;
-
-  // Check that we are at the end of the statement
-  if (*txtpos != NL && *txtpos != ':') return 1;
-
-  GFX.scroll(par[0], par[1]);
-
-  return 0;
-}
-
 
 //#######################################################################################################################################
 //--------------------------------------------- Lines/CIRCLE/RECT - Befehl --------------------------------------------------------------
@@ -4684,11 +4698,11 @@ static int scroll_xy(void)
 static int line_rec_circ(int circ_or_rect, int param)
 {
   //#################### Linie, Rechteck oder Kreis zeichnen #################
-
-  short int i, par[6];
+  //int x,y;
+  short int i, par[7];
   i = 0;
 
-  while (i < param) {                 //3 o.4 Parameter eingeben
+  while (i < param) {                 //die ersten Parameter eingeben
     expression_error = 0;
     par[i] = get_value();
     if (expression_error) return 1;
@@ -4699,7 +4713,9 @@ static int line_rec_circ(int circ_or_rect, int param)
   }
 
   expression_error = 0;
-  par[param] = get_value();            //param bei circ und rect=4 -> 5.Parameter , lines=3 -> 4.Parameter
+  
+  par[param] = get_value();            //letzter Parameter - in tempstring steht ein eventueller string
+  
   if (expression_error) return 1;
 
   // Check that we are at the end of the statement
@@ -4714,53 +4730,63 @@ static int line_rec_circ(int circ_or_rect, int param)
         GFX.fillEllipse(par[0], par[1], par[2], par[3]);                      //Circle circ x,y,xx,yy,fill=1
       }
       break;
+      
     case 2:
       if (par[4] == 0) GFX.drawRectangle(par[0], par[1], par[2], par[3]);     //Rectangle rect x,y,xx,yy,fill=0
       else {
         bcolor(Hintergrund);
         GFX.fillRectangle(par[0], par[1], par[2], par[3]);                    //Rectangle rect x,y,xx,yy,fill=1
       }
-      break;                                                                   //               0 1 2  3  4
+      break;                                                                   
+      
     case 3:                                                                   //Frame frame x,y,xx,yy,r
       GFX.drawLine(par[0] + 1.6 * par[4], par[1] - 1, par[0] + par[2] - 1.6 * par[4], par[1] - 1);
       GFX.drawLine(par[0] + 1.6 * par[4], par[1] + par[3], par[0] + par[2] - 1.6 * par[4], par[1] + par[3]);
       GFX.drawLine(par[0] - 1, par[1] + par[4], par[0] - 1, par[1] + par[3] - par[4]);
       GFX.drawLine(par[0] + par[2], par[1] + par[4], par[0] + par[2], par[1] + par[3] - par[4]);
       for (int i = 0; i <= 25; i++) {
-        GFX.setPixel(par[0] + par[2] - par[4] * 1.6 * (1 - cos(i / 25.*3.1415 / 2.)), par[1] + par[4] * (1 - sin(i / 25.*3.1415 / 2.)));
-        GFX.setPixel(par[0] + par[4] * 1.6 * (1 - cos(i / 25.*3.1415 / 2.)), par[1] + par[4] * (1 - sin(i / 25.*3.1415 / 2.)));
-        GFX.setPixel(par[0] + par[2] - par[4] * 1.6 * (1 - cos(i / 25.*3.1415 / 2.)), par[1] + par[3] - par[4] * (1 - sin(i / 25.*3.1415 / 2.)));
-        GFX.setPixel(par[0] + par[4] * 1.6 * (1 - cos(i / 25.*3.1415 / 2.)), par[1] + par[3] - par[4] * (1 - sin(i / 25.*3.1415 / 2.)));
+        GFX.setPixel(par[0] + par[2] - par[4] * 1.6 * (1 - cos(i / 25.*M_PI / 2.)), par[1] + par[4] * (1 - sin(i / 25.*M_PI / 2.)));
+        GFX.setPixel(par[0] + par[4] * 1.6 * (1 - cos(i / 25.*M_PI / 2.)), par[1] + par[4] * (1 - sin(i / 25.*M_PI / 2.)));
+        GFX.setPixel(par[0] + par[2] - par[4] * 1.6 * (1 - cos(i / 25.*M_PI / 2.)), par[1] + par[3] - par[4] * (1 - sin(i / 25.*M_PI / 2.)));
+        GFX.setPixel(par[0] + par[4] * 1.6 * (1 - cos(i / 25.*M_PI / 2.)), par[1] + par[3] - par[4] * (1 - sin(i / 25.*M_PI / 2.)));
       }
       break;
+      
+    case 4:
+      drawArc(par[0], par[1], par[2], par[3], par[4], par[5], par[6]);        //Arc x,y,rmin,rmax,g_start,g_end,fill
+      break;
+      
+    case 5:
+      GFX.swapRectangle(par[0], par[1], par[2], par[3]);                      //Swap x,y,xx,yy
+      break;
+      
+    case 6:
+      GFX.copyRect(par[0], par[1], par[2], par[3], par[4], par[5]);          //Copy x, y, x_dest, y_dest, w, h
+      break;
+
+    case 7:
+      if (par[2] == 0) GFX.moveTo(par[0], par[1]);                           //Draw x,y,1=draw/0=move
+      else GFX.lineTo(par[0], par[1]);
+      break;
+      
+    case 8:                                                                  //Scroll x,y
+      GFX.scroll(par[0], par[1]);  
+      break;
+    
+    case 9:
+      //x=par[0]+par[3]*cos(par[2]*M_PI/180);                                  //Angle x,y,winkel,länge
+      //y=par[1]+par[3]*sin(par[2]*M_PI/180);
+      GFX.drawLine(par[0], par[1], par[0]+par[3]*cos(par[2]*M_PI/180), par[1]+par[3]*sin(par[2]*M_PI/180));
+      break;
+                  
     default:
-      GFX.drawLine(par[0], par[1], par[2], par[3]);                           //Line line x,y,xx,yy
+      GFX.drawLine(par[0], par[1], par[2], par[3]);                          //Line line x,y,xx,yy
       break;
   }
   //bcolor(Hintergrund);
   return 0;
 }
 
-//#######################################################################################################################################
-//------------------------------------------------------------- DRAW-Befehl -------------------------------------------------------------
-//#######################################################################################################################################
-static int draws(void)
-{
-  short int p[3];
-  // Work out where to put it
-  expression_error = 0;
-  for (int i = 0; i < 3; i++) {
-    p[i] = get_value();
-    if (i < 2) {
-      if (Test_char(',')) return 1;
-    }
-  }
-
-  if (p[2] == 0) GFX.moveTo(p[0], p[1]);
-  else GFX.lineTo(p[0], p[1]);
-
-  return 0;
-}
 
 //#######################################################################################################################################
 //----------------------------------------------------- Sprite-Befehl -------------------------------------------------------------------
@@ -4851,7 +4877,8 @@ static int sprite(char cm) {
 //#######################################################################################################################################
 static int Sound(void) {
   short int  i, par[7];
-  char c;
+  char c[30];
+  String seq;
   //if (Test_char('_')) return 1;                           //Klammer-auf vorhanden?
   //c = *txtpos;
   //expression_error = 0;
@@ -4942,7 +4969,11 @@ static int Sound(void) {
   if (par[4] > 127) par[4] = 127;
   par[2] = NoteToFreq(par[2]);
   //Terminal.write("\e_S0;800;1000;100$");
+  //seq = "\e_S" + String(par[1], DEC) + ";" + String(par[2], DEC) + ";" + String(par[3], DEC) + ";" + String(par[4], DEC) + "$";
+  //seq.toCharArray(c, seq.length() + 1);
   Terminal.print("\e_S" + String(par[1], DEC) + ";" + String(par[2], DEC) + ";" + String(par[3], DEC) + ";" + String(par[4], DEC) + "$");
+  
+  
   if (Test_char(')')) return 1;                           //Klammer-zu vorhanden?
 
   // Check that we are at the end of the statement
@@ -5481,8 +5512,10 @@ void set_font(int fnt) {
       break;
     case 24: Terminal.loadFont(&fabgl::FONT_8x16); //(siehe Ordner Fonts)
       break;
+    case 25: Terminal.loadFont(&fabgl::FONT_8x8_PET); //(siehe Ordner Fonts)
+      break;
     default: Terminal.loadFont(&fabgl::FONT_6x8);
-      fnt = 25;
+      fnt = 26;
       break;
   }
   if (fnt != fontsatz)                 // nur speichern, wenn anderer Wert als bisher
@@ -5743,9 +5776,10 @@ static int initSD( void )
 {
   int c;
   int adr, i;
+//  SPI.begin();
+//  SPI.setFrequency(10000000);
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-  SPI.setFrequency(40000000);
 
   Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
@@ -5886,6 +5920,11 @@ static int load_file(void)
       case 3:
         play_mp3();
         break;
+      /*
+      case 4:
+        play_mod();
+        break;
+        */
       default:
         break;
     }
@@ -5896,22 +5935,23 @@ static int load_file(void)
 }
 
 int check_extension() {
-  String cbuf, dbuf;//, ebuf, fbuf, gbuf;
-  int a, b, c, d;
-  d = 0;
+  String cbuf, dbuf;
+  int a, b, c, d, e;
+  e = 0;
   dbuf = String(tempstring);
   dbuf.toUpperCase();                               //String in Grossbuchstaben umwandeln
   cbuf = dbuf.substring(dbuf.length() - 4, dbuf.length());  //in cbuf steht die Dateierweiterung von tempstring
-  
 
   a = cbuf.compareTo(".BAS");
   b = cbuf.compareTo(".BIN");
   c = cbuf.compareTo(".MP3");
-  if (a == 0) d = 1;
-  if (b == 0) d = 2;
-  if (c == 0) d = 3;
+  d = cbuf.compareTo(".MOD");                       //Frei - Mod-Player funktioniert nicht gut
+  if (a == 0) e = 1;
+  if (b == 0) e = 2;
+  if (c == 0) e = 3;
+  if (d == 0) e = 4;
   //Terminal.println(c);
-  return d;
+  return e;
 }
 
 //#######################################################################################################################################
@@ -6449,7 +6489,7 @@ return 0;
 
   void setup()
   {
-
+    //WiFi.mode(WIFI_OFF); //WiFi.forceSleepBegin();
     setCpuFrequencyMhz(240);                                                           //mit dieser Option gibt's Startschwierigkeiten
 
     EEPROM. begin ( EEPROM_SIZE ) ;
@@ -6590,17 +6630,31 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
         *vk = VirtualKey::VK_NONE;
       }
 
-
+        if (*vk == VirtualKey::VK_F8) {                                                 //+ Lautstärke MP3  - bis mir was besseres einfällt
+          if (keyDown) {
+            Key_u = 1;
+            curGain++;
+            if (curGain > 200) curGain = 200;
+          }
+           *vk = VirtualKey::VK_NONE;
+        }
+        else if (*vk == VirtualKey::VK_F7) {                                            //- Lautstärke MP3  - bis mir was besseres einfällt
+          if (keyDown) {
+            Key_d = 1;
+            curGain--;
+            if (curGain < 0) curGain = 0;
+            
+          }
+           *vk = VirtualKey::VK_NONE;
+        }
     };
 
-    //Serial.begin(kConsoleBaud);                                                           // open serial port
+    //Serial.begin(115200);                                                           // open serial port
 
-    // ein I2C-Interface definieren
+    // das I2C-Interface definieren
     myI2C.begin(SDA_RTC, SCL_RTC, 400000); //400kHz
     rtc.begin(&myI2C);
     getdatetime();                                              //ESP32-interne Uhr stellen für Datei-Zeitstempel
-
-
     //-------------------------------- Akku-Überwachung per Timer0-Interrupt --------------------------------------------
 #ifdef Akkualarm_enabled
 Akku_timer = timerBegin(0, 80, true);
@@ -8451,6 +8505,9 @@ nochmal:
         case 24:
           GFX.drawText(&fabgl::FONT_8x16, x_text, y_text, tempstring);
           break;
+        case 25:
+          GFX.drawText(&fabgl::FONT_8x8_PET,x_text,y_text,tempstring);
+          break;
         default:
           GFX.drawText(&fabgl::FONT_6x8, x_text, y_text, tempstring);
           break;
@@ -8742,99 +8799,148 @@ nochmal:
       else return c;          //Farbe des Pixels
     }
 
-    /*
+//------------------------------------------------------- Testbereich ARC-Befehl ------------------------------------------------------------------
+const int cos_tab[360] = {
+1000, 1000, 999, 999, 998, 996, 995, 993, 990, 988, 985, 982, 978, 974, 970, 966, 
+961, 956, 951, 946, 940, 934, 927, 921, 914, 906, 899, 891, 883, 875, 866, 857, 
+848, 839, 829, 819, 809, 799, 788, 777, 766, 755, 743, 731, 719, 707, 695, 682, 
+669, 656, 643, 629, 616, 602, 588, 574, 559, 545, 530, 515, 500, 485, 469, 454, 
+438, 423, 407, 391, 375, 358, 342, 326, 309, 292, 276, 259, 242, 225, 208, 191, 
+174, 156, 139, 122, 105, 87, 70, 52, 35, 17, 0, -17, -35, -52, -70, -87, -105, 
+-122, -139, -156, -174, -191, -208, -225, -242, -259, -276, -292, -309, -326, 
+-342, -358, -375, -391, -407, -423, -438, -454, -469, -485, -500, -515, -530, 
+-545, -559, -574, -588, -602, -616, -629, -643, -656, -669, -682, -695, -707, 
+-719, -731, -743, -755, -766, -777, -788, -799, -809, -819, -829, -839, -848, 
+-857, -866, -875, -883, -891, -899, -906, -914, -921, -927, -934, -940, -946, 
+-951, -956, -961, -966, -970, -974, -978, -982, -985, -988, -990, -993, -995, 
+-996, -998, -999, -999, -1000, -1000, -1000, -999, -999, -998, -996, -995, -993, 
+-990, -988, -985, -982, -978, -974, -970, -966, -961, -956, -951, -946, -940, 
+-934, -927, -921, -914, -906, -899, -891, -883, -875, -866, -857, -848, -839, 
+-829, -819, -809, -799, -788, -777, -766, -755, -743, -731, -719, -707, -695, 
+-682, -669, -656, -643, -629, -616, -602, -588, -574, -559, -545, -530, -515, 
+-500, -485, -469, -454, -438, -423, -407, -391, -375, -358, -342, -326, -309, 
+-292, -276, -259, -242, -225, -208, -191, -174, -156, -139, -122, -105, -87, 
+-70, -52, -35, -17, 0, 17, 35, 52, 70, 87, 105, 122, 139, 156, 174, 191, 208, 
+225, 242, 259, 276, 292, 309, 326, 342, 358, 375, 391, 407, 423, 438, 454, 469, 
+485, 500, 515, 530, 545, 559, 574, 588, 602, 616, 629, 643, 656, 669, 682, 695, 
+707, 719, 731, 743, 755, 766, 777, 788, 799, 809, 819, 829, 839, 848, 857, 866, 
+875, 883, 891, 899, 906, 914, 921, 927, 934, 940, 946, 951, 956, 961, 966, 970, 
+974, 978, 982, 985, 988, 990, 993, 995, 996, 998, 999, 999, 1000
+};
+
+void drawArcP(Point pnt[], int &npnt)
+{
+  if ( npnt == 0) npnt++;
+  else if ( pnt[npnt].X != pnt[npnt - 1].X || pnt[npnt].Y != pnt[npnt - 1].Y){
+    npnt++;  
+  }
+        
+}
+
+void drawArc(int x, int y, int r_min, int r_max, const int gr_start, const int gr_end, int filled)
+{
+  Point pnt[360 * 2];
+  int npnt = 0;
+  
+  for ( int n = gr_start; n <= gr_end; n+=10)
+  {
+    //pnt[npnt].X = x + (deg(cos(n%360)) * r_min)/80; 
+    //pnt[npnt].Y = y + (deg(cos((n+270)%360)) * r_min)/100;  
+    pnt[npnt].X = x + (cos_tab[n%360] * r_min)/800; 
+    pnt[npnt].Y = y + (cos_tab[(n+270)%360] * r_min)/1000;    
+    drawArcP(pnt, npnt);    
+  }
+  for ( int n = gr_end; n >= gr_start; n-=10)
+  {                      
+    //pnt[npnt].X = x + (deg(cos(n%360)) * r_max)/80; 
+    //pnt[npnt].Y = y + (deg(cos((n+270)&360)) * r_max)/100; 
+    pnt[npnt].X = x + (cos_tab[n%360] * r_max)/800; 
+    pnt[npnt].Y = y + (cos_tab[(n+270)%360] * r_max)/1000;            
+    drawArcP(pnt, npnt);
+  }
+  if(filled==1) GFX.fillPath(pnt, npnt);
+  else GFX.drawPath( pnt, npnt);
+}
+
+float deg(float n){
+  float c=n * M_PI/180*1000;//n*57296;
+  Terminal.println(c);
+  return c;
+}
+/*
+void iPlaySound( void *pvParameters )
+{
+  playsounddata psd = *(playsounddata *)pvParameters;
+
+  WaveformGenerator *pwave;
+  if ( psd.wave == WAVE_SQUARE)   pwave = new SquareWaveformGenerator();
+  if ( psd.wave == WAVE_SINE)     pwave = new SineWaveformGenerator();
+  if ( psd.wave == WAVE_TRIANGLE) pwave = new TriangleWaveformGenerator();
+  if ( psd.wave == WAVE_SAW)      pwave = new SawtoothWaveformGenerator();
+  if ( psd.wave == WAVE_NOISE)    pwave = new NoiseWaveformGenerator();
+
+  int sustainVolume = psd.sustain * psd.volume / 127;
+
+  soundGenerator.attach( pwave);
+  pwave->setVolume( ((psd.attack == 0) ? ( (psd.decay != 0) ? psd.volume : sustainVolume) : 0) );
+  pwave->setFrequency( psd.freq_start );
+  pwave->enable(true );
+
+  long startTime = millis();
+
+  while ( millis() - startTime < psd.durationms)
+  {
+    long current = millis() - startTime;
+
+    if ( current < psd.attack ) // ATTACK VOLUME
+      pwave->setVolume( (psd.volume * current) / psd.attack );
+    else if ( current > psd.attack && current < (psd.attack + psd.decay)) // DECAY VOLUME
+      pwave->setVolume( map( current - psd.attack,  0, psd.decay,  psd.volume, sustainVolume ) );
+    else if ( current > psd.durationms - psd.release) // RELEASE VOLUME
+      pwave->setVolume( map( current - (psd.durationms - psd.release),  0, psd.release,  sustainVolume, 0 ) );
+    else
+      pwave->setVolume( sustainVolume );
 
 
-            // ************************************************** App-Starter *********************************************************************************
-            void show_screen(void) {
-              int a, b;
-              String cbuf;
-              int old_key_x, old_key_y;
+    if ( psd.modfreq != MODFREQ_NONE)
+    {
+      int maxtime = psd.durationms;
+      if      (psd.modfreq == MODFREQ_TO_RELEASE)
+        maxtime = (psd.durationms - psd.release); // until release
+      else if (psd.modfreq == MODFREQ_TO_SUSTAIN)
+        maxtime = (psd.attack + psd.decay); // until sustain
 
-              Terminal.enableCursor(false);
-              fcolor(60);
-              bcolor(1);
-              tc.setCursorPos(1, 1);
-              GFX.clear();
-              bcolor(11);
-              GFX.fillRectangle(5, 5, 315, 235);                    //Rectangle rect x,y,xx,yy,fill=1
-              bcolor(63);
-              GFX.fillRectangle(10, 10, 310, 230);                    //Rectangle rect x,y,xx,yy,fill=1
-              fcolor(0);
-              int y_pos = VGAController.getScreenHeight() / 8;
-              int x_pos = VGAController.getScreenWidth() / 8;
+      int f = ((current > maxtime) ? psd.freq_end : (map(current, 0, maxtime, psd.freq_start, psd.freq_end)));
+      pwave->setFrequency ( f ) ;
+    }
+    vTaskDelay(1);
+  }
 
-              cbuf = "* ESP32-App-Starter *";
-              cbuf.toCharArray(tempstring, cbuf.length() + 1);
-              drawing_text(4, 50 , 10);
+  soundGenerator.detach( pwave);
+  pwave->enable( false );
+  delete pwave;
 
-              b = -1;
-              for (int i = 0; i < filenums; i++) {
-                if (i % 4 == 0) {
-                  a = 0;
-                  b++;
-                }
-                else {
-                  a++;
-                }
-                cbuf = String(filenames[i]) + String(filetype[2]);
-                cbuf.toUpperCase();                               //String in Grossbuchstaben umwandeln
-                cbuf.toCharArray(tempstring, cbuf.length() + 1);
-                status_text(tempstring);
-                import_pic((xx_pos[a] * 8) - 8, (yy_pos[b] * 8) - 47, tempstring, 1);
-
-                cbuf = String(Programs[i]);
-                cbuf.toCharArray(tempstring, cbuf.length() + 1);
-                //status_text(Programs[i]);
-              }
-              // Basic-Icon invertieren und in der Statuszeile anzeigen
-              GFX.swapRectangle((xx_pos[0] * 8) - 8, (yy_pos[0] * 8) - 47, (xx_pos[0] * 8) - 8 + 39, (yy_pos[0] * 8) - 47 + 39); //swap Backcolor
-              status_text(Programs[0]);
+  vTaskDelete( NULL );
+}
 
 
-              while (!break_marker)
-              {
 
-                if (swap) {
-                  status_text(Programs[(Key_y * 4) + Key_x]);
-                  bcolor(63);
-                  GFX.swapRectangle((old_key_x * 8) - 8, (old_key_y * 8) - 47, (old_key_x * 8) - 8 + 39, (old_key_y * 8) - 47 + 39); //swap Backcolor
-                  GFX.swapRectangle((xx_pos[Key_x] * 8) - 8, (yy_pos[Key_y] * 8) - 47, (xx_pos[Key_x] * 8) - 8 + 39, (yy_pos[Key_y] * 8) - 47 + 39); //swap Backcolor
-                  swap = false;
-                }
-                old_key_x = xx_pos[Key_x];
-                old_key_y = yy_pos[Key_y];
-                delay(100);
-                if (break_marker) break;
-                tc.setCursorPos(1, 1);
-                Terminal.print(break_marker);
-                Terminal.print(Key_enter);
-              }
-              cbuf = String(sd_pfad) + String(filenames[(Key_y * 4) + Key_x]) + String(filetype[0]);
-              cbuf.toUpperCase();                               //String in Grossbuchstaben umwandeln
-              cbuf.toCharArray(tempstring, cbuf.length() + 1);
-              if (break_marker)                                 //ESC?-dann zurück zum Basic
-              {
-                fbcolor(Vordergrund,Hintergrund);
-                Terminal.enableCursor(onoff);
-                GFX.clear();
-                line_terminator();
-                break_marker = false;
+void playSound( playsounddata ps )
+{
+  // Now set up two tasks to run independently.
+  xTaskCreatePinnedToCore( iPlaySound,  "iPlaySound",
+                           4096,  // This stack size can be checked & adjusted by reading the Stack Highwater
+                           &ps, // sound as parameters
+                           PLAY_SOUND_PRIORITY,  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+                           NULL,
+                           ARDUINO_RUNNING_CORE);
+}
 
-                return ;
-              }
-              //load_binary();                                    //Enter gedrückt-dann lade App
 
-              return ;
-            }
+void  syncPlaySound( playsounddata psd)
+{
+  playSound( psd);
+  delay(psd.durationms);
+}
 
-            void status_text(String txt) {
-              int x = (40 / 2) - (txt.length() / 2);
-              bcolor(11);
-              GFX.fillRectangle(5, 230, 315, 239);                    //Rectangle rect x,y,xx,yy,fill=1
-              tc.setCursorPos(x, 30);
-              bcolor(11);
-              Terminal.print(txt);
-            }
-
-    */
+*/
