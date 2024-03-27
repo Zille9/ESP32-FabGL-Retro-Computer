@@ -7,7 +7,8 @@ void writeEEPROM(int deviceaddress, word eeaddress, byte dat )
   myI2C.write(dat);
   myI2C.endTransmission();
   if (deviceaddress == EEprom_ADDR)                           //bei EEprom muss etwas gewartet werden
-    delay(10);
+  // Write cycle time (tWR). See EEPROM memory datasheet for more details.
+    delay(5);
 }
 
 byte readEEPROM(int deviceaddress, word eeaddress )
@@ -29,7 +30,6 @@ void WriteBuffer(int deviceaddress, word address, byte ln, byte* p_data)
   myI2C.beginTransmission(deviceaddress);
   myI2C.write(highByte(address));
   myI2C.write(lowByte(address));
-  //myI2C.write(p_data,ln);
 
   for (byte i = 0; i < ln; i++)
   {
@@ -40,7 +40,7 @@ void WriteBuffer(int deviceaddress, word address, byte ln, byte* p_data)
 
   // Write cycle time (tWR). See EEPROM memory datasheet for more details.
   if (deviceaddress == EEprom_ADDR)                                         //bei EEprom muss etwas gewartet werden
-    delay(10);
+    delay(5);
 }
 
 void readBuffer(int deviceaddress, word address, byte ln, byte* p_data)

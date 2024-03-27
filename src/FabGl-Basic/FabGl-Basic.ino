@@ -38,23 +38,33 @@
 //                                          -Speichermonitor
 //                                          -Exponential-Ein/Ausgabe
 //                                          -Verschiedene Sensoren und Komponenten HC-S04, Dallas DS18S20, DHT, LCD, Neopixel-LED, BMP180
-//                                          -Zeileneditor
+//                                          -Zeileneditor + Texteditor KILO
 //                                          -integrierte Kurzhilfe
 //
 // Author:Reinhard Zielinski <zille09@gmail.com>
 // April 2021
 //
 //
-#define BasicVersion "2.01b"
-#define BuiltTime "19.03.2024"
+#define BasicVersion "2.02b"
+#define BuiltTime "26.03.2024"
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// v2.02b:26.03.2024          -neues Board eingetroffen, mit dem es möglich ist SPI-RAM (23LC1024) oder vielleicht sogar PSRAM zu testen, das würde den teuren FRAM ersetzen
+//                            -FRAM-Library von Adafruit gekürzt, es wurde die Abfrage der Device-ID deaktiviert. Lt.Datenblatt sollte normaler SPI-RAM und sogar PSRAM ansprechbar sein
+//                            -erste Tests bestätigen die Kompatibilität des Treibers für 23LC1024-SPI-Ram Chips - lesen und schreiben funktioniert
+//                            -neuer Test mit PSRAM 8MB :-D erfolgreich, somit sind 8MB SPI-Speicher verfügbar allerdings funktioniert alles nur im normalen SPI-Modus
+//                            -DPI oder QSPI sind damit natürlich nicht möglich aber hallo - 8MB, was will man mehr - ist sogar schon etwas zuviel, mal sehen, was mir dazu noch einfällt
+//                            -man hat somit 3 unterschiedliche Möglichkeiten der RAM-Unterstützung 128kB-SPI-RAM, 512kB FRAM, 2..4..8MB PSRAM
+//                            -FRAM hat den grossen Vorteil, die Daten im ausgeschalteten Zustand nicht zu verlieren und die gleiche Geschwindigkeit und Schreibzyklen (unbegrenzt) wie SPI-Ram zu haben
+//
 // v2.01b:19.03.2024          -Grafikbefehl ANGLE erstellt, zeichnet eine Linie von x,y mit dem Winkel w und der länge l -> ANGLE x,y,w,l
-//                            -
-//                            -15882 Zeilen/sek
+//                            -Bildschirmauflösung 320x200 60Hz in fabglconf.h hinzugefügt -> C64 Auflösung, macht die Portierung von Programmen leichter
+//                            -Überlegung der Umschaltbarkeit der Auflösungen 320x240 und 320x200 zu integrieren -> funktioniert leider nicht zufriedenstellend
+//                            -Umschaltung erfolgt über den OPTION Befehl -> OPT VMODE = mode -> 0 = 320x240, 1 = 320x200(C64 CPC), 2 = 256x192 (ZX Spectrum,TI99), 3=320x256 (KC85), 4=320x192 (Atari 800) und anschliessendem Reboot
+//                            -15912 Zeilen/sek - 320x240 , 16500 Zeilen/sek - 320x200, 13539 Zeilen/sek. - 400x300
 //
 // v2.00b:09.03.2024          -mp3-Player hinzugefügt - ist noch rudimentär aber funktioniert ->RUN"/filename.mp3"
 //                            -momentan wird der ID3-Tag als Text ausgeworfen
-//                            -ob der Player einen eigenen Befehl (z.Bsp.Play) erhält, ist noch nicht ganz klar (start, stop, pause, nächster- und vorheriger Titel wären nicht schlecht) 
+//                            -ob der Player einen eigenen Befehl (z.Bsp.Play) erhält, ist noch nicht ganz klar (start, stop, pause, nächster- und vorheriger Titel wären nicht schlecht)
 //                            -Fehler in der Clear-Routine behoben, es wurden die Variablen im FRam nicht korrekt gelöscht.
 //                            -Grafikbefehl ARC erstellt, zeichnet ein Kreis-Teilstück (Tortenstück) ARC x, y, rmin, rmax, grad_start, grad_end, fill
 //                            -Grafikbefehl COPY erstellt -> kopiert einen Bildschirmbereich an eine andere Stelle COPY x, y, x_dest, y_dest, width, heigh
@@ -135,7 +145,7 @@ fabgl::VGAController    VGAController;      //VGA-Variante
 fabgl::ILI9341Controller VGAController;     //TFT-Display ILI9341
 #endif
 
-
+//bool v_mode = false;
 //------------------------------------------ Tastatur,GFX-Treiber- und Terminaltreiber -------------------------------------------------------------
 fabgl::PS2Controller    PS2Controller;
 fabgl::Keyboard Keyboard;
@@ -145,7 +155,7 @@ TerminalController      tc(&Terminal);
 #define erststart_marker 131                //dieser Marker steht im EEprom an Position 100 - wird der ESP32 zum ersten mal mit dem Basic gestartet werden standard-Werte gesetzt
 //damit eine benutzbare Version gestartet wird
 //---------------------------------------------------- verfügbare Themes ---------------------------------------------------------------------------
-const char * Themes[]    PROGMEM = {"C64", "C128", "CPC", "ATARI 800", "ZX-Spectrum", "KC87", "KC85", "VIC-20", "TRS-80", "ESP32+", "LCD", "User"}; //Theme-Namen
+const char * Themes[]    PROGMEM = {"C64", "C128", "CPC", "ATARI 800", "ZX-Spectrum", "KC87", "KC85", "VIC-20", "TRS-80", "TI99", "LCD", "User"}; //Theme-Namen
 const char * Keylayout[] PROGMEM = {" ", "US", "UK", "GE", "IT", "ES", "FR", "BE", "NO", "JP"};
 byte x_char[]      PROGMEM = {8, 5, 6, 8,  10, 8,  8,  8,  8,  8,  8,  8,  8,  6,  8,  4, 6,  7,  7,  8, 8, 8, 6, 9, 8, 8, 6}; //x-werte der Fontsätze zur Berechnung der Terminalbreite
 byte y_char[]      PROGMEM = {8, 8, 8, 14, 20, 14, 14, 16, 16, 14, 14, 14, 16, 10, 14, 6, 12, 13, 14, 9, 14, 14, 10, 15, 16, 8, 8}; //y-werte der Fontsätze zur Berechnung der Terminalhöhe
@@ -166,14 +176,14 @@ SPIClass spiSD(HSPI);
 byte Editor_marker = 101;  // EEPROM-Platz 101 beinhaltet den Editor-marker (123)
 #define kSD_Fail  0      //Fehler-Marker
 #define kSD_OK    1      //OK-Marker
-File fp,fpsf;
-
-const char* filetype[] = {".bin", ".bas", ".bmp", "mp3"};
-const char*  Programs[] PROGMEM = {"Basic32+", "RunCP/M", "CPC-Emu", "ZX81-Emu", "Spectrum-Emu", "KIM1-Emu", "Gameboy-Emu", "VIC-20-Emu", "KILO-Texteditor", "Games", "Vectrex-Emu", "Altair8800-Emu", "Pacman", "Telnet", "PMD-85-Emu", "Invaders"};         //Programme
-const char* filenames[] PROGMEM = {"basic", "cpm", "cpc", "esp81", "zxesp", "kim1", "gameboy", "Vic20", "kilo", "games", "vectrex", "altair", "pacman", "Telnet", "pmd85", "Invaders"}; //Datei-Namen
+File fp, fpsf;
+/*
+  const char* filetype[] = {".bin", ".bas", ".bmp", "mp3"};
+  const char*  Programs[] PROGMEM = {"Basic32+", "RunCP/M", "CPC-Emu", "ZX81-Emu", "Spectrum-Emu", "KIM1-Emu", "Gameboy-Emu", "VIC-20-Emu", "KILO-Texteditor", "Games", "Vectrex-Emu", "Altair8800-Emu", "Pacman", "Telnet", "PMD-85-Emu", "Invaders"};         //Programme
+  const char* filenames[] PROGMEM = {"basic", "cpm", "cpc", "esp81", "zxesp", "kim1", "gameboy", "Vic20", "kilo", "games", "vectrex", "altair", "pacman", "Telnet", "pmd85", "Invaders"}; //Datei-Namen
 
 int filenums = 16;
-
+*/
 int Key_x = 0;
 int Key_y = 0;
 bool Key_enter = false;
@@ -212,12 +222,12 @@ float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA;
 
 // -------------------------- EEPROM Routinen für Parameter-Speicherung ---------------------------------------------------------------------------
 #include <EEPROM.h>
-#define EEPROM_SIZE 512  //2048 byte lesen/speichern
+#define EEPROM_SIZE 512  //512 byte lesen/speichern
 
 //---------------------------- EEPROM o.FRAM-Chip I2C-Adressen ------------------------------------------------------------------------------------
 
-//short int EEprom_ADDR = 0x50; //-> Adresse 0x50 ist der EEPROM auf dem MCP23017 Board
-short int EEprom_ADDR = 0x57; //-> Adresse 0x57 ist der EEPROM auf dem RTC3231 Cord
+short int EEprom_ADDR = 0x50; //-> Adresse 0x50 ist der EEPROM auf dem Board
+//short int EEprom_ADDR = 0x57; //-> Adresse 0x57 ist der EEPROM auf dem RTC3231 Board
 
 
 // ---------------------------- W2812-seriell LED-Treiber -----------------------------------------------------------------------------------------
@@ -259,15 +269,15 @@ bool LCD_Backlight = true;
 byte FRAM_CS  = 0;//13;             //SPI_FRAM 512kB CS-Pin
 Adafruit_FRAM_SPI spi_fram = Adafruit_FRAM_SPI(kSD_CLK, kSD_MISO, kSD_MOSI, FRAM_CS);
 
-//---------------------------------------- spezielle FRam-Adressen --------------------------------------------------------------------------------
+//---------------------------------------- spezielle SPI-Ram-Adressen -----------------------------------------------------------------------------
 word FRAM_OFFSET      = 0x8000;     //Offset für Poke-Anweisungen, um zu verhindern, das in den Array-Bereich gepoked wird
 word FRAM_PIC_OFFSET  = 0x12C04;    //Platz pro Bildschirm im Speicher 320x240=76800 + 4Byte für die Dimension = 76804
-long load_adress      = 0x70000;    //hier kann ein Basicprogramm abgelegt werden (Eingabe: LOAD oder SAVE ohne Parameter)
+long load_adress      = 0x8000;     //ab hier kann ein Basicprogramm abgelegt werden (Eingabe: LOAD oder SAVE ohne Parameter)
 //---------------------------------------- Array-Parameter ----------------------------------------------------------------------------------------
 //Der Arraybereich befindet sich 0x0..0x7fff
 word Var_Neu_Platz =  0;            //Adresse nächstes Array-Feld Start bei 0x77e00
-static word VAR_TBL = 0x7e00;       //Variablen-Array-Tabelle im FRAM
-static word STR_TBL = 0x7f00;       //String-Array-Tabelle im FRAM
+static word VAR_TBL = 0x7e00;       //Variablen-Array-Tabelle im SPI-RAM
+static word STR_TBL = 0x7f00;       //String-Array-Tabelle im SPI-RAM
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 
@@ -777,7 +787,7 @@ int FUNC_WORDS = FUNC_UNKNOWN;
 
 //------------------------------- OPTION-Tabelle - alle Optionen, die dauerhaft gespeichert werden sollen -----------------------------------------
 const static char options[] PROGMEM = {
-  'S', 'D', 'C', 'A', 'R', 'D' + 0x80,      //Pin-Festlegung SD-Karte
+  'V', 'M', 'O', 'D', 'E' + 0x80,           //VGA-Modus 0=320x240, 1=320x200
   'F', 'R', 'A', 'M' + 0x80,                //CS-Pin FRAM
   'E', 'E', 'P', 'R', 'O', 'M' + 0x80,      //Adresse des I2C-EEproms
   'F', 'O', 'N', 'T' + 0x80,                //Font dauerhaft speichern
@@ -785,11 +795,12 @@ const static char options[] PROGMEM = {
   'K', 'E', 'Y' + 0x80,                     //Keyboardlayout 1=US,2=UK,3=GE,4=IT,5=ES,6=FR,7=BE,8=NO,9=JP
   'T', 'H', 'E', 'M', 'E' + 0x80,           //THEME
   'P', 'A', 'T', 'H' + 0x80,                //Arbeitsverzeichnis
+
   0
 };
 
 enum {
-  OPT_SDCARD = 0,
+  OPT_VMODE = 0,
   OPT_FRAM,
   OPT_EEP,
   OPT_FONT,
@@ -3480,27 +3491,27 @@ interpreteAtTxtpos:
         if (line_rec_circ(3, 4))                          // 3=Round, 0..4 Parameter
           continue;
         break;
-      
+
       case KW_ARC:                                        // ARC x,y,rmin,rmax,gstart,gend,fill
-        if(line_rec_circ(4, 6))
-           continue;
+        if (line_rec_circ(4, 6))
+          continue;
         break;
-      
+
       case KW_SWAP:
-        if(line_rec_circ(5, 3))                           //SWAP x,y,xx,yy ->vertauscht vorder und Hintergrundfarbe eines rechtecks
-           continue;
+        if (line_rec_circ(5, 3))                          //SWAP x,y,xx,yy ->vertauscht vorder und Hintergrundfarbe eines rechtecks
+          continue;
         break;
-        
+
       case KW_COPY:
-        if(line_rec_circ(6, 5))                           //Copy x,y,x_dest,y_dest, w, h ->Kopiert ein Rechteck von x,y nach x_dest,y_dest mit der Größe w,h
-           continue;
+        if (line_rec_circ(6, 5))                          //Copy x,y,x_dest,y_dest, w, h ->Kopiert ein Rechteck von x,y nach x_dest,y_dest mit der Größe w,h
+          continue;
         break;
-      
+
       case KW_ANGLE:
-        if(line_rec_circ(9, 3))
-           continue;
+        if (line_rec_circ(9, 3))
+          continue;
         break;
-        
+
       case KW_FONT:                                       // FONT f
         expression_error = 0;
         val = int(get_value());
@@ -3561,7 +3572,7 @@ interpreteAtTxtpos:
         break;
 
       case KW_SCROLL:
-        if(line_rec_circ(8, 1))
+        if (line_rec_circ(8, 2))
           continue;
         break;
 
@@ -3702,7 +3713,7 @@ interpreteAtTxtpos:
         break;
 
       case KW_DRAW:                                       //Draw x,y,0..1
-        if(line_rec_circ(7, 2))
+        if (line_rec_circ(7, 2))
           continue;
         break;
 
@@ -4453,7 +4464,7 @@ void cmd_new(void) {
   program_start = program;
   program_end = program_start;
   sp = program + sizeof(program);                                     // Needed for printnum
-  
+
   stack_limit = program + sizeof(program) - STACK_SIZE;               // - ARRAY_SIZE;
   variables_begin = stack_limit - (26 * 27 * VAR_SIZE) ;              //26*27 (2)Buchstaben als Variablen
   memset(program, 0, 1000);                                           //die ersten 1000 Bytes des Speichers löschen
@@ -4477,7 +4488,7 @@ static int set_theme(int value)
       break;
 
     case 1: //C128
-      Vordergrund = 25;
+      Vordergrund = 46;
       Hintergrund = 21;
       set_font(25);
       break;
@@ -4515,19 +4526,19 @@ static int set_theme(int value)
     case 7: //VIC20
       Vordergrund = 2;
       Hintergrund = 63;
-      set_font(18);
+      set_font(2);
       break;
 
     case 8: //TRS80
-      Vordergrund = 24;
-      Hintergrund = 0;
-      set_font(18);
+      Vordergrund = 0;
+      Hintergrund = 24;
+      set_font(22);
       break;
 
-    case 9: //ESP32+
-      Vordergrund = 57;
-      Hintergrund = 16;
-      set_font(7);
+    case 9: //TI-99
+      Vordergrund = 0;
+      Hintergrund = 30;
+      set_font(22);
       break;
 
     case 10:    //LCD
@@ -4713,9 +4724,9 @@ static int line_rec_circ(int circ_or_rect, int param)
   }
 
   expression_error = 0;
-  
+
   par[param] = get_value();            //letzter Parameter - in tempstring steht ein eventueller string
-  
+
   if (expression_error) return 1;
 
   // Check that we are at the end of the statement
@@ -4730,15 +4741,15 @@ static int line_rec_circ(int circ_or_rect, int param)
         GFX.fillEllipse(par[0], par[1], par[2], par[3]);                      //Circle circ x,y,xx,yy,fill=1
       }
       break;
-      
+
     case 2:
       if (par[4] == 0) GFX.drawRectangle(par[0], par[1], par[2], par[3]);     //Rectangle rect x,y,xx,yy,fill=0
       else {
         bcolor(Hintergrund);
         GFX.fillRectangle(par[0], par[1], par[2], par[3]);                    //Rectangle rect x,y,xx,yy,fill=1
       }
-      break;                                                                   
-      
+      break;
+
     case 3:                                                                   //Frame frame x,y,xx,yy,r
       GFX.drawLine(par[0] + 1.6 * par[4], par[1] - 1, par[0] + par[2] - 1.6 * par[4], par[1] - 1);
       GFX.drawLine(par[0] + 1.6 * par[4], par[1] + par[3], par[0] + par[2] - 1.6 * par[4], par[1] + par[3]);
@@ -4751,15 +4762,15 @@ static int line_rec_circ(int circ_or_rect, int param)
         GFX.setPixel(par[0] + par[4] * 1.6 * (1 - cos(i / 25.*M_PI / 2.)), par[1] + par[3] - par[4] * (1 - sin(i / 25.*M_PI / 2.)));
       }
       break;
-      
+
     case 4:
       drawArc(par[0], par[1], par[2], par[3], par[4], par[5], par[6]);        //Arc x,y,rmin,rmax,g_start,g_end,fill
       break;
-      
+
     case 5:
       GFX.swapRectangle(par[0], par[1], par[2], par[3]);                      //Swap x,y,xx,yy
       break;
-      
+
     case 6:
       GFX.copyRect(par[0], par[1], par[2], par[3], par[4], par[5]);          //Copy x, y, x_dest, y_dest, w, h
       break;
@@ -4768,17 +4779,17 @@ static int line_rec_circ(int circ_or_rect, int param)
       if (par[2] == 0) GFX.moveTo(par[0], par[1]);                           //Draw x,y,1=draw/0=move
       else GFX.lineTo(par[0], par[1]);
       break;
-      
+
     case 8:                                                                  //Scroll x,y
-      GFX.scroll(par[0], par[1]);  
+      GFX.scroll(par[0], par[1]);
       break;
-    
+
     case 9:
       //x=par[0]+par[3]*cos(par[2]*M_PI/180);                                  //Angle x,y,winkel,länge
       //y=par[1]+par[3]*sin(par[2]*M_PI/180);
-      GFX.drawLine(par[0], par[1], par[0]+par[3]*cos(par[2]*M_PI/180), par[1]+par[3]*sin(par[2]*M_PI/180));
+      GFX.drawLine(par[0], par[1], par[0] + par[3]*cos(par[2]*M_PI / 180), par[1] + par[3]*sin(par[2]*M_PI / 180));
       break;
-                  
+
     default:
       GFX.drawLine(par[0], par[1], par[2], par[3]);                          //Line line x,y,xx,yy
       break;
@@ -4972,8 +4983,8 @@ static int Sound(void) {
   //seq = "\e_S" + String(par[1], DEC) + ";" + String(par[2], DEC) + ";" + String(par[3], DEC) + ";" + String(par[4], DEC) + "$";
   //seq.toCharArray(c, seq.length() + 1);
   Terminal.print("\e_S" + String(par[1], DEC) + ";" + String(par[2], DEC) + ";" + String(par[3], DEC) + ";" + String(par[4], DEC) + "$");
-  
-  
+
+
   if (Test_char(')')) return 1;                           //Klammer-zu vorhanden?
 
   // Check that we are at the end of the statement
@@ -5539,8 +5550,8 @@ void print_info()
 int x_pos = VGAController.getScreenHeight() / x_char[fontsatz];
 int y_pos = VGAController.getScreenWidth() / y_char[fontsatz];
 #else
-int y_pos = VGAController.getScreenHeight() / y_char[fontsatz];
-int x_pos = VGAController.getScreenWidth() / x_char[fontsatz];
+int y_pos = VGAController.getViewPortHeight() / y_char[fontsatz]; //VGAController.getScreenHeight() / y_char[fontsatz];
+int x_pos = VGAController.getViewPortWidth() / x_char[fontsatz];  //VGAController.getScreenWidth() / x_char[fontsatz];
 #endif
 
 #ifdef Akkualarm_enabled
@@ -5559,10 +5570,10 @@ if (h > 100) h = 100;
   r = 42;
 
 
-  tc.setCursorPos((x_pos - 30) / 2, 1);
-  Terminal.write("* Basic32+ V");
+  tc.setCursorPos((x_pos - 28) / 2, 1);
+  Terminal.write("*Basic32+ V");
   Terminal.write(BasicVersion);
-  Terminal.write(" Zille-Soft *");
+  Terminal.write(" Zille-Soft*");
 
 
 #ifdef Akkualarm_enabled                                  //Akku in Prozent anzeigen
@@ -5776,11 +5787,11 @@ static int initSD( void )
 {
   int c;
   int adr, i;
-//  SPI.begin();
-//  SPI.setFrequency(10000000);
+  //  SPI.begin();
+  //  SPI.setFrequency(10000000);
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-
+  SPI.setFrequency(20000000);
   Show_LED(SD_LED, 1);                                      //Laufwerksanzeige
 
   if ( !SD.begin( kSD_CS, spiSD )) {                        //SD-Card starten
@@ -5844,11 +5855,11 @@ void Show_LED(int p, int lv) {                              //Laufwerksanzeige e
   }
 }
 /*
-//#######################################################################################################################################
-//--------------------------------------------- MP3 - Player ----------------------------------------------------------------------------
-//#######################################################################################################################################
+  //#######################################################################################################################################
+  //--------------------------------------------- MP3 - Player ----------------------------------------------------------------------------
+  //#######################################################################################################################################
 
-void play_mp3(void) {
+  void play_mp3(void) {
   fp = SD.open(String(sd_pfad) + String(tempstring));     //Datei zum Laden öffnen
   source = new AudioFileSourceSD();
   //  id3->RegisterMetadataCB(MDCallback, (void*)"ID3");
@@ -5866,11 +5877,11 @@ void play_mp3(void) {
       }
     }
   }
-  
+
   mp3->stop();
   break_marker = false;
   sd_ende();
-}
+  }
 
 */
 //#######################################################################################################################################
@@ -5921,10 +5932,10 @@ static int load_file(void)
         play_mp3();
         break;
       /*
-      case 4:
+        case 4:
         play_mod();
         break;
-        */
+      */
       default:
         break;
     }
@@ -6035,12 +6046,14 @@ static int save_ram(void) {
   //------ Kennung f. Programm im FRAM ------
   SPI_RAM_write8(adress++, 'B');
   SPI_RAM_write8(adress++, 'S');
-
+  
   SPI_RAM_write8(adress++, lowByte(n_bytes));           //Anzahl zu speichernde Programm-Bytes schreiben
   SPI_RAM_write8(adress++, highByte(n_bytes));
+  
   for (int i = 0; i < n_bytes; i++) {                   //Arbeitsspeicher in FRAM ablegen
     SPI_RAM_write8(adress++, program[i]);
   }
+  
   return 0;
 }
 
@@ -6058,7 +6071,8 @@ static int load_ram(void) {
 
   a = spi_fram.read8(adress++);
   b = spi_fram.read8(adress++);
-  //------ Kennung f. Programm im FRAM ------
+  
+  //------ Kennung f. Programm im RAM ------
   if (a == 'B' && b == 'S') {
 
     n_bytes = spi_fram.read8(adress++);                                //Anzahl der zu lesenden Bytes
@@ -6266,7 +6280,7 @@ return 0;
   { int ln = 1;
     int ex = 0;
     String cbuf;
-    const char hi[]="._";
+    const char hi[] = "._";
     int was, tmp_col;
     int wd = GFX.getWidth() / x_char[fontsatz];
     int Dateien = 0;
@@ -6307,7 +6321,7 @@ return 0;
       cbuf = String(entry.name());
       cbuf.toCharArray(tempstring, cbuf.length() + 1);
       //if (tempstring[1] == '.' /*&& tempstring[2]=='_'*/) hidden_flag = true;
-      if (strstr(tempstring,hi)) hidden_flag = true;              //versteckte dateien ausblenden
+      if (strstr(tempstring, hi)) hidden_flag = true;             //versteckte dateien ausblenden
       if (ext == true) {                                          //Sucherweiterung aktiv?
         found = search_file(entry.name());                        //untersuche Dateinamen mit Suchstring
 
@@ -6483,6 +6497,7 @@ return 0;
     }
   }
 
+
   //#######################################################################################################################################
   //--------------------------------------------- SETUP -----------------------------------------------------------------------------------
   //#######################################################################################################################################
@@ -6504,7 +6519,7 @@ return 0;
       user_bcolor = Hintergrund;    //User-Hintergrundfarbe merken
       //#############################################################################
 
-      //Mode_state = EEPROM.read(1);
+
       fontsatz = EEPROM.read(2);
       user_font = fontsatz;         //User-Fontsatz merken
 
@@ -6544,19 +6559,50 @@ return 0;
     //************************************************************ welcher Bildschirmtreiber? *********************************************************
     // 64 colors
 #ifdef AVOUT                                                                          //AV-Variante
-VGAController.begin(VIDEOOUT_GPIO);
-VGAController.setHorizontalRate(2);                                                   //320x240
-VGAController.setResolution(MODES_STD[7]);                                            //5 scheint optimal ist aber mit 384x240 nicht 100% kompatibel (3) (7-360x200)
+
+    VGAController.begin(VIDEOOUT_GPIO);
+    VGAController.setHorizontalRate(2);                                                   //320x240
+    VGAController.setResolution(MODES_STD[7]);                                            //5 scheint optimal ist aber mit 384x240 nicht 100% kompatibel (3) (7-360x200)
 
 #elif defined VGA64
-VGAController.begin();                                                                //VGA-Variante //64 Farben
-VGAController.setResolution(QVGA_320x240_60Hz);
-//VGAController.setResolution(VGA_400x300_60Hz);
+
+    VGAController.begin();                                                                //VGA-Variante //64 Farben
+    byte vm = EEPROM.read(6);                                                             //Videomodus lesen
+    switch ( vm ){
+      case 0:
+        VGAController.setResolution(QVGA_320x240_60Hz);                                    //Standard-Auflösung 
+        //Theme_state = 2;
+        break;
+      case 1:
+        VGAController.setResolution(VGA_320x200_60Hz);                                     //C64, CPC
+        //Theme_state = 0;
+        break;
+      case 2:
+        VGAController.setResolution(VGA_320x200_60Hz,256,192);                             //ZX-Spectrum, TI99
+        //Theme_state = 4;
+        break;
+      case 3:
+        VGAController.setResolution(VGA_400x300_60Hz,320,256);                             //KC85
+        //Theme_state = 6;
+        break;
+      case 4:
+        VGAController.setResolution(VGA_320x200_60Hz,320,192);                             //Atari 800XL
+        //Theme_state = 7;
+        break;
+      default:
+        VGAController.setResolution(QVGA_320x240_60Hz);                                    //Standard-Auflösung 
+        //Theme_state = 2;
+        break;  
+    }
+    
+      
 #else                                                                                 //ILI9341
-VGAController.begin(TFT_SCK, TFT_MOSI, TFT_DC, TFT_RESET, TFT_CS, TFT_SPIBUS);
-VGAController.setResolution(TFT_240x320);
-VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte links
-//VGAController.setOrientation(fabgl::TFTOrientation::Rotate90);   //Kontakte rechts
+
+    VGAController.begin(TFT_SCK, TFT_MOSI, TFT_DC, TFT_RESET, TFT_CS, TFT_SPIBUS);
+    VGAController.setResolution(TFT_240x320);
+    VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte links
+    //VGAController.setOrientation(fabgl::TFTOrientation::Rotate90);   //Kontakte rechts
+
 #endif
 
 
@@ -6564,7 +6610,7 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
 
     Terminal.begin(&VGAController);
     Terminal.connectLocally();                                                           // für Terminal Komandos
-
+    
     //Serial.begin(115200);
 
     set_font(fontsatz);                                                                  // Fontsatz laden (1 Byte)
@@ -6572,18 +6618,13 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
     fbcolor(Vordergrund, Hintergrund);
     tc.setCursorPos(1, 1);
     GFX.clear();
+    //set_theme(Theme_state);  
     if (Theme_marker) set_theme(Theme_state);                                            //Theme setzen, wenn im EEprom gespeichert
 
     PS2Controller.keyboard()-> onVirtualKey = [&](VirtualKey * vk, bool keyDown) {
       if (*vk == VirtualKey::VK_ESCAPE) {
         if (keyDown) {
-          break_marker = true;                                                          //ESC abfangen und in Ctrl-C wandeln
-          
-          }
-        *vk = VirtualKey::VK_NONE;
-      }
-      else if (*vk == VirtualKey::VK_F1) {
-        if (keyDown) {
+          break_marker = true;                                                           //ESC abfangen und in Ctrl-C wandeln
 
         }
         *vk = VirtualKey::VK_NONE;
@@ -6623,30 +6664,45 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
         *vk = VirtualKey::VK_NONE;
       }
 
-      else if (*vk == VirtualKey::VK_F10) {                                              //Ausgabe Color-Tabelle
+      else if (*vk == VirtualKey::VK_F10) {                                              //Anzeige Systemparameter
         if (keyDown) {
           show_systemparameters();
         }
         *vk = VirtualKey::VK_NONE;
       }
+      
+      else if (*vk == VirtualKey::VK_F12) {                                               //F12 = Reboot
+        if (keyDown) {
+          Terminal.print("Now reboot");
+          delay(800);
+          Terminal.print(".");
+          delay(800);
+          Terminal.print(".");
+          delay(800);
+          Terminal.print(".");
+          delay(800);
+          ESP.restart();
+        }
+        *vk = VirtualKey::VK_NONE;
+      }
 
-        if (*vk == VirtualKey::VK_F8) {                                                 //+ Lautstärke MP3  - bis mir was besseres einfällt
-          if (keyDown) {
-            Key_u = 1;
-            curGain++;
-            if (curGain > 200) curGain = 200;
-          }
-           *vk = VirtualKey::VK_NONE;
+      if (*vk == VirtualKey::VK_F8) {                                                 //+ Lautstärke MP3  - bis mir was besseres einfällt
+        if (keyDown) {
+          Key_u = 1;
+          curGain++;
+          if (curGain > 200) curGain = 200;
         }
-        else if (*vk == VirtualKey::VK_F7) {                                            //- Lautstärke MP3  - bis mir was besseres einfällt
-          if (keyDown) {
-            Key_d = 1;
-            curGain--;
-            if (curGain < 0) curGain = 0;
-            
-          }
-           *vk = VirtualKey::VK_NONE;
+        *vk = VirtualKey::VK_NONE;
+      }
+      else if (*vk == VirtualKey::VK_F7) {                                            //- Lautstärke MP3  - bis mir was besseres einfällt
+        if (keyDown) {
+          Key_d = 1;
+          curGain--;
+          if (curGain < 0) curGain = 0;
+
         }
+        *vk = VirtualKey::VK_NONE;
+      }
     };
 
     //Serial.begin(115200);                                                           // open serial port
@@ -7439,10 +7495,18 @@ nochmal:
       if (Test_char('=')) return 1;                                        //nach der Option kommt ein '='
 
       switch (fu) {
+        case OPT_VMODE:                                                    //Festlegung Bildschirmauflösung 0=320x240, 1=320X200 2=400x300 EEPROM Platz 6
+          p[0] = get_value();
+          EEPROM.write(6, p[0]);                                                                //Platz 6
+          EEPROM.commit () ;
+          Terminal.println("For take effect now reboot!");
+          delay(1000);
+          ESP.restart();
+          break;
 
         case OPT_FONT:
           p[0] = get_value();
-          EEPROM.write(2, p[0]);          //Font-Nummer im Flash speichern
+          EEPROM.write(2, p[0]);          //Font-Nummer im Flash speichern                        Platz 2
           EEPROM.write(17, 0);            //THEME-Marker löschen
           EEPROM.commit () ;
           set_font(p[0]);                 //setze Font
@@ -7452,31 +7516,31 @@ nochmal:
           p[0] = get_value();
           if (Test_char(',')) return 1;
           p[1] = get_value();
-          EEPROM.write(0, p[0]);          //Vordergrundfarbe im Flash speichern
-          EEPROM.write(1, p[1]);          //Hintergrundfarbe im Flash speichern
+          EEPROM.write(0, p[0]);          //Vordergrundfarbe im Flash speichern                   Platz 0
+          EEPROM.write(1, p[1]);          //Hintergrundfarbe im Flash speichern                   Platz 1
           EEPROM.write(17, 0);            //THEME-Marker löschen
           EEPROM.commit () ;
           Vordergrund = p[0];
           Hintergrund = p[1];
           fbcolor(Vordergrund, Hintergrund); //Farben setzen
           if (EEPROM.read(100) != erststart_marker) {                              //marker-setzen, das werte im EEprom stehen
-            EEPROM.write ( 100, erststart_marker) ;
+            EEPROM.write ( 100, erststart_marker) ;                                             //Platz 100
             EEPROM.commit () ;
           }
           break;
 
         case OPT_EEP:                       //Adresse des verwendeten EEPROM's
           p[0] = get_value();
-          EEPROM.write(11, p[0]);          //EEPROM-Adresse im Flash speichern
-          EEPROM.write(13, IIC_SET);       //Marker, das Pinkonfiguration im EEprom abgelegt wurde
+          EEPROM.write(11, p[0]);          //EEPROM-Adresse im Flash speichern                     Platz 11
+          EEPROM.write(13, IIC_SET);       //Marker, das Pinkonfiguration im EEprom abgelegt wurde Platz 13
           EEPROM.commit () ;
           EEprom_ADDR = p[0];             //EEPROM Adresse sofort setzen
           break;
 
         case OPT_THEME:
           p[0] = get_value();
-          EEPROM.write(16, p[0]);          //Nummer des Themes
-          EEPROM.write(17, THEME_SET);     //THEME-Marker
+          EEPROM.write(16, p[0]);          //Nummer des Themes                                      Platz 16
+          EEPROM.write(17, THEME_SET);     //THEME-Marker                                           Platz 17
           EEPROM.commit();
           set_theme(p[0]);
           if (EEPROM.read(100) != erststart_marker) {                              //marker-setzen, das werte im EEprom stehen
@@ -7489,7 +7553,7 @@ nochmal:
           cmd_chdir();
           adr = 20;
           i = 0;
-          EEPROM.write(19, PATH_SET);
+          EEPROM.write(19, PATH_SET);                                                              //Platz 19 - 99
           EEPROM.commit();
           while (sd_pfad[i]) {
             EEPROM.write (adr++, sd_pfad[i++]);
@@ -7759,8 +7823,8 @@ nochmal:
         case 'D':                                         //Grafik im FRAM auf dem Bildschirm ausgeben
           if (Test_char('(')) return 1;
           ad = get_value();
-          if (ad > 4) ad = 4;
-          ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz (320x240) bzw.0..2 (400x300)
+          if (ad > SPI_RAM_SIZE) ad = SPI_RAM_SIZE;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
+          ad = ad * FRAM_PIC_OFFSET;                      //Bildspeicherplatz (320x240)
           if (*txtpos == ',') {                           //Modus
             txtpos++;
             iv = get_value();
@@ -7802,7 +7866,7 @@ nochmal:
           export_pic(dx, dy, px, py, tempstring);
           break;
 
-        //****************************************************** PIC_I(X,Y,Filename.bmp) ******************************************
+        //****************************************************** PIC_I(X,Y,Filename.bmp<,scal>) **********************************
         case 'I':                                         //Import <- BMP
           if (Test_char('(')) return 1;
           dx = get_value();                               //x
@@ -7824,8 +7888,8 @@ nochmal:
         case 'L':                                         //Load PIC_RAW-Data
           if (Test_char('(')) return 1;
           ad = get_value();                               //Adresse im Speicher
-          if (ad > 4) ad = 4;
-          ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz
+          if (ad > SPI_RAM_SIZE) ad = SPI_RAM_SIZE;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
+          ad = ad * FRAM_PIC_OFFSET;                      //Bildspeicherplatz
           if (Test_char(',')) return 1;                   //Komma überspringen
           get_value();                                    //Dateiname in tempstring
           if (Test_char(')')) return 1;
@@ -7836,8 +7900,8 @@ nochmal:
         case 'S':                                         //Save PIC_RAW-Data
           if (Test_char('(')) return 1;
           ad = get_value();                               //Adresse im Speicher
-          if (ad > 4) ad = 4;
-          ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz
+          if (ad > SPI_RAM_SIZE) ad = SPI_RAM_SIZE;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
+          ad = ad * FRAM_PIC_OFFSET;                      //Bildspeicherplatz
           if (Test_char(',')) return 1;                   //Komma überspringen
           get_value();                                    //Dateiname in tempstring
           if (Test_char(')')) return 1;
@@ -7852,7 +7916,7 @@ nochmal:
         case 'P':                                         //Grafikbildschirm in FRAM speichern
           if (Test_char('(')) return 1;
           ad = get_value();
-          if (ad > 4) ad = 4;
+          if (ad > SPI_RAM_SIZE) ad = SPI_RAM_SIZE;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
           ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz
           if (*txtpos == ',') {                           //Komma?, dann x,y-Position eingeben
             txtpos++;
@@ -8506,7 +8570,7 @@ nochmal:
           GFX.drawText(&fabgl::FONT_8x16, x_text, y_text, tempstring);
           break;
         case 25:
-          GFX.drawText(&fabgl::FONT_8x8_PET,x_text,y_text,tempstring);
+          GFX.drawText(&fabgl::FONT_8x8_PET, x_text, y_text, tempstring);
           break;
         default:
           GFX.drawText(&fabgl::FONT_6x8, x_text, y_text, tempstring);
@@ -8772,6 +8836,10 @@ nochmal:
       Terminal.write("Eeprom-Adr: #");
       Terminal.print(EEPROM.read(11), HEX);
       Terminal.println();
+      Terminal.write("SPI-RAM   : ");
+      Terminal.print(SPI_RAM_SIZE * 128);
+      Terminal.write(" kB");
+      Terminal.println();
       Terminal.write("Workpath  : ");
       Terminal.print(sd_pfad);
       line_terminator();
@@ -8799,148 +8867,148 @@ nochmal:
       else return c;          //Farbe des Pixels
     }
 
-//------------------------------------------------------- Testbereich ARC-Befehl ------------------------------------------------------------------
-const int cos_tab[360] = {
-1000, 1000, 999, 999, 998, 996, 995, 993, 990, 988, 985, 982, 978, 974, 970, 966, 
-961, 956, 951, 946, 940, 934, 927, 921, 914, 906, 899, 891, 883, 875, 866, 857, 
-848, 839, 829, 819, 809, 799, 788, 777, 766, 755, 743, 731, 719, 707, 695, 682, 
-669, 656, 643, 629, 616, 602, 588, 574, 559, 545, 530, 515, 500, 485, 469, 454, 
-438, 423, 407, 391, 375, 358, 342, 326, 309, 292, 276, 259, 242, 225, 208, 191, 
-174, 156, 139, 122, 105, 87, 70, 52, 35, 17, 0, -17, -35, -52, -70, -87, -105, 
--122, -139, -156, -174, -191, -208, -225, -242, -259, -276, -292, -309, -326, 
--342, -358, -375, -391, -407, -423, -438, -454, -469, -485, -500, -515, -530, 
--545, -559, -574, -588, -602, -616, -629, -643, -656, -669, -682, -695, -707, 
--719, -731, -743, -755, -766, -777, -788, -799, -809, -819, -829, -839, -848, 
--857, -866, -875, -883, -891, -899, -906, -914, -921, -927, -934, -940, -946, 
--951, -956, -961, -966, -970, -974, -978, -982, -985, -988, -990, -993, -995, 
--996, -998, -999, -999, -1000, -1000, -1000, -999, -999, -998, -996, -995, -993, 
--990, -988, -985, -982, -978, -974, -970, -966, -961, -956, -951, -946, -940, 
--934, -927, -921, -914, -906, -899, -891, -883, -875, -866, -857, -848, -839, 
--829, -819, -809, -799, -788, -777, -766, -755, -743, -731, -719, -707, -695, 
--682, -669, -656, -643, -629, -616, -602, -588, -574, -559, -545, -530, -515, 
--500, -485, -469, -454, -438, -423, -407, -391, -375, -358, -342, -326, -309, 
--292, -276, -259, -242, -225, -208, -191, -174, -156, -139, -122, -105, -87, 
--70, -52, -35, -17, 0, 17, 35, 52, 70, 87, 105, 122, 139, 156, 174, 191, 208, 
-225, 242, 259, 276, 292, 309, 326, 342, 358, 375, 391, 407, 423, 438, 454, 469, 
-485, 500, 515, 530, 545, 559, 574, 588, 602, 616, 629, 643, 656, 669, 682, 695, 
-707, 719, 731, 743, 755, 766, 777, 788, 799, 809, 819, 829, 839, 848, 857, 866, 
-875, 883, 891, 899, 906, 914, 921, 927, 934, 940, 946, 951, 956, 961, 966, 970, 
-974, 978, 982, 985, 988, 990, 993, 995, 996, 998, 999, 999, 1000
-};
+    //------------------------------------------------------- Testbereich ARC-Befehl ------------------------------------------------------------------
+    const int cos_tab[360] = {
+      1000, 1000, 999, 999, 998, 996, 995, 993, 990, 988, 985, 982, 978, 974, 970, 966,
+      961, 956, 951, 946, 940, 934, 927, 921, 914, 906, 899, 891, 883, 875, 866, 857,
+      848, 839, 829, 819, 809, 799, 788, 777, 766, 755, 743, 731, 719, 707, 695, 682,
+      669, 656, 643, 629, 616, 602, 588, 574, 559, 545, 530, 515, 500, 485, 469, 454,
+      438, 423, 407, 391, 375, 358, 342, 326, 309, 292, 276, 259, 242, 225, 208, 191,
+      174, 156, 139, 122, 105, 87, 70, 52, 35, 17, 0, -17, -35, -52, -70, -87, -105,
+      -122, -139, -156, -174, -191, -208, -225, -242, -259, -276, -292, -309, -326,
+      -342, -358, -375, -391, -407, -423, -438, -454, -469, -485, -500, -515, -530,
+      -545, -559, -574, -588, -602, -616, -629, -643, -656, -669, -682, -695, -707,
+      -719, -731, -743, -755, -766, -777, -788, -799, -809, -819, -829, -839, -848,
+      -857, -866, -875, -883, -891, -899, -906, -914, -921, -927, -934, -940, -946,
+      -951, -956, -961, -966, -970, -974, -978, -982, -985, -988, -990, -993, -995,
+      -996, -998, -999, -999, -1000, -1000, -1000, -999, -999, -998, -996, -995, -993,
+      -990, -988, -985, -982, -978, -974, -970, -966, -961, -956, -951, -946, -940,
+      -934, -927, -921, -914, -906, -899, -891, -883, -875, -866, -857, -848, -839,
+      -829, -819, -809, -799, -788, -777, -766, -755, -743, -731, -719, -707, -695,
+      -682, -669, -656, -643, -629, -616, -602, -588, -574, -559, -545, -530, -515,
+      -500, -485, -469, -454, -438, -423, -407, -391, -375, -358, -342, -326, -309,
+      -292, -276, -259, -242, -225, -208, -191, -174, -156, -139, -122, -105, -87,
+      -70, -52, -35, -17, 0, 17, 35, 52, 70, 87, 105, 122, 139, 156, 174, 191, 208,
+      225, 242, 259, 276, 292, 309, 326, 342, 358, 375, 391, 407, 423, 438, 454, 469,
+      485, 500, 515, 530, 545, 559, 574, 588, 602, 616, 629, 643, 656, 669, 682, 695,
+      707, 719, 731, 743, 755, 766, 777, 788, 799, 809, 819, 829, 839, 848, 857, 866,
+      875, 883, 891, 899, 906, 914, 921, 927, 934, 940, 946, 951, 956, 961, 966, 970,
+      974, 978, 982, 985, 988, 990, 993, 995, 996, 998, 999, 999, 1000
+    };
 
-void drawArcP(Point pnt[], int &npnt)
-{
-  if ( npnt == 0) npnt++;
-  else if ( pnt[npnt].X != pnt[npnt - 1].X || pnt[npnt].Y != pnt[npnt - 1].Y){
-    npnt++;  
-  }
-        
-}
-
-void drawArc(int x, int y, int r_min, int r_max, const int gr_start, const int gr_end, int filled)
-{
-  Point pnt[360 * 2];
-  int npnt = 0;
-  
-  for ( int n = gr_start; n <= gr_end; n+=10)
-  {
-    //pnt[npnt].X = x + (deg(cos(n%360)) * r_min)/80; 
-    //pnt[npnt].Y = y + (deg(cos((n+270)%360)) * r_min)/100;  
-    pnt[npnt].X = x + (cos_tab[n%360] * r_min)/800; 
-    pnt[npnt].Y = y + (cos_tab[(n+270)%360] * r_min)/1000;    
-    drawArcP(pnt, npnt);    
-  }
-  for ( int n = gr_end; n >= gr_start; n-=10)
-  {                      
-    //pnt[npnt].X = x + (deg(cos(n%360)) * r_max)/80; 
-    //pnt[npnt].Y = y + (deg(cos((n+270)&360)) * r_max)/100; 
-    pnt[npnt].X = x + (cos_tab[n%360] * r_max)/800; 
-    pnt[npnt].Y = y + (cos_tab[(n+270)%360] * r_max)/1000;            
-    drawArcP(pnt, npnt);
-  }
-  if(filled==1) GFX.fillPath(pnt, npnt);
-  else GFX.drawPath( pnt, npnt);
-}
-
-float deg(float n){
-  float c=n * M_PI/180*1000;//n*57296;
-  Terminal.println(c);
-  return c;
-}
-/*
-void iPlaySound( void *pvParameters )
-{
-  playsounddata psd = *(playsounddata *)pvParameters;
-
-  WaveformGenerator *pwave;
-  if ( psd.wave == WAVE_SQUARE)   pwave = new SquareWaveformGenerator();
-  if ( psd.wave == WAVE_SINE)     pwave = new SineWaveformGenerator();
-  if ( psd.wave == WAVE_TRIANGLE) pwave = new TriangleWaveformGenerator();
-  if ( psd.wave == WAVE_SAW)      pwave = new SawtoothWaveformGenerator();
-  if ( psd.wave == WAVE_NOISE)    pwave = new NoiseWaveformGenerator();
-
-  int sustainVolume = psd.sustain * psd.volume / 127;
-
-  soundGenerator.attach( pwave);
-  pwave->setVolume( ((psd.attack == 0) ? ( (psd.decay != 0) ? psd.volume : sustainVolume) : 0) );
-  pwave->setFrequency( psd.freq_start );
-  pwave->enable(true );
-
-  long startTime = millis();
-
-  while ( millis() - startTime < psd.durationms)
-  {
-    long current = millis() - startTime;
-
-    if ( current < psd.attack ) // ATTACK VOLUME
-      pwave->setVolume( (psd.volume * current) / psd.attack );
-    else if ( current > psd.attack && current < (psd.attack + psd.decay)) // DECAY VOLUME
-      pwave->setVolume( map( current - psd.attack,  0, psd.decay,  psd.volume, sustainVolume ) );
-    else if ( current > psd.durationms - psd.release) // RELEASE VOLUME
-      pwave->setVolume( map( current - (psd.durationms - psd.release),  0, psd.release,  sustainVolume, 0 ) );
-    else
-      pwave->setVolume( sustainVolume );
-
-
-    if ( psd.modfreq != MODFREQ_NONE)
+    void drawArcP(Point pnt[], int &npnt)
     {
-      int maxtime = psd.durationms;
-      if      (psd.modfreq == MODFREQ_TO_RELEASE)
-        maxtime = (psd.durationms - psd.release); // until release
-      else if (psd.modfreq == MODFREQ_TO_SUSTAIN)
-        maxtime = (psd.attack + psd.decay); // until sustain
+      if ( npnt == 0) npnt++;
+      else if ( pnt[npnt].X != pnt[npnt - 1].X || pnt[npnt].Y != pnt[npnt - 1].Y) {
+        npnt++;
+      }
 
-      int f = ((current > maxtime) ? psd.freq_end : (map(current, 0, maxtime, psd.freq_start, psd.freq_end)));
-      pwave->setFrequency ( f ) ;
     }
-    vTaskDelay(1);
-  }
 
-  soundGenerator.detach( pwave);
-  pwave->enable( false );
-  delete pwave;
+    void drawArc(int x, int y, int r_min, int r_max, const int gr_start, const int gr_end, int filled)
+    {
+      Point pnt[360 * 2];
+      int npnt = 0;
 
-  vTaskDelete( NULL );
-}
+      for ( int n = gr_start; n <= gr_end; n += 10)
+      {
+        //pnt[npnt].X = x + (deg(cos(n%360)) * r_min)/80;
+        //pnt[npnt].Y = y + (deg(cos((n+270)%360)) * r_min)/100;
+        pnt[npnt].X = x + (cos_tab[n % 360] * r_min) / 800;
+        pnt[npnt].Y = y + (cos_tab[(n + 270) % 360] * r_min) / 1000;
+        drawArcP(pnt, npnt);
+      }
+      for ( int n = gr_end; n >= gr_start; n -= 10)
+      {
+        //pnt[npnt].X = x + (deg(cos(n%360)) * r_max)/80;
+        //pnt[npnt].Y = y + (deg(cos((n+270)&360)) * r_max)/100;
+        pnt[npnt].X = x + (cos_tab[n % 360] * r_max) / 800;
+        pnt[npnt].Y = y + (cos_tab[(n + 270) % 360] * r_max) / 1000;
+        drawArcP(pnt, npnt);
+      }
+      if (filled == 1) GFX.fillPath(pnt, npnt);
+      else GFX.drawPath( pnt, npnt);
+    }
+
+    float deg(float n) {
+      float c = n * M_PI / 180 * 1000; //n*57296;
+      Terminal.println(c);
+      return c;
+    }
+    /*
+      void iPlaySound( void *pvParameters )
+      {
+      playsounddata psd = *(playsounddata *)pvParameters;
+
+      WaveformGenerator *pwave;
+      if ( psd.wave == WAVE_SQUARE)   pwave = new SquareWaveformGenerator();
+      if ( psd.wave == WAVE_SINE)     pwave = new SineWaveformGenerator();
+      if ( psd.wave == WAVE_TRIANGLE) pwave = new TriangleWaveformGenerator();
+      if ( psd.wave == WAVE_SAW)      pwave = new SawtoothWaveformGenerator();
+      if ( psd.wave == WAVE_NOISE)    pwave = new NoiseWaveformGenerator();
+
+      int sustainVolume = psd.sustain * psd.volume / 127;
+
+      soundGenerator.attach( pwave);
+      pwave->setVolume( ((psd.attack == 0) ? ( (psd.decay != 0) ? psd.volume : sustainVolume) : 0) );
+      pwave->setFrequency( psd.freq_start );
+      pwave->enable(true );
+
+      long startTime = millis();
+
+      while ( millis() - startTime < psd.durationms)
+      {
+        long current = millis() - startTime;
+
+        if ( current < psd.attack ) // ATTACK VOLUME
+          pwave->setVolume( (psd.volume * current) / psd.attack );
+        else if ( current > psd.attack && current < (psd.attack + psd.decay)) // DECAY VOLUME
+          pwave->setVolume( map( current - psd.attack,  0, psd.decay,  psd.volume, sustainVolume ) );
+        else if ( current > psd.durationms - psd.release) // RELEASE VOLUME
+          pwave->setVolume( map( current - (psd.durationms - psd.release),  0, psd.release,  sustainVolume, 0 ) );
+        else
+          pwave->setVolume( sustainVolume );
+
+
+        if ( psd.modfreq != MODFREQ_NONE)
+        {
+          int maxtime = psd.durationms;
+          if      (psd.modfreq == MODFREQ_TO_RELEASE)
+            maxtime = (psd.durationms - psd.release); // until release
+          else if (psd.modfreq == MODFREQ_TO_SUSTAIN)
+            maxtime = (psd.attack + psd.decay); // until sustain
+
+          int f = ((current > maxtime) ? psd.freq_end : (map(current, 0, maxtime, psd.freq_start, psd.freq_end)));
+          pwave->setFrequency ( f ) ;
+        }
+        vTaskDelay(1);
+      }
+
+      soundGenerator.detach( pwave);
+      pwave->enable( false );
+      delete pwave;
+
+      vTaskDelete( NULL );
+      }
 
 
 
-void playSound( playsounddata ps )
-{
-  // Now set up two tasks to run independently.
-  xTaskCreatePinnedToCore( iPlaySound,  "iPlaySound",
-                           4096,  // This stack size can be checked & adjusted by reading the Stack Highwater
-                           &ps, // sound as parameters
-                           PLAY_SOUND_PRIORITY,  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
-                           NULL,
-                           ARDUINO_RUNNING_CORE);
-}
+      void playSound( playsounddata ps )
+      {
+      // Now set up two tasks to run independently.
+      xTaskCreatePinnedToCore( iPlaySound,  "iPlaySound",
+                               4096,  // This stack size can be checked & adjusted by reading the Stack Highwater
+                               &ps, // sound as parameters
+                               PLAY_SOUND_PRIORITY,  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+                               NULL,
+                               ARDUINO_RUNNING_CORE);
+      }
 
 
-void  syncPlaySound( playsounddata psd)
-{
-  playSound( psd);
-  delay(psd.durationms);
-}
+      void  syncPlaySound( playsounddata psd)
+      {
+      playSound( psd);
+      delay(psd.durationms);
+      }
 
-*/
+    */
