@@ -11,7 +11,7 @@
 -56472 Basic Bytes free
 -VGA-Display 320x240 Pixel 64 Farben oder 400x300 Pixel 64 Farben oder AV (IO26)
 -IO-Erweiterung mit MCP23017 (2x8 IO-Ports) + EEPROM 512kB 
--FRAM 512kB (Adafruit SPI FRAM)
+-128kB SPI-RAM oder 8MB PSRAM oder 512kB FRAM(Adafruit SPI FRAM)
 -PS2-Keyboard 
 -RTC DS3231 
 -SD-Card
