@@ -2,11 +2,7 @@
 //*************************************************** Befehl Help ***************************************************************************
 void show_help(void) {  //Unterprogramme des Helpsystems in help_sys
   int n, e, z, y;
-  int x[] = {};
-  x[0] = 0;
-  x[1] = 9;
-  x[2] = 18;
-  x[3] = 27;
+
   Terminal.println("BASIC-COMMANDS:");
   n = z = 0;
   Terminal.println("---------------");
@@ -405,14 +401,14 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("dimensioned arrays with max 3 Dimensions");
       break;
     case KW_OPTION:
-      Terminal.println("OPT Func=Val");
+      Terminal.println("OPT Func Val");
       Terminal.println("Option saved in EEPROM");
       Terminal.println("Available Options are:");
-      Terminal.println("THEME=0..10");
-      Terminal.println("COLOR=Foreground,Background");
-      Terminal.println("FONT=0..25");
-      Terminal.println("EEPROM=Adress");
-      Terminal.println("PATH='Workpath' (must be in quotes)");
+      Terminal.println("THEME 0..10");
+      Terminal.println("COLOR Foreground,Background");
+      Terminal.println("FONT 0..25");
+      Terminal.println("EEPROM Adress");
+      Terminal.println("PATH 'Workpath' (must be in quotes)");
       break;
     case KW_FPOKE:
       Terminal.println("FPOKE Memtype,Adress,Val");
@@ -477,7 +473,7 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("GRID_typ(x,y,x_zell,y_zell,x_pix,y_pix,fcol,gcol,<opt>)");
       Terminal.println("draws a Grid in variable size at x,y position");
       Terminal.println("with framecolor and gridcolor");
-      Terminal.println("typ can be - RS, KT, XY, UI");
+      Terminal.println("typ can be - GR, KT, XY, UI");
       Terminal.println("opt -> pix_spacing, scale, arrow, frame");
       Terminal.println("EXAMPLE:GRID_XY(10,10,10,8,8,8,60,21,2,1,0,0)");
       break;

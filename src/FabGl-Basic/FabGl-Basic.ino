@@ -1,4 +1,4 @@
- ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //             Basic32+ with FabGL VGA library + PS2 PS2Controller                                                                                //
 //               for VGA monitor output - May 2019                                                                                                //
 //                                                                                                                                                //
@@ -45,9 +45,16 @@
 // April 2021
 //
 //
-#define BasicVersion "2.06b"
-#define BuiltTime "10.05.2024"
+//#pragma GCC optimize("-ffast-math")
+//#pragma GCC optimize("O3")
+
+#define BasicVersion "2.07b"
+#define BuiltTime "29.01.2026"
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// V2.07b:29.01.2026          -Fehler in Printausgabe behoben
+//                            -wurde einer Variablen ein String zugewiesen und danach mit Print eine Berechnung durchgeführt, wurde als Ergebnis der deklarierte String ausgegeben
+//                            -15585 Zeilen/sek.
+//
 // v2.06b:10.05.2024          -Fehler in Scroll-Funktion - Anzahl der Parameter war falsch
 //                            -16179 Zeilen/sek.
 //
@@ -265,7 +272,6 @@ static word VAR_TBL = 0x7e00;       //Variablen-Array-Tabelle im SPI-RAM
 static word STR_TBL = 0x7f00;       //String-Array-Tabelle im SPI-RAM
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 //######################################### Ende Konfiguration SPI-RAM ############################################################################
-
 
 
 //------------------------------- Konfiguration serielle Schnittstelle ----------------------------------------------------------------------------
@@ -791,7 +797,7 @@ const static char options[] PROGMEM = {
 };
 
 enum {
-  OPT_VMODE = 0,
+  OPT_VMODE,
   OPT_FRAM,
   OPT_EEP,
   OPT_FONT,
@@ -1477,7 +1483,8 @@ static float expr4(void)
     char an[] = {"                  "};
     int i = 0;
     int m = 0;
-
+    string_marker=false;                            //Stringmarker zurücksetzen sonst falsche Ausgabe nach Stringzuweisung
+    
     do 	{
       if (*txtpos == '.' && pointmarker == 0) pointmarker++; //Überprüfung auf mehr als einem Punk
       //###################### Exponentialschreibweise ######################### 1E-6 bis 1E+38
@@ -1504,6 +1511,7 @@ static float expr4(void)
 
   //----------------------------------------- Hexadezimalzahlen -------------------------------------------------------------------------------------
   else if (*txtpos == '#') {
+    string_marker=false;                            //Stringmarker zurücksetzen sonst falsche Ausgabe nach Stringzuweisung
     txtpos++;
     g = *txtpos;
     f = 0;
@@ -1538,6 +1546,7 @@ static float expr4(void)
 
   //----------------------------------------- Binärzahlen -------------------------------------------------------------------------------------------
   else if (*txtpos == '%') {
+    string_marker=false;                            //Stringmarker zurücksetzen sonst falsche Ausgabe nach Stringzuweisung
     txtpos++;
     g = *txtpos;
     f = 0;
@@ -3317,6 +3326,7 @@ interpreteAtTxtpos:
         if (*txtpos == '*') {
           load_ram();
         }
+        Var_Neu_Platz = 1;                                //auch Array-Ram auf jeden Fall löschen
         clear_var();
         find_data_line();                                 //Data-Zeilen finden
         current_line = program_start;                     //beginn mit erster Zeile
@@ -6221,22 +6231,7 @@ return 0;
   if(cbuf.indexOf(filestring) > -1) return true;
   else return false;
   }
-/*
-  bool hidden_file(const char* names) {
-    int f_len, s_len;
-    String cbuf;
-    char f_search[STR_LEN];
 
-    cbuf = String(names);
-    cbuf.toUpperCase();                               //String in Grossbuchstaben umwandeln
-    cbuf.toCharArray(f_search, cbuf.length() + 1);       //und nach names zurückschreiben
-
-    f_len = String(filestring).length();
-    s_len = String(f_search).length();
-    if (filestring[2] == f_search[s_len - 1] && filestring[1] == f_search[s_len - 2] && filestring[0] == f_search[s_len - 3]) return true;
-    return false;
-  }
-*/
   void cmd_Dir(void)
   { int ln = 1;
     int ex = 0;
@@ -6590,10 +6585,20 @@ return 0;
       if (*vk == VirtualKey::VK_ESCAPE) {
         if (keyDown) {
           break_marker = true;                                                           //ESC abfangen und in Ctrl-C wandeln
-
+        
         }
         *vk = VirtualKey::VK_NONE;
       }
+/*
+      else if (*vk == VirtualKey::VK_F1) {                                               //Help aufrufen
+        if (keyDown) {
+          *txtpos = NL;
+        }
+        *vk = VirtualKey::VK_NONE;
+        show_help();
+      }
+*/
+      
       else if (*vk == VirtualKey::VK_F2) {                                               //Grafiksymbole on/off
         if (keyDown) {
           Graph_char = !Graph_char;

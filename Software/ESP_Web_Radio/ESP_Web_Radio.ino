@@ -138,8 +138,8 @@ AudioOutputI2S *out;
 
 const char* Edit_line = nullptr;        //Editor-Zeile
 
-char ssid[32] = "";
-char pwd[32]  = "";
+char ssid[32] = "DiabloIII";
+char pwd[32]  = "zillesoftgmbh";
 
 
 
@@ -332,12 +332,13 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
   myI2C.begin(SDA_RTC, SCL_RTC, 400000); //400kHz
   rtc.begin(&myI2C);
   getdatetime();                                              //ESP32-interne Uhr stellen für Datei-Zeitstempel
+  
   curGain = 50; //default value
 
-  byte c = readEEPROM(EEprom_ADDR, 0x7fff );                  // an Adresse 0x7fff im RTC-Modul-EEprom wird die Station gespeichert
-  byte d = readEEPROM(EEprom_ADDR, 0x7ffe );                  // Lautstärkeeinstellung
-  if (c < stations) act_station = c;
-  if (d < 200) curGain = d;
+  //byte c = readEEPROM(EEprom_ADDR, 0x7fff );                  // an Adresse 0x7fff im RTC-Modul-EEprom wird die Station gespeichert
+  //byte d = readEEPROM(EEprom_ADDR, 0x7ffe );                  // Lautstärkeeinstellung
+  //if (c < stations) act_station = c;
+ // if (d < 200) curGain = d;
 
   fcolor(1);
   bcolor(11);
@@ -394,11 +395,13 @@ bool checkWiFi() {
     if (i == 16)
       WiFi.reconnect();
   }
+  
   bool connected = (WiFi.status() == WL_CONNECTED);
   if (!connected) {
     drawing_text(3, 105, 143, "Network-Error");
     preferences.remove("WiFiPsw");
   }
+  
   return connected;
 }
 

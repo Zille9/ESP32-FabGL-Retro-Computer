@@ -614,7 +614,7 @@ void basic_loader(void) {
     SDLprintText("SD-Card Mount-Error!", (30), (160), ID_COLOR_WHITE, ID_COLOR_BLACK);
     return;
   }
-  if ( !SD.exists("/run.bin") ) SDLprintText("Starter not found!", (30), (160), ID_COLOR_WHITE, ID_COLOR_BLACK);
+  if ( !SD.exists("/Basic.bin") ) SDLprintText("Starter not found!", (30), (160), ID_COLOR_WHITE, ID_COLOR_BLACK);
 
   File updateBin = SD.open("/run.bin");
 
