@@ -53,7 +53,8 @@
 // siehe Logbuch.txt zum Entwicklungsverlauf
 // V2.07b:29.01.2026          -Fehler in Printausgabe behoben
 //                            -wurde einer Variablen ein String zugewiesen und danach mit Print eine Berechnung durchgeführt, wurde als Ergebnis der deklarierte String ausgegeben
-//                            -15585 Zeilen/sek.
+//                            -? als Print Befehl wieder entfernt, benutze ich eigentlich nicht ;-)
+//                            -16885 Zeilen/sek.
 //
 // v2.06b:10.05.2024          -Fehler in Scroll-Funktion - Anzahl der Parameter war falsch
 //                            -16179 Zeilen/sek.
@@ -522,7 +523,7 @@ const static char keywords[] PROGMEM = {
   'T', 'Y', 'P', 'E' + 0x80,
   'G', 'R', 'I', 'D' + 0x80,
   'T', 'E', 'X', 'T' + 0x80,
-  '?' + 0x80,
+  //'?' + 0x80,
   'W', 'I', 'N', 'D', 'O', 'W' + 0x80,
   'H', 'E', 'L', 'P' + 0x80,
   'F', 'R', 'A', 'M', 'E' + 0x80,
@@ -613,7 +614,7 @@ enum {
   KW_TYPE,
   KW_GRID,
   KW_TEXT,
-  KW_PRINTING,
+  //KW_PRINTING,
   KW_WINDOW,
   KW_HELP,
   KW_FRAME,
@@ -3430,7 +3431,7 @@ interpreteAtTxtpos:
         if (input()) continue;
         break;
 
-      case KW_PRINTING:                                   // ?
+      //case KW_PRINTING:                                   // ?
       case KW_PRINT:                                      // Print
         if (command_Print()) continue;
         break;
