@@ -5,6 +5,15 @@
 #### Das Ergebnis ist ein kleiner Retro-Computer mit folgender Ausstattung:
 - (Schaltplan siehe Ordner Schematic) 
 
+## How to compile
+```
+-use Arduino IDE 1.8.19
+-Espressiv ESP32 Version 1.0.6
+-FabGL Version 1.0.9
+-copy all Files in the lib to Arduino lib Directory
+-compile and enjoy
+```
+
 ## Hardware:
 ```
 -ESP32 / 240MHz
