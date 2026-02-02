@@ -10,7 +10,7 @@
 -use Arduino IDE 1.8.19
 -Espressiv ESP32 Version 1.0.6
 -FabGL Version 1.0.9
--copy all Files in the lib to Arduino lib Directory
+-copy all Files in the libraries to Arduino lib Directory
 -compile and enjoy
 ```
 
