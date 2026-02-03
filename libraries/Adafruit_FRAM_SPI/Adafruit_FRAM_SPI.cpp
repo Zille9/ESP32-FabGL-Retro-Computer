@@ -25,35 +25,43 @@
  *  @section license License
  *
  *  BSD license, all text above must be included in any redistribution
+ *
+ *  History
+ *  - FUEL4EP: Added sleep mode support
  */
 
-#include <math.h>
 #include <stdlib.h>
 
 #include "Adafruit_FRAM_SPI.h"
 
+/// Enable debug output
+#define FRAM_DEBUG 0
+
 /// Supported flash devices
 const struct {
-  uint8_t manufID; ///< Manufacture ID
-  uint16_t prodID; ///< Product ID
-  uint32_t size;   ///< Size in bytes
+  uint8_t manufID;    ///< Manufacture ID
+  uint16_t prodID;    ///< Product ID
+  uint32_t size;      ///< Size in bytes
+  bool support_sleep; ///< Support sleep mode
 } _supported_devices[] = {
     // Sorted in numerical order
     // Fujitsu
-    {0x04, 0x0101, 2 * 1024UL},   // MB85RS16
-    {0x04, 0x0302, 8 * 1024UL},   // MB85RS64V
-    {0x04, 0x2303, 8 * 1024UL},   // MB85RS64T
-    {0x04, 0x2503, 32 * 1024UL},  // MB85RS256TY
-    {0x04, 0x2703, 128 * 1024UL}, // MB85RS1MT
-    {0x04, 0x4803, 256 * 1024UL}, // MB85RS2MTA
-    {0x04, 0x4903, 512 * 1024UL}, // MB85RS4MT
+    {0x04, 0x0101, 2 * 1024UL, false},  // MB85RS16
+    {0x04, 0x0302, 8 * 1024UL, false},  // MB85RS64V
+    {0x04, 0x2303, 8 * 1024UL, true},   // MB85RS64T
+    {0x04, 0x2503, 32 * 1024UL, true},  // MB85RS256TY
+    {0x04, 0x2703, 128 * 1024UL, true}, // MB85RS1MT
+    {0x04, 0x4803, 256 * 1024UL, true}, // MB85RS2MTA
+    {0x04, 0x2803, 256 * 1024UL, true}, // MB85RS2MT
+    {0x04, 0x4903, 512 * 1024UL, true}, // MB85RS4MT
+    {0x04, 0x490B, 512 * 1024UL, true}, // MB85RS4MTY
 
     // Cypress
-    {0x7F, 0x7F7f, 32 * 1024UL}, // FM25V02
-                                 // (manu = 7F7F7F7F7F7FC2, device = 0x2200)
+    {0x7F, 0x7F7f, 32 * 1024UL, false}, // FM25V02
+    // (manu = 7F7F7F7F7F7FC2, device = 0x2200)
 
     // Lapis
-    {0xAE, 0x8305, 8 * 1024UL} // MR45V064B
+    {0xAE, 0x8305, 8 * 1024UL, false} // MR45V064B
 };
 
 /*!
@@ -62,22 +70,25 @@ const struct {
  *          ManufactureID to be checked
  *  @param  prodID
  *          ProductID to be checked
- *  @return size of device, 0 if not supported
+ *  @return device index, -1 if not supported
  */
-static uint32_t check_supported_device(uint8_t manufID, uint16_t prodID) {
-  for (uint8_t i = 0;
+static int get_supported_idx(uint8_t manufID, uint16_t prodID) {
+  for (unsigned int i = 0;
        i < sizeof(_supported_devices) / sizeof(_supported_devices[0]); i++) {
     if (manufID == _supported_devices[i].manufID &&
         prodID == _supported_devices[i].prodID)
-      return _supported_devices[i].size;
+      return i;
   }
 
-  Serial.print(F("Unexpected Device: Manufacturer ID = 0x"));
-  Serial.print(manufID, HEX);
-  Serial.print(F(", Product ID = 0x"));
-  Serial.println(prodID, HEX);
+  return -1;
+}
 
-  return 0;
+/*!
+ * @brief  Initialize the SPI FRAM class
+ */
+void Adafruit_FRAM_SPI::init(void) {
+  _nAddressSizeBytes = 0;
+  _dev_idx = -1;
 }
 
 /*!
@@ -91,10 +102,7 @@ static uint32_t check_supported_device(uint8_t manufID, uint16_t prodID) {
  */
 Adafruit_FRAM_SPI::Adafruit_FRAM_SPI(int8_t cs, SPIClass *theSPI,
                                      uint32_t freq) {
-  if (spi_dev) {
-    delete spi_dev;
-  }
-
+  init();
   spi_dev = new Adafruit_SPIDevice(cs, freq, SPI_BITORDER_MSBFIRST, SPI_MODE0,
                                    theSPI);
 }
@@ -112,12 +120,15 @@ Adafruit_FRAM_SPI::Adafruit_FRAM_SPI(int8_t cs, SPIClass *theSPI,
  */
 Adafruit_FRAM_SPI::Adafruit_FRAM_SPI(int8_t clk, int8_t miso, int8_t mosi,
                                      int8_t cs) {
+  init();
+  spi_dev = new Adafruit_SPIDevice(cs, clk, miso, mosi, 1000000,
+                                   SPI_BITORDER_MSBFIRST, SPI_MODE0);
+}
+
+Adafruit_FRAM_SPI::~Adafruit_FRAM_SPI(void) {
   if (spi_dev) {
     delete spi_dev;
   }
-
-  spi_dev = new Adafruit_SPIDevice(cs, clk, miso, mosi, 1000000,
-                                   SPI_BITORDER_MSBFIRST, SPI_MODE0);
 }
 
 /*!
@@ -128,8 +139,8 @@ Adafruit_FRAM_SPI::Adafruit_FRAM_SPI(int8_t clk, int8_t miso, int8_t mosi,
  *  @return true if successful
  */
 bool Adafruit_FRAM_SPI::begin(uint8_t nAddressSizeBytes) {
-  (void)
-      nAddressSizeBytes; // not used anymore, since we will use auto-detect size
+  // not used anymore, since we will use auto-detect size
+  (void)nAddressSizeBytes;
 
   /* Configure SPI */
   if (!spi_dev->begin()) {
@@ -137,58 +148,41 @@ bool Adafruit_FRAM_SPI::begin(uint8_t nAddressSizeBytes) {
   }
 
   /* Make sure we're actually connected */
-  //uint8_t manufID;
-  //uint16_t prodID;
-  //getDeviceID(&manufID, &prodID);
-  
-  /* Everything seems to be properly initialised and connected */
-  uint32_t fram_size = 8192UL * 1024;//check_supported_device(manufID, prodID);
-
-  //Serial.print(F("FRAM Size = 0x"));
-  //Serial.println(fram_size, HEX);
-
-  // Detect address size in bytes either 2 or 3 bytes (4 bytes is not supported)
-  if (fram_size > 64UL * 1024) {
-    setAddressSize(3);
-  } else {
-    setAddressSize(2);
-  }
-
-  return fram_size != 0;
-}
-
-/* Original */
-/*
-bool Adafruit_FRAM_SPI::begin(uint8_t nAddressSizeBytes) {
-  (void)
-      nAddressSizeBytes; // not used anymore, since we will use auto-detect size
-
-  // Configure SPI 
-  if (!spi_dev->begin()) {
-    return false;
-  }
-
-  // Make sure we're actually connected 
   uint8_t manufID;
   uint16_t prodID;
   getDeviceID(&manufID, &prodID);
-  
-  // Everything seems to be properly initialised and connected 
-  uint32_t fram_size = check_supported_device(manufID, prodID);
 
-  Serial.print(F("FRAM Size = 0x"));
-  Serial.println(fram_size, HEX);
+  /* Everything seems to be properly initialised and connected */
+  _dev_idx = get_supported_idx(manufID, prodID);
 
-  // Detect address size in bytes either 2 or 3 bytes (4 bytes is not supported)
-  if (fram_size > 64UL * 1024) {
-    setAddressSize(3);
+  if (_dev_idx == -1) {
+#if FRAM_DEBUG
+    Serial.print(F("Unexpected Device: Manufacturer ID = 0x"));
+    Serial.print(manufID, HEX);
+    Serial.print(F(", Product ID = 0x"));
+    Serial.println(prodID, HEX);
+#endif
+
+    return false;
   } else {
-    setAddressSize(2);
-  }
+    uint32_t const fram_size = _supported_devices[_dev_idx].size;
 
-  return fram_size != 0;
+#if FRAM_DEBUG
+    Serial.print(F("FRAM Size = 0x"));
+    Serial.println(fram_size, HEX);
+#endif
+
+    // Detect address size in bytes either 2 or 3 bytes (4 bytes is not
+    // supported)
+    if (fram_size > 64UL * 1024) {
+      setAddressSize(3);
+    } else {
+      setAddressSize(2);
+    }
+
+    return true;
+  }
 }
-*/
 
 /*!
  *  @brief  Enables or disables writing to the SPI flash
@@ -220,10 +214,12 @@ bool Adafruit_FRAM_SPI::write8(uint32_t addr, uint8_t value) {
   uint8_t i = 0;
 
   buffer[i++] = OPCODE_WRITE;
-  if (_nAddressSizeBytes > 3)
+  if (_nAddressSizeBytes > 3) {
     buffer[i++] = (uint8_t)(addr >> 24);
-  if (_nAddressSizeBytes > 2)
+  }
+  if (_nAddressSizeBytes > 2) {
     buffer[i++] = (uint8_t)(addr >> 16);
+  }
   buffer[i++] = (uint8_t)(addr >> 8);
   buffer[i++] = (uint8_t)(addr & 0xFF);
   buffer[i++] = value;
@@ -247,10 +243,12 @@ bool Adafruit_FRAM_SPI::write(uint32_t addr, const uint8_t *values,
   uint8_t i = 0;
 
   prebuf[i++] = OPCODE_WRITE;
-  if (_nAddressSizeBytes > 3)
+  if (_nAddressSizeBytes > 3) {
     prebuf[i++] = (uint8_t)(addr >> 24);
-  if (_nAddressSizeBytes > 2)
+  }
+  if (_nAddressSizeBytes > 2) {
     prebuf[i++] = (uint8_t)(addr >> 16);
+  }
   prebuf[i++] = (uint8_t)(addr >> 8);
   prebuf[i++] = (uint8_t)(addr & 0xFF);
 
@@ -268,10 +266,12 @@ uint8_t Adafruit_FRAM_SPI::read8(uint32_t addr) {
   uint8_t i = 0;
 
   buffer[i++] = OPCODE_READ;
-  if (_nAddressSizeBytes > 3)
+  if (_nAddressSizeBytes > 3) {
     buffer[i++] = (uint8_t)(addr >> 24);
-  if (_nAddressSizeBytes > 2)
+  }
+  if (_nAddressSizeBytes > 2) {
     buffer[i++] = (uint8_t)(addr >> 16);
+  }
   buffer[i++] = (uint8_t)(addr >> 8);
   buffer[i++] = (uint8_t)(addr & 0xFF);
 
@@ -295,10 +295,12 @@ bool Adafruit_FRAM_SPI::read(uint32_t addr, uint8_t *values, size_t count) {
   uint8_t i = 0;
 
   buffer[i++] = OPCODE_READ;
-  if (_nAddressSizeBytes > 3)
+  if (_nAddressSizeBytes > 3) {
     buffer[i++] = (uint8_t)(addr >> 24);
-  if (_nAddressSizeBytes > 2)
+  }
+  if (_nAddressSizeBytes > 2) {
     buffer[i++] = (uint8_t)(addr >> 16);
+  }
   buffer[i++] = (uint8_t)(addr >> 8);
   buffer[i++] = (uint8_t)(addr & 0xFF);
 
@@ -375,4 +377,45 @@ bool Adafruit_FRAM_SPI::setStatusRegister(uint8_t value) {
  */
 void Adafruit_FRAM_SPI::setAddressSize(uint8_t nAddressSize) {
   _nAddressSizeBytes = nAddressSize;
+}
+
+/*!
+ *  @brief  Enters the FRAM's low power sleep mode
+ *  @return true if successful
+ */
+// WARNING: this method has not yet been validated
+bool Adafruit_FRAM_SPI::enterSleep(void) {
+  if (_dev_idx == -1 || !_supported_devices[_dev_idx].support_sleep) {
+    return false;
+  }
+  uint8_t cmd = OPCODE_SLEEP;
+  return spi_dev->write(&cmd, 1);
+}
+
+/*!
+ *  @brief  exits the FRAM's low power sleep mode
+ *  @return true if successful
+ */
+// WARNING: this method has not yet been validated
+bool Adafruit_FRAM_SPI::exitSleep(void) {
+  if (_dev_idx == -1 || !_supported_devices[_dev_idx].support_sleep) {
+    return false;
+  }
+
+  // Returning to a normal operation from the SLEEP mode is carried out after
+  // tREC (Max 400 μs) time from the falling edge of CS
+  spi_dev->beginTransactionWithAssertingCS();
+  delayMicroseconds(300);
+  // It is possible to return CS to H level before tREC time. However, it
+  // is prohibited to bring down CS to L level again during tREC period.
+  spi_dev->endTransactionWithDeassertingCS();
+  delayMicroseconds(100);
+
+  // MB85RS4MTY requires 450us (extra 50us) to wake from "Hibernate"
+  if (_supported_devices[_dev_idx].manufID == 0x04 &&
+      _supported_devices[_dev_idx].prodID == 0x0B) {
+    delayMicroseconds(50);
+  }
+
+  return true;
 }
