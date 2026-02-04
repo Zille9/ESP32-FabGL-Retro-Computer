@@ -24,6 +24,11 @@
 //	        Scott Lawrence <yorgle@gmail.com>
 //          Brian O'Dell <megamemnon@megamemnon.com>
 //
+// How to compile:-Arduino IDE 1.8.19
+//                -ESP32 Core 1.0.6
+//                -copy lib Files in Arduino lib Directory
+//                -Partition Scheme 1,9MB Minimal SPIFFS with OTA
+//
 // Die Version meiner Vor-Authoren bildet die Grundlage für einen erweiterten Basic-Interpreter
 // die Grundversion wurde erweitert durch:  -fliesskomma Arithmetik
 //                                          -Grafikfunktionen
@@ -48,13 +53,17 @@
 //#pragma GCC optimize("-ffast-math")
 //#pragma GCC optimize("O3")
 
-#define BasicVersion "2.07b"
-#define BuiltTime "29.01.2026"
+#define BasicVersion "2.08b"
+#define BuiltTime "04.02.2026"
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// V2.08b:04.02.2026          -Testroutine für SPI-Ram in die Start-Prozedur eingefügt - Ermittlung der Ram-Grösse
+//                            -Bibliotheken aktualisiert
+//                            -15177 Zeilen/sek.
+//
 // V2.07b:29.01.2026          -Fehler in Printausgabe behoben
 //                            -wurde einer Variablen ein String zugewiesen und danach mit Print eine Berechnung durchgeführt, wurde als Ergebnis der deklarierte String ausgegeben
 //                            -? als Print Befehl wieder entfernt, benutze ich eigentlich nicht ;-)
-//                            -16885 Zeilen/sek.
+//                            -16515 Zeilen/sek.
 //
 // v2.06b:10.05.2024          -Fehler in Scroll-Funktion - Anzahl der Parameter war falsch
 //                            -16179 Zeilen/sek.
@@ -155,6 +164,7 @@ unsigned int noteTable []  PROGMEM = {16350, 17320, 18350, 19450, 20600, 21830, 
 
 //----------------------------------- Editor -Marker ----------------------------------------------------------------------------------------------
 byte Editor_marker = 101;            // EEPROM-Platz 101 beinhaltet den Editor-marker (123) lädt die Datei tmp.bas nach Rückkehr vom Kilo-Editor
+bool Editor_ende = true;
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 // ---------------------------------- SD-Karten-Zugriff--------------------------------------------------------------------------------------------
@@ -260,7 +270,7 @@ bool LCD_Backlight = true;
 
 byte FRAM_CS  = 0;                    //SPI-RAM CS-Pin
 Adafruit_FRAM_SPI spi_fram = Adafruit_FRAM_SPI(kSD_CLK, kSD_MISO, kSD_MOSI, FRAM_CS);
-
+uint32_t SPI_memSize;                 //ermittelte SPI-Ram-Grösse
 //---------------------------------------- spezielle SPI-Ram-Adressen -----------------------------------------------------------------------------
 word FRAM_OFFSET      = 0x8000;     //Offset für Poke-Anweisungen, um zu verhindern, das in den Array-Bereich gepoked wird
 word FRAM_PIC_OFFSET  = 0x12C04;    //Platz pro Bildschirm im Speicher 320x240=76800 + 4Byte für die Dimension = 76804
@@ -296,6 +306,36 @@ hw_timer_t *Akku_timer = NULL;      //Interrupt-Routine Akku-Überwachung
 #endif
 #define Batt_Pin 39                 //Pin wird in jedem Fall definiert
 //-------------------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------- Editor-Konfiguration --------------------------------------------------------------------------------------
+
+typedef struct erow {
+  int size;
+  int rsize;
+  char *chars;
+  char *render;
+} erow;
+
+struct editorConfig {
+  int cx, cy;
+  int rx;
+  int rowoff;
+  int coloff;
+  int screenrows;
+  int screencols;
+  int dirty;
+  int numrows;
+  erow *row;
+  char *filename;
+  char statusmsg[80];
+  time_t statusmsg_time;
+}; struct editorConfig E;
+
+struct abuf {
+  char *b;
+  int len;
+};
+//-------------------------------------------------------------------------------------------------------------------------------------------------
+
 
 //------------------------------- BMP-Info-Parameter für PIC-Befehl -------------------------------------------------------------------------------
 uint32_t bmp_width, bmp_height;
@@ -3217,9 +3257,11 @@ void loop()
 void Basic_Interpreter()
 {
   char pa, pb;
+  
   initSD();                                              //SD-Karte initialisieren
   cmd_new();                                             //alles löschen
   print_info();                                          //Start-Bildschirm anzeigen
+  SPI_FRAM_info();                                       //SPI-Ram ermitteln
   check_editor();                                        // befindet sich im EEPROM-Platz 50 die 123, dann die datei tmp.bas automatisch laden
   int a, e;
 
@@ -3849,7 +3891,14 @@ interpreteAtTxtpos:
         break;
 
       case KW_EDIT:
-        if (*txtpos == NL) save_tempfile();               //Edit ohne Zeilennummer lädt den Texteditor KILO
+        if (*txtpos == NL) {
+          save_tempfile();               //Edit ohne Zeilennummer lädt den Texteditor KILO
+          //kilo();
+          //set_font(fontsatz);                                                                  // Fontsatz laden (1 Byte)
+          //tc.setCursorPos(1, 1);
+          //GFX.clear();
+          //check_editor();
+        }
         else
         {
           val = int(get_value());                           //Edit <Zeilennummer> startet den Zeileneditor
@@ -5797,11 +5846,11 @@ static int initSD( void )
   int adr, i;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-  SPI.setFrequency(20000000);
-  while (!SD.begin( kSD_CS, spiSD))
+  SPI.setFrequency(40000000);
+  if (!SD.begin( kSD_CS, spiSD))
   {
+    spiSD.end();
     syntaxerror(sderrormsg);
-    delay(3000);
   }
 
   // file redirection flags
@@ -6590,15 +6639,15 @@ return 0;
         }
         *vk = VirtualKey::VK_NONE;
       }
-/*
+     /*
       else if (*vk == VirtualKey::VK_F1) {                                               //Help aufrufen
         if (keyDown) {
           *txtpos = NL;
         }
         *vk = VirtualKey::VK_NONE;
-        show_help();
+        SPI_FRAM_info();
       }
-*/
+     */
       
       else if (*vk == VirtualKey::VK_F2) {                                               //Grafiksymbole on/off
         if (keyDown) {
@@ -6743,6 +6792,7 @@ tempname.toCharArray(tempstring, tempname.length() + 1);
     EEPROM.write ( Editor_marker, 123 ) ;                                          // Marker, das der editor benutzt wird, bei der Rückkehr wird die datei tmp.bas automatisch geladen
     EEPROM.commit () ;
     editorname.toCharArray(tempstring, editorname.length() + 1);
+    
     load_binary();
     return 0;
   }
@@ -7818,7 +7868,7 @@ nochmal:
         case 'D':                                         //Grafik im FRAM auf dem Bildschirm ausgeben
           if (Test_char('(')) return 1;
           ad = get_value();
-          if (ad > SPI_RAM_SIZE) ad = SPI_RAM_SIZE;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
+          if (ad > SPI_memSize) ad = SPI_memSize;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
           ad = ad * FRAM_PIC_OFFSET;                      //Bildspeicherplatz (320x240)
           if (*txtpos == ',') {                           //Modus
             txtpos++;
@@ -7883,7 +7933,7 @@ nochmal:
         case 'L':                                         //Load PIC_RAW-Data
           if (Test_char('(')) return 1;
           ad = get_value();                               //Adresse im Speicher
-          if (ad > SPI_RAM_SIZE) ad = SPI_RAM_SIZE;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
+          if (ad > SPI_memSize) ad = SPI_memSize;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
           ad = ad * FRAM_PIC_OFFSET;                      //Bildspeicherplatz
           if (Test_char(',')) return 1;                   //Komma überspringen
           get_value();                                    //Dateiname in tempstring
@@ -7895,7 +7945,7 @@ nochmal:
         case 'S':                                         //Save PIC_RAW-Data
           if (Test_char('(')) return 1;
           ad = get_value();                               //Adresse im Speicher
-          if (ad > SPI_RAM_SIZE) ad = SPI_RAM_SIZE;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
+          if (ad > SPI_memSize) ad = SPI_memSize;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
           ad = ad * FRAM_PIC_OFFSET;                      //Bildspeicherplatz
           if (Test_char(',')) return 1;                   //Komma überspringen
           get_value();                                    //Dateiname in tempstring
@@ -7911,7 +7961,7 @@ nochmal:
         case 'P':                                         //Grafikbildschirm in FRAM speichern
           if (Test_char('(')) return 1;
           ad = get_value();
-          if (ad > SPI_RAM_SIZE) ad = SPI_RAM_SIZE;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
+          if (ad > SPI_memSize) ad = SPI_memSize;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
           ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz
           if (*txtpos == ',') {                           //Komma?, dann x,y-Position eingeben
             txtpos++;

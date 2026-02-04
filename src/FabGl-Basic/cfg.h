@@ -15,7 +15,7 @@
 #define TFT_SPIBUS VSPI_HOST
 #define RAMEND 30000  //bei Verwendung ILI9341 muss der Ram verkleinert werden
 #else
-#define RAMEND 52000  //um MP3-Funtionalität in allen Auflösungen zu garantieren, sollte der Wert nicht grösser als 50000 sein
+#define RAMEND 50000  //um MP3-Funtionalität in allen Auflösungen zu garantieren, sollte der Wert nicht grösser als 52000 sein
 #endif
 #define kRamSize  RAMEND
 
@@ -45,4 +45,4 @@
 //#define Akkualarm_enabled
 
 //**************** Grösse des SPI-RAM'S festlegen *************************
-#define SPI_RAM_SIZE 64 //SPI_RAM_SIZE * 128k -> 23LC1024 = 1 , FRAM 512k = 4, PSRAM 8MB = 64
+//#define SPI_RAM_SIZE 4 //SPI_RAM_SIZE * 128k -> 23LC1024 = 1 , FRAM 512k = 4, PSRAM 8MB = 64
