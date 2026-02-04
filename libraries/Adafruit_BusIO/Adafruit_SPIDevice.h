@@ -10,7 +10,7 @@
 #define BUSIO_HAS_HW_SPI
 #else
 // SW SPI ONLY
-enum { SPI_MODE0, SPI_MODE1, SPI_MODE2, _SPI_MODE4 };
+enum { SPI_MODE0, SPI_MODE1, SPI_MODE2, SPI_MODE3 };
 typedef uint8_t SPIClass;
 #endif
 
@@ -22,7 +22,8 @@ typedef uint8_t SPIClass;
     defined(ARDUINO_AVR_ATmega4808) || defined(ARDUINO_AVR_ATmega3209) ||      \
     defined(ARDUINO_AVR_ATmega3208) || defined(ARDUINO_AVR_ATmega1609) ||      \
     defined(ARDUINO_AVR_ATmega1608) || defined(ARDUINO_AVR_ATmega809) ||       \
-    defined(ARDUINO_AVR_ATmega808) || defined(ARDUINO_ARCH_ARC32)
+    defined(ARDUINO_AVR_ATmega808) || defined(ARDUINO_ARCH_ARC32) ||           \
+    defined(ARDUINO_ARCH_XMC)
 
 typedef enum _BitOrder {
   SPI_BITORDER_MSBFIRST = MSBFIRST,
@@ -55,7 +56,15 @@ typedef BitOrder BusIOBitOrder;
 // ports set and clear registers which are atomic.
 // typedef volatile uint32_t BusIO_PortReg;
 // typedef uint32_t BusIO_PortMask;
-//#define BUSIO_USE_FAST_PINIO
+// #define BUSIO_USE_FAST_PINIO
+
+#elif defined(__MBED__) || defined(__ZEPHYR__)
+// Boards based on RTOS cores like mbed or Zephyr are not going to expose the
+// low level registers needed for fast pin manipulation
+#undef BUSIO_USE_FAST_PINIO
+
+#elif defined(ARDUINO_ARCH_XMC)
+#undef BUSIO_USE_FAST_PINIO
 
 #elif defined(__AVR__) || defined(TEENSYDUINO)
 typedef volatile uint8_t BusIO_PortReg;
@@ -69,7 +78,9 @@ typedef uint32_t BusIO_PortMask;
 #define BUSIO_USE_FAST_PINIO
 
 #elif (defined(__arm__) || defined(ARDUINO_FEATHER52)) &&                      \
-    !defined(ARDUINO_ARCH_MBED) && !defined(ARDUINO_ARCH_RP2040)
+    !defined(ARDUINO_ARCH_RP2040) && !defined(ARDUINO_SILABS) &&               \
+    !defined(ARDUINO_UNOR4_MINIMA) && !defined(ARDUINO_UNOR4_WIFI) &&          \
+    !defined(PORTDUINO)
 typedef volatile uint32_t BusIO_PortReg;
 typedef uint32_t BusIO_PortMask;
 #if !defined(__ASR6501__) && !defined(__ASR6502__)
@@ -93,7 +104,7 @@ public:
                      uint8_t dataMode = SPI_MODE0, SPIClass *theSPI = nullptr);
 #endif
   Adafruit_SPIDevice(int8_t cspin, int8_t sck, int8_t miso, int8_t mosi,
-                     uint32_t freq = 2000000,
+                     uint32_t freq = 1000000,
                      BusIOBitOrder dataOrder = SPI_BITORDER_MSBFIRST,
                      uint8_t dataMode = SPI_MODE0);
   ~Adafruit_SPIDevice();

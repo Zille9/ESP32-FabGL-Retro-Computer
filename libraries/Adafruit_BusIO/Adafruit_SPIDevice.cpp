@@ -1,6 +1,24 @@
 #include "Adafruit_SPIDevice.h"
 
-//#define DEBUG_SERIAL Serial
+// #define DEBUG_SERIAL Serial
+
+#ifdef BUSIO_USE_FAST_PINIO
+#define BUSIO_SET_CLOCK_LOW() (*clkPort = *clkPort & ~clkPinMask)
+#define BUSIO_SET_CLOCK_HIGH() (*clkPort = *clkPort | clkPinMask)
+#define BUSIO_READ_MISO() (*misoPort & misoPinMask)
+#define BUSIO_WRITE_MOSI(value)                                                \
+  do {                                                                         \
+    if (value)                                                                 \
+      *mosiPort = *mosiPort | mosiPinMask;                                     \
+    else                                                                       \
+      *mosiPort = *mosiPort & ~mosiPinMask;                                    \
+  } while (0)
+#else
+#define BUSIO_SET_CLOCK_LOW() digitalWrite(_sck, LOW)
+#define BUSIO_SET_CLOCK_HIGH() digitalWrite(_sck, HIGH)
+#define BUSIO_READ_MISO() digitalRead(_miso)
+#define BUSIO_WRITE_MOSI(value) digitalWrite(_mosi, value)
+#endif
 
 /*!
  *    @brief  Create an SPI device with the given CS pin and settings
@@ -173,92 +191,78 @@ void Adafruit_SPIDevice::transfer(uint8_t *buffer, size_t len) {
     // Serial.print(send, HEX);
     for (uint8_t b = startbit; b != 0;
          b = (_dataOrder == SPI_BITORDER_LSBFIRST) ? b << 1 : b >> 1) {
-     
+
       if (bitdelay_us) {
         delayMicroseconds(bitdelay_us);
       }
-      
+
       if (_dataMode == SPI_MODE0 || _dataMode == SPI_MODE2) {
         towrite = send & b;
         if ((_mosi != -1) && (lastmosi != towrite)) {
-#ifdef BUSIO_USE_FAST_PINIO
-          if (towrite)
-            *mosiPort |= mosiPinMask;
-          else
-            *mosiPort &= ~mosiPinMask;
-#else
-          digitalWrite(_mosi, towrite);
-#endif
+          BUSIO_WRITE_MOSI(towrite);
           lastmosi = towrite;
         }
 
-#ifdef BUSIO_USE_FAST_PINIO
-        *clkPort |= clkPinMask; // Clock high
-#else
-        digitalWrite(_sck, HIGH);
-#endif
+        BUSIO_SET_CLOCK_HIGH();
 
         if (bitdelay_us) {
           delayMicroseconds(bitdelay_us);
         }
 
         if (_miso != -1) {
-#ifdef BUSIO_USE_FAST_PINIO
-          if (*misoPort & misoPinMask) {
-#else
-          if (digitalRead(_miso)) {
-#endif
+          if (BUSIO_READ_MISO())
+            reply |= b;
+        }
+
+        BUSIO_SET_CLOCK_LOW();
+
+      } else if (_dataMode == SPI_MODE3) {
+
+        if (_mosi != -1) { // transmit on falling edge
+          BUSIO_WRITE_MOSI(send & b);
+        }
+
+        BUSIO_SET_CLOCK_LOW();
+
+        if (bitdelay_us) {
+          delayMicroseconds(bitdelay_us);
+        }
+
+        BUSIO_SET_CLOCK_HIGH();
+
+        if (bitdelay_us) {
+          delayMicroseconds(bitdelay_us);
+        }
+
+        if (_miso != -1) { // read on rising edge
+          if (BUSIO_READ_MISO()) {
             reply |= b;
           }
         }
 
-#ifdef BUSIO_USE_FAST_PINIO
-        *clkPort &= ~clkPinMask; // Clock low
-#else
-        digitalWrite(_sck, LOW);
-#endif
-      } else { // if (_dataMode == SPI_MODE1 || _dataMode == SPI_MODE3)
+      } else { // || _dataMode == SPI_MODE1)
 
-#ifdef BUSIO_USE_FAST_PINIO
-        *clkPort |= clkPinMask; // Clock high
-#else
-        digitalWrite(_sck, HIGH);
-#endif
+        BUSIO_SET_CLOCK_HIGH();
 
         if (bitdelay_us) {
           delayMicroseconds(bitdelay_us);
         }
 
         if (_mosi != -1) {
-#ifdef BUSIO_USE_FAST_PINIO
-          if (send & b)
-            *mosiPort |= mosiPinMask;
-          else
-            *mosiPort &= ~mosiPinMask;
-#else
-          digitalWrite(_mosi, send & b);
-#endif
+          BUSIO_WRITE_MOSI(send & b);
         }
 
-#ifdef BUSIO_USE_FAST_PINIO
-        *clkPort &= ~clkPinMask; // Clock low
-#else
-        digitalWrite(_sck, LOW);
-#endif
+        BUSIO_SET_CLOCK_LOW();
 
         if (_miso != -1) {
-#ifdef BUSIO_USE_FAST_PINIO
-          if (*misoPort & misoPinMask) {
-#else
-          if (digitalRead(_miso)) {
-#endif
+          if (BUSIO_READ_MISO()) {
             reply |= b;
           }
         }
       }
-      if (_miso != -1) {
-        buffer[i] = reply;
-      }
+    }
+    if (_miso != -1) {
+      buffer[i] = reply;
     }
   }
   return;
@@ -349,10 +353,10 @@ bool Adafruit_SPIDevice::write(const uint8_t *buffer, size_t len,
 #if defined(ARDUINO_ARCH_ESP32)
   if (_spi) {
     if (prefix_len > 0) {
-      _spi->transferBytes(prefix_buffer, nullptr, prefix_len);
+      _spi->transferBytes((uint8_t *)prefix_buffer, nullptr, prefix_len);
     }
     if (len > 0) {
-      _spi->transferBytes(buffer, nullptr, len);
+      _spi->transferBytes((uint8_t *)buffer, nullptr, len);
     }
   } else
 #endif
@@ -443,7 +447,7 @@ bool Adafruit_SPIDevice::write_then_read(const uint8_t *write_buffer,
 #if defined(ARDUINO_ARCH_ESP32)
   if (_spi) {
     if (write_len > 0) {
-      _spi->transferBytes(write_buffer, nullptr, write_len);
+      _spi->transferBytes((uint8_t *)write_buffer, nullptr, write_len);
     }
   } else
 #endif
