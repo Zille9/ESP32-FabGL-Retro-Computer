@@ -15,7 +15,7 @@
 #define TFT_SPIBUS VSPI_HOST
 #define RAMEND 30000  //bei Verwendung ILI9341 muss der Ram verkleinert werden
 #else
-#define RAMEND 60928 
+#define RAMEND 40000 
 #endif
 #define kRamSize  RAMEND
 

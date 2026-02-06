@@ -11,7 +11,7 @@
   // Playorder ist noch nicht korrekt -> :-(
   // *******************************************************************************
 */
-#define Version "Vers1.1 - 03/2024"
+#define Version "Vers1.2 - 02/2026"
 
 #include <Arduino.h>
 
@@ -88,7 +88,7 @@ int title_length = 0;
 String currentFile;
 String Dateiname;
 bool Key_esc = false;
-
+bool nofile_error = false;
 
 
 
@@ -393,12 +393,23 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
     // mount-fehler
     spiSD.end();                                            //unmount
     tc.setCursorPos(1, 1);
-    status_text("Mountfehler");
+    bcolor(11);
+    GFX.fillRectangle(0, 50, 399, 290);
+    status_text("Mount-Error   now Reboot..");
+    delay(5000);
+    ESP.restart();
   }
-
-  files = SD.open("/mp3");
+  else
+  {
+    files = SD.open("/mp3");
+    if(!files){
+      status_text("No /MP3 Directory   now Reboot..");
+      delay(5000);
+      ESP.restart();
+    }
+  
   startMP3();
-
+  }
 }
 
 
@@ -406,6 +417,12 @@ void startMP3() {
   //
   File file;
   file = files.openNextFile();
+  if(!file){
+    status_text("No /MP3 Files");
+    delay(1000);
+    nofile_error=true;
+  }
+  else{
   Dateiname = file.name();
   source->open(file.name());
   id3 = new AudioFileSourceID3(source);
@@ -414,12 +431,14 @@ void startMP3() {
   mp3 = new AudioGeneratorMP3();
   mp3->begin(id3, out);
   setGain();
+  }
 }
 
 
 void loop()
 { display_Time();                                                                 //Uhrzeit anzeigen
-  if (mp3->isRunning()) {
+ 
+  if (!nofile_error && mp3->isRunning()) {
     if (!mp3->loop()) {
       mp3->stop();
       delay(1000);
@@ -510,7 +529,7 @@ void status_text(String txt) {
 
   int x = (50 / 2) - (txt.length() / 2);
   bcolor(0);
-  GFX.fillRectangle(0, 290, 399, 299);                    //Rectangle rect x,y,xx,yy,fill=1
+  GFX.fillRectangle(0, 285, 399, 299);                    //Rectangle rect x,y,xx,yy,fill=1
   tc.setCursorPos(x, 49);
   bcolor(0);
   fcolor(63);
