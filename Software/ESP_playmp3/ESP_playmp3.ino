@@ -437,8 +437,9 @@ void startMP3() {
 
 void loop()
 { display_Time();                                                                 //Uhrzeit anzeigen
- 
-  if (!nofile_error && mp3->isRunning()) {
+ if(!nofile_error){
+  
+  if (mp3->isRunning()) {
     if (!mp3->loop()) {
       mp3->stop();
       delay(1000);
@@ -446,6 +447,7 @@ void loop()
     }
   }
   if (Key_l || Key_r) {
+    
     mp3->stop();
 
     if (Key_l) playPrevTrack();
@@ -456,8 +458,11 @@ void loop()
     Key_u = Key_d = 0;
     setGain();
   }
+  
+ }
+ 
   if (Key_esc) {
-    mp3->stop();
+    if(!nofile_error) mp3->stop();
     load_binary();
   }
 }

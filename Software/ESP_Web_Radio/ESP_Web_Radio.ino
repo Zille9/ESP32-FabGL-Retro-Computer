@@ -10,6 +10,10 @@
   // Nutzung auf eigene Gefahr!!! :-)
   // *******************************************************************************
 */
+
+//V1.3 06.02.2026       -Stationsspeicherung im EEprom deaktiviert da meine RTC keinen EEprom besitzt
+
+
 #include <Arduino.h>
 
 #include <Preferences.h>
@@ -138,8 +142,8 @@ AudioOutputI2S *out;
 
 const char* Edit_line = nullptr;        //Editor-Zeile
 
-char ssid[32] = "DiabloIII";
-char pwd[32]  = "zillesoftgmbh";
+char ssid[32] = "";
+char pwd[32]  = "";
 
 
 
@@ -320,25 +324,24 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
   GFX.fillRectangle(0, 0, 399, 73);                        //Platz über dem Radio
   fcolor(60);
   drawing_text(4, 45, 10, "*** WEB-RADIO by Zille-Soft ***");
-  drawing_text(0, 132, 30, "Vers1.2 - 03/2024");
+  drawing_text(0, 132, 30, "Vers1.3 - 02/2026");
 
   bcolor(11);
   fcolor(1);
   GFX.fillRectangle(100, 92, 299, 157);                    //Display-Ausschnitt löschen
-
+  //preferences.remove("WiFiPsw");
   checkWiFi();
 
   // ein I2C-Interface definieren
   myI2C.begin(SDA_RTC, SCL_RTC, 400000); //400kHz
   rtc.begin(&myI2C);
   getdatetime();                                              //ESP32-interne Uhr stellen für Datei-Zeitstempel
-  
   curGain = 50; //default value
 
-  //byte c = readEEPROM(EEprom_ADDR, 0x7fff );                  // an Adresse 0x7fff im RTC-Modul-EEprom wird die Station gespeichert
-  //byte d = readEEPROM(EEprom_ADDR, 0x7ffe );                  // Lautstärkeeinstellung
-  //if (c < stations) act_station = c;
- // if (d < 200) curGain = d;
+  byte c = 1;//readEEPROM(EEprom_ADDR, 0x7fff );                  // an Adresse 0x7fff im RTC-Modul-EEprom wird die Station gespeichert
+  byte d = 60;//readEEPROM(EEprom_ADDR, 0x7ffe );                  // Lautstärkeeinstellung
+  if (c < stations) act_station = c;
+  if (d < 200) curGain = d;
 
   fcolor(1);
   bcolor(11);
@@ -395,13 +398,11 @@ bool checkWiFi() {
     if (i == 16)
       WiFi.reconnect();
   }
-  
   bool connected = (WiFi.status() == WL_CONNECTED);
   if (!connected) {
     drawing_text(3, 105, 143, "Network-Error");
     preferences.remove("WiFiPsw");
   }
-  
   return connected;
 }
 
