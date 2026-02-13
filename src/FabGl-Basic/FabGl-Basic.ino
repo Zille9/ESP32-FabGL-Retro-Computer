@@ -50,15 +50,17 @@
 // April 2021
 //
 //
-//#pragma GCC optimize("-ffast-math")
-//#pragma GCC optimize("O3")
-
-#define BasicVersion "2.08b"
-#define BuiltTime "04.02.2026"
+//
+//
+#define BasicVersion "2.09b"
+#define BuiltTime "012.02.2026"
 // siehe Logbuch.txt zum Entwicklungsverlauf
-// V2.08b:04.02.2026          -Testroutine für SPI-Ram in die Start-Prozedur eingefügt - Ermittlung der Ram-Grösse
+// V2.08b:04.02.2026          -Testroutine für SPI-Ram in die Start-Prozedur eingefügt - automatische Ermittlung der Ram-Grösse
 //                            -Bibliotheken aktualisiert
-//                            -15177 Zeilen/sek.
+//                            -Korrektur der max. speicherbaren Bilder im SPI-Ram, durch die automatische Spreichergrössenermittlung wurde die Ram-Grösse in KB zurückgegeben - ursprünglich wurde die Anzahl der 128KB Blöcke benutzt
+//                            -Korrektur der FPOKE, FPEEK, DOKE, DEEK - sowie RAM-Load und Save - Adressen werden jetzt einheitlich behandelt (MSB,LSB)
+//                            -PIC_I Routine gekürzt, da die Skalierung entfällt - zu große Bilder werden auf die Bildschirmauflösung runtergerechnet
+//                            -16287 Zeilen/sek.  (Debug lvl Warn)
 //
 // V2.07b:29.01.2026          -Fehler in Printausgabe behoben
 //                            -wurde einer Variablen ein String zugewiesen und danach mit Print eine Berechnung durchgeführt, wurde als Ergebnis der deklarierte String ausgegeben
@@ -156,6 +158,9 @@ const char * Themes[]    PROGMEM = {"C64", "C128", "CPC", "ATARI 800", "ZX-Spect
 const char * Keylayout[] PROGMEM = {" ", "US", "UK", "GE", "IT", "ES", "FR", "BE", "NO", "JP"};
 byte x_char[]      PROGMEM = {8, 5, 6, 8,  10, 8,  8,  8,  8,  8,  8,  8,  8,  6,  8,  4, 6,  7,  7,  8, 8, 8, 6, 9, 8, 8, 6}; //x-werte der Fontsätze zur Berechnung der Terminalbreite
 byte y_char[]      PROGMEM = {8, 8, 8, 14, 20, 14, 14, 16, 16, 14, 14, 14, 16, 10, 14, 6, 12, 13, 14, 9, 14, 14, 10, 15, 16, 8, 8}; //y-werte der Fontsätze zur Berechnung der Terminalhöhe
+//int screencell_x;
+//int screencell_y;
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //------------------------------------------------------------- Soundgenerator ----------------------------------------------------------------------------
@@ -563,7 +568,6 @@ const static char keywords[] PROGMEM = {
   'T', 'Y', 'P', 'E' + 0x80,
   'G', 'R', 'I', 'D' + 0x80,
   'T', 'E', 'X', 'T' + 0x80,
-  //'?' + 0x80,
   'W', 'I', 'N', 'D', 'O', 'W' + 0x80,
   'H', 'E', 'L', 'P' + 0x80,
   'F', 'R', 'A', 'M', 'E' + 0x80,
@@ -571,7 +575,6 @@ const static char keywords[] PROGMEM = {
   'S', 'W', 'A', 'P' + 0x80,
   'C', 'O', 'P', 'Y' + 0x80,
   'A', 'N', 'G', 'L', 'E' + 0x80,
-  //'B', 'A', 'R' + 0x80,
   0
 };
 
@@ -654,16 +657,14 @@ enum {
   KW_TYPE,
   KW_GRID,
   KW_TEXT,
-  //KW_PRINTING,
   KW_WINDOW,
   KW_HELP,
   KW_FRAME,
-  KW_ARC,     //80
-  KW_SWAP,
+  KW_ARC,     
+  KW_SWAP,    //80
   KW_COPY,
   KW_ANGLE,
-  //KW_BAR,
-  KW_DEFAULT  //85/* hier ist das Ende */
+  KW_DEFAULT  //84/* hier ist das Ende */
 };
 
 int KW_WORDS = KW_DEFAULT;
@@ -1143,7 +1144,7 @@ ln = VGAController.getScreenWidth() / y_char[fontsatz] - 3;    //Anzahl Zeilen a
 
   byte rdbyte[8];
 
-  word of = FRAM_OFFSET;
+  //word of = FRAM_OFFSET;
   long n;
   long adr = 0;
   was = abs(int(get_value()));                  //nur ganze Zahlen
@@ -1152,12 +1153,12 @@ ln = VGAController.getScreenWidth() / y_char[fontsatz] - 3;    //Anzahl Zeilen a
     txtpos++;
     adr = abs(get_value());                      //nur ganze Zahlen
   }
-
+/*
   if (*txtpos == 'V') {
     of = 0;                                       //wird V angegeben, kann man den Variablenbereich ansehen
     txtpos++;
   }
-
+*/
 
   if (was > 2) {
     syntaxerror(syntaxmsg);
@@ -1177,19 +1178,22 @@ ln = VGAController.getScreenWidth() / y_char[fontsatz] - 3;    //Anzahl Zeilen a
       for (int f = 0; f < 8; f++) {                     //8 Speicherplätze lesen und anzeigen
         switch (was) {
           case 1:  //FRAM
-            if (spi_fram.read8(of + n) < 16) outchar('0');
-            printnum(spi_fram.read8(of + n++), 3);
+            if (spi_fram.read8(n) < 16) outchar('0');
+            printnum(spi_fram.read8(n++), 3);
             if (x_weite > 39) outchar(' ');                       //wenn genug Platz, dann Leerzeichen zwischen den Werten
+            if(n > (SPI_memSize*1024)) n=0;                       //letzte Speicherstelle erreicht?, dann von vorn
             break;
           case 2:  //EEPROM
             if (readEEPROM(EEprom_ADDR, n ) < 16) outchar('0');
             printnum(readEEPROM(EEprom_ADDR, n++ ), 3);
             if (x_weite > 39) outchar(' ');
+            if (n>0xffff) n=0;                                  //letzte Speicherstelle erreicht?, dann von vorn
             break;
           default:  //interner RAM
             if (program[int(n)] < 16) outchar('0');
             printnum(program[int(n++)], 3);
             if (x_weite > 39) outchar(' ');
+            if (n>kRamSize) n=0;                                  //letzte Speicherstelle erreicht?, dann von vorn
             break;
         }
       }
@@ -1199,13 +1203,16 @@ ln = VGAController.getScreenWidth() / y_char[fontsatz] - 3;    //Anzahl Zeilen a
       for (int i = 0; i < 8; i++) {
         switch (was) {
           case 1:  //FRAM
-            c = spi_fram.read8(of + adr++);//readEEPROM(FRam_ADDR, adr++);
+            c = spi_fram.read8(adr++);//readEEPROM(FRam_ADDR, adr++);
+            if(adr > (SPI_memSize*1024)) adr=0;                   //letzte Speicherstelle erreicht?, dann von vorn
             break;
           case 2:  //EEPROM
             c = readEEPROM(EEprom_ADDR, adr++);
+            if (adr>0xffff) adr=0;                                //letzte Speicherstelle erreicht?, dann von vorn
             break;
           default:  //interner RAM
             c = program[int(adr++)];
+            if (adr>kRamSize) adr=0;                              //letzte Speicherstelle erreicht?, dann von vorn
             break;
         }
 
@@ -1993,7 +2000,7 @@ static float expr4(void)
         if (a == 0)
           result = program[int(b)];                      //RAM
         else if (a == 1)
-          result = spi_fram.read8(FRAM_OFFSET + b);      //FRAM
+          result = spi_fram.read8(b);                     //FRAM
         else
           result = readEEPROM(EEprom_ADDR, b );          //EEPROM
         return result;
@@ -2005,8 +2012,8 @@ static float expr4(void)
           result = result + program[int(b + 1)];
         }
         else if (a == 1)
-        { result = spi_fram.read8(FRAM_OFFSET + b) << 8;        //FRAM
-          result = result + spi_fram.read8(FRAM_OFFSET + b + 1);; //FRAM
+        { result = spi_fram.read8(b) << 8;        //FRAM
+          result = result + spi_fram.read8(b + 1);; //FRAM
         }
         else
         {
@@ -2024,7 +2031,7 @@ static float expr4(void)
           buf[3] = program[int(b) + 3];
         }
         else if (a == 1) {
-          spi_fram.read(FRAM_OFFSET + b, buf, 4);         //FRAM float
+          spi_fram.read(b, buf, 4);         //FRAM float
         }
         else {//if (a == 2) {                                //EEPROM float
           readBuffer(EEprom_ADDR, b, 4, buf);
@@ -2038,8 +2045,10 @@ static float expr4(void)
         break;
 
       case FUNC_GET:
-        if (a > 0) return int(tc.getCursorRow());        //get(0)=x
-        else    return int(tc.getCursorCol());           //get(1)=y
+        if (a == 0) return int(tc.getCursorRow());             //get(0)=x
+        else /*if(a==1)*/ return int(tc.getCursorCol());           //get(1)=y
+        //else return screenbuffer[0][0];               //get(2)=Char at xy
+        //else return screenbuffer[0][0];
         break;
 
       case FUNC_VAL:                                     //VAL("numerische Zeichenkette")
@@ -3473,7 +3482,7 @@ interpreteAtTxtpos:
         if (input()) continue;
         break;
 
-      //case KW_PRINTING:                                   // ?
+      
       case KW_PRINT:                                      // Print
         if (command_Print()) continue;
         break;
@@ -3569,7 +3578,7 @@ interpreteAtTxtpos:
           continue;
         break;
 
-      case KW_ANGLE:
+      case KW_ANGLE:                                      //eine Linie im Winkel zeichnen
         if (line_rec_circ(9, 3))
           continue;
         break;
@@ -3614,7 +3623,7 @@ interpreteAtTxtpos:
         }
         goto execnextline;                                //Bedingung nicht erfüllt -> nächste Zeile
 
-      case KW_CURSOR:
+      case KW_CURSOR:                                     //Cursor On/Off
         if (cursor_onoff())
           continue;
         break;
@@ -3629,17 +3638,17 @@ interpreteAtTxtpos:
           continue;
         break;
 
-      case KW_STYLE:
+      case KW_STYLE:                                      //Textstyle setzen
         if (set_style())
           continue;
         break;
 
-      case KW_SCROLL:
+      case KW_SCROLL:                                     //Bildschirmbereich scrollen
         if (line_rec_circ(8, 1))
           continue;
         break;
 
-      case KW_THEME:
+      case KW_THEME:                                      //Farb-und Fontschema setzen
         int a;
         a = int(get_value());
         set_theme(a);
@@ -3650,7 +3659,7 @@ interpreteAtTxtpos:
         goto execnextline;
         break;
 
-      case KW_READ:
+      case KW_READ:                                       //DATA Read
         while (1) {
           if (data_get())
           {
@@ -3686,7 +3695,7 @@ interpreteAtTxtpos:
         }
         break;
 
-      case KW_DEL:                                        // DEL
+      case KW_DEL:                                        // DEL File
         if (cmd_delFiles())
         {
           syntaxerror(notexistmsg);
@@ -3694,7 +3703,7 @@ interpreteAtTxtpos:
         continue;
         break;
 
-      case KW_AND:
+      case KW_AND:                                        //Logisch UND
         expression_error = 0;
         val = get_value();
         logic_ergebnis[logic_counter++] = int(val);       //alle Ergebnisse einlesen und auswerten
@@ -3705,7 +3714,7 @@ interpreteAtTxtpos:
         val = logica - logic_counter;                     //sind alle Bedingungen erfüllt lautet das Ergebnis 0
         break;
 
-      case KW_OR:
+      case KW_OR:                                         //Logisch OR
         expression_error = 0;
         val = get_value();
 
@@ -3752,7 +3761,7 @@ interpreteAtTxtpos:
         }
         break;
 
-      case KW_DWRITE:                                   //Port schreiben
+      case KW_DWRITE:                                     //Digital-Port schreiben
         if (set_port())
           continue;
         break;
@@ -3780,7 +3789,7 @@ interpreteAtTxtpos:
           continue;
         break;
 
-      case KW_SPRITE:
+      case KW_SPRITE:                                     //SPRITE-Befehl
         if (Test_char('(')) continue;
         pa = *txtpos;
         if (pa == 'C' || pa == 'D' || pa == 'S') {
@@ -3796,12 +3805,12 @@ interpreteAtTxtpos:
         }
         break;
 
-      case KW_SOUND:
+      case KW_SOUND:                                      //Sound-Ausgabe
         if (Sound())
           continue;
         break;
 
-      case KW_PULSE:                  //PULSE(PORT,MS)
+      case KW_PULSE:                                      //PULSE(PORT,MS)
 
         if (set_pulse()) {
           //  syntaxerror(syntaxmsg);
@@ -3809,7 +3818,7 @@ interpreteAtTxtpos:
         }
         break;
 
-      case KW_PEN:
+      case KW_PEN:                                        //Stiftfarbe und Breite setzen
 
         if (set_pen()) {
           //  syntaxerror(syntaxmsg);
@@ -3818,20 +3827,20 @@ interpreteAtTxtpos:
         break;
 
 
-      case KW_LCD:
+      case KW_LCD:                                        //I2C LCD-Befehle
         if (LCD_Set()) {
           //syntaxerror(syntaxmsg);
           continue;
         }
         break;
 
-      case KW_DEFFUNC:
+      case KW_DEFFUNC:                                    //Funktion definieren
         if (def_func()) {
           continue;
         }
         break;
 
-      case KW_MCPPORT:
+      case KW_MCPPORT:                                    //MCP2307-Port-Befehle (I2C)
         if (Test_char('(')) continue;
         pa = *txtpos;
         if (pa == 'S' || pa == 'W')  //PORT(S,A/B,0/1)
@@ -3861,7 +3870,7 @@ interpreteAtTxtpos:
         }
         break;
 
-      case KW_MCPPIN:                                 //Befehl PIN(S/W,Nr,0/1)
+      case KW_MCPPIN:                                 //MCP2307 Befehl PIN(S/W,Nr,0/1)
         if (Test_char('(')) continue;
         pa = *txtpos;
         txtpos++;
@@ -3883,7 +3892,7 @@ interpreteAtTxtpos:
         }
         break;
 
-      case KW_LED:
+      case KW_LED:                                      //LED-Strip-Befehle
         if (LED_Set()) {
           //syntaxerror(syntaxmsg);
           continue;
@@ -3892,9 +3901,9 @@ interpreteAtTxtpos:
 
       case KW_EDIT:
         if (*txtpos == NL) {
-          save_tempfile();               //Edit ohne Zeilennummer lädt den Texteditor KILO
+          save_tempfile();                            //Edit ohne Zeilennummer lädt den Texteditor KILO
           //kilo();
-          //set_font(fontsatz);                                                                  // Fontsatz laden (1 Byte)
+          //set_font(fontsatz);                       // Fontsatz laden (1 Byte)
           //tc.setCursorPos(1, 1);
           //GFX.clear();
           //check_editor();
@@ -4706,16 +4715,16 @@ next:
   }
   //---------------------------- FRAM ---------------------------------------------
   else if (was == 1) {
-    if (fn == KW_POKE)  SPI_RAM_write8(FRAM_OFFSET + address, byte(wert));   //FRAM Byte
+    if (fn == KW_POKE)  SPI_RAM_write8(address, byte(wert));   //FRAM Byte
     else if (fn == KW_DOKE)
     {
       p_data[0] = highByte(wert);
       p_data[1] = lowByte(wert);
-      SPI_RAM_write(FRAM_OFFSET + address, p_data, 2);                       //FRAM Word
+      SPI_RAM_write(address, p_data, 2);                       //FRAM Word
     }
     else if (fn == KW_FPOKE) {
       byte* bytes = (byte*)&w_ert;
-      SPI_RAM_write(FRAM_OFFSET + address, bytes, 4);                        //FRAM float
+      SPI_RAM_write(address, bytes, 4);                        //FRAM float
     }
     return 0;
   }
@@ -5615,6 +5624,9 @@ void set_font(int fnt) {
   if (fnt != fontsatz)                 // nur speichern, wenn anderer Wert als bisher
   {
     fontsatz = fnt;
+    //screencell_x = (VGAController.getViewPortWidth() / x_char[fontsatz]);
+    //screencell_y = (VGAController.getViewPortHeight() / y_char[fontsatz]);
+    //delete_screenbuffer();
   }
 
 }
@@ -5792,9 +5804,9 @@ static void outchar(char c)
 
   if ( inhibitOutput ) return;
 
-  if ( outStream == kStreamFile ) {
+  if ( outStream == kStreamFile ) {    
     // output to a file
-    fp.write( c );
+    fp.write( c );                       //Char in Datei schreiben
   }
   else {
     if (ser_marker && list_send) {
@@ -5823,7 +5835,7 @@ static void outchar(char c)
         if (y_pos > (Frame_yy[Frame_nr] / y_char[fontsatz]) - 1) {
           y_pos -= 1;
 
-          move_up(Frame_nr);
+          move_up(Frame_nr);                                              //Window scrollen
 
         }
         tc.setCursorPos(Frame_curx[Frame_nr], y_pos);
@@ -5947,7 +5959,7 @@ static int load_file(void)
         play_mp3();                                             //MP3-Datei abspielen
         break;
       /*
-        case 4:
+      case 4:                                                   //Mod-Player
         play_mod();
         break;
       */
@@ -5968,10 +5980,10 @@ int check_extension() {
   dbuf.toUpperCase();                               //String in Grossbuchstaben umwandeln
   cbuf = dbuf.substring(dbuf.length() - 4, dbuf.length());  //in cbuf steht die Dateierweiterung von tempstring
 
-  a = cbuf.compareTo(".BAS");
-  b = cbuf.compareTo(".BIN");
-  c = cbuf.compareTo(".MP3");
-  d = cbuf.compareTo(".SCR");                       //SCR - Spectrum-Bilddateien - Test
+  a = cbuf.compareTo(".BAS");                       //Basic-Programme laden
+  b = cbuf.compareTo(".BIN");                       //Bin-Dateien starten
+  c = cbuf.compareTo(".MP3");                       //MP3-Dateien abspielen
+  d = cbuf.compareTo(".MOD");                       //MOD-Dateien abspielen       //SCR - Spectrum-Bilddateien - Test
   if (a == 0) e = 1;
   if (b == 0) e = 2;
   if (c == 0) e = 3;
@@ -6065,8 +6077,8 @@ static int save_ram(void) {
   SPI_RAM_write8(adress++, 'B');
   SPI_RAM_write8(adress++, 'S');
 
-  SPI_RAM_write8(adress++, lowByte(n_bytes));           //Anzahl zu speichernde Programm-Bytes schreiben
-  SPI_RAM_write8(adress++, highByte(n_bytes));
+  SPI_RAM_write8(adress++, highByte(n_bytes));           //Anzahl zu speichernde Programm-Bytes schreiben
+  SPI_RAM_write8(adress++, lowByte(n_bytes));
 
   for (int i = 0; i < n_bytes; i++) {                   //Arbeitsspeicher in FRAM ablegen
     SPI_RAM_write8(adress++, program[i]);
@@ -6093,8 +6105,9 @@ static int load_ram(void) {
   //------ Kennung f. Programm im RAM ------
   if (a == 'B' && b == 'S') {
 
-    n_bytes = spi_fram.read8(adress++);                                //Anzahl der zu lesenden Bytes
-    n_bytes = n_bytes + (spi_fram.read8(adress++) << 8);
+    
+    n_bytes = spi_fram.read8(adress++) << 8;
+    n_bytes = n_bytes + spi_fram.read8(adress++);                                //Anzahl der zu lesenden Bytes
     for (i = 0; i < n_bytes; i++) {                                   //Programm in Arbeitsspeicher schreiben
       program[i] = spi_fram.read8(adress++);
       program_end++;
@@ -6604,6 +6617,7 @@ return 0;
         v_mode = 0;
         break;
     }
+    
 
 
 #else                                                                                 //ILI9341
@@ -7868,7 +7882,7 @@ nochmal:
         case 'D':                                         //Grafik im FRAM auf dem Bildschirm ausgeben
           if (Test_char('(')) return 1;
           ad = get_value();
-          if (ad > SPI_memSize) ad = SPI_memSize;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
+          if (ad > (SPI_memSize/128)) ad = SPI_memSize/128;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
           ad = ad * FRAM_PIC_OFFSET;                      //Bildspeicherplatz (320x240)
           if (*txtpos == ',') {                           //Modus
             txtpos++;
@@ -7919,12 +7933,14 @@ nochmal:
           dy = get_value();                               //y
           if (Test_char(',')) return 1;                   //Komma überspringen
           get_value();                                    //Dateiname in tempstring
-          scal = 1;
+          scal = 1;                                       //Skalierung auf 1 begrenzen
+          /*
           if (*txtpos == ',') {
             txtpos++;
             scal = get_value();
             if (scal > 1) scal = 1;                       //Skalierung auf 1 begrenzen
           }
+          */
           if (Test_char(')')) return 1;
           import_pic(dx, dy, tempstring, scal);
           break;
@@ -7933,7 +7949,7 @@ nochmal:
         case 'L':                                         //Load PIC_RAW-Data
           if (Test_char('(')) return 1;
           ad = get_value();                               //Adresse im Speicher
-          if (ad > SPI_memSize) ad = SPI_memSize;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
+          if (ad > (SPI_memSize/128)) ad = SPI_memSize/128;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
           ad = ad * FRAM_PIC_OFFSET;                      //Bildspeicherplatz
           if (Test_char(',')) return 1;                   //Komma überspringen
           get_value();                                    //Dateiname in tempstring
@@ -7945,7 +7961,7 @@ nochmal:
         case 'S':                                         //Save PIC_RAW-Data
           if (Test_char('(')) return 1;
           ad = get_value();                               //Adresse im Speicher
-          if (ad > SPI_memSize) ad = SPI_memSize;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
+          if (ad > (SPI_memSize/128)) ad = SPI_memSize/128;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
           ad = ad * FRAM_PIC_OFFSET;                      //Bildspeicherplatz
           if (Test_char(',')) return 1;                   //Komma überspringen
           get_value();                                    //Dateiname in tempstring
@@ -7961,7 +7977,7 @@ nochmal:
         case 'P':                                         //Grafikbildschirm in FRAM speichern
           if (Test_char('(')) return 1;
           ad = get_value();
-          if (ad > SPI_memSize) ad = SPI_memSize;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
+          if (ad > (SPI_memSize/128)) ad = SPI_memSize/128;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
           ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz
           if (*txtpos == ',') {                           //Komma?, dann x,y-Position eingeben
             txtpos++;
@@ -8144,13 +8160,13 @@ nochmal:
       cl = bmp_header[28];
 
       //Groesse auf Bildschirmauflösung skalieren
-      if (xx >= vh && yy >= vv && sc <= 1) {
-        xtmp = float(xx) / vh * (1 / sc);
-        ytmp = float(yy) / vv * (1 / sc);
+      if (xx >= vh && yy >= vv ){//&& sc <= 1) {
+        xtmp = float(xx) / vh ;//* (1 / sc);
+        ytmp = float(yy) / vv ;//* (1 / sc);
         restx = xx % vh;
       }
       else {
-        xtmp = ytmp = 1;
+        xtmp = ytmp = sc;
         restx = 0;
       }
 
