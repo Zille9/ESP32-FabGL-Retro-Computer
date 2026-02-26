@@ -52,15 +52,25 @@
 //
 //
 //
-#define BasicVersion "2.09b"
-#define BuiltTime "012.02.2026"
+#define BasicVersion "2.11a"
+#define BuiltTime "26.02.2026"
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// V2.11a:26.02.2026          -Funktionstasten für List(F1) und RUN(F2) integriert -> Grafiksymbole (vorher F2) jetzt auf F7
+//                            -
+//
+// V2.10b:20.02.2026          -Array-Verarbeitung korrigiert, jetzt sind auch Array's mit 2 Buchstaben funktionsfähig
+//                            -die Werteübergabe von Array's untereinander ist teilweise noch fehlerhaft
+//                            -Dir-Routine überarbeitet, das Mounten einer neuen SD-Karte machte Probleme - beobachten!
+//                            -Fehler in Data_get funktion behoben -> numerische Variablen wurden nicht korrekt gelesen (durch den Array-Umbau auf 2Buchstaben)
+//                            -Option-Befehl in Bezug auf Theme und Font angepasst, es war nicht möglich den Font dauerhaft zu ändern, wenn ein vorgefertigtes Theme gewählt wurde
+//                            -16506 Zeilen/sek (Debug lvl Debug)
+//
 // V2.08b:04.02.2026          -Testroutine für SPI-Ram in die Start-Prozedur eingefügt - automatische Ermittlung der Ram-Grösse
 //                            -Bibliotheken aktualisiert
 //                            -Korrektur der max. speicherbaren Bilder im SPI-Ram, durch die automatische Spreichergrössenermittlung wurde die Ram-Grösse in KB zurückgegeben - ursprünglich wurde die Anzahl der 128KB Blöcke benutzt
 //                            -Korrektur der FPOKE, FPEEK, DOKE, DEEK - sowie RAM-Load und Save - Adressen werden jetzt einheitlich behandelt (MSB,LSB)
 //                            -PIC_I Routine gekürzt, da die Skalierung entfällt - zu große Bilder werden auf die Bildschirmauflösung runtergerechnet
-//                            -16287 Zeilen/sek.  (Debug lvl Warn)
+//                            -16512 Zeilen/sek.  (Debug lvl Warn)
 //
 // V2.07b:29.01.2026          -Fehler in Printausgabe behoben
 //                            -wurde einer Variablen ein String zugewiesen und danach mit Print eine Berechnung durchgeführt, wurde als Ergebnis der deklarierte String ausgegeben
@@ -189,6 +199,7 @@ File fp;
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 */
 
+
 //------------------------------------- ESP32-Time-Lib fuer Datei-zeitstempel ---------------------------------------------------------------------
 #include <ESP32Time.h>
 ESP32Time e_rtc(0);  // offset in seconds GMT+1
@@ -278,7 +289,7 @@ Adafruit_FRAM_SPI spi_fram = Adafruit_FRAM_SPI(kSD_CLK, kSD_MISO, kSD_MOSI, FRAM
 uint32_t SPI_memSize;                 //ermittelte SPI-Ram-Grösse
 //---------------------------------------- spezielle SPI-Ram-Adressen -----------------------------------------------------------------------------
 word FRAM_OFFSET      = 0x8000;     //Offset für Poke-Anweisungen, um zu verhindern, das in den Array-Bereich gepoked wird
-word FRAM_PIC_OFFSET  = 0x12C04;    //Platz pro Bildschirm im Speicher 320x240=76800 + 4Byte für die Dimension = 76804
+word FRAM_PIC_OFFSET  ;//= 0x12C04;    //Platz pro Bildschirm im Speicher 320x240=76800 + 4Byte für die Dimension = 76804
 long load_adress      = 0x8000;     //ab hier kann ein Basicprogramm abgelegt werden (Eingabe: LOAD oder SAVE ohne Parameter)
 
 //---------------------------------------- Array-Parameter ----------------------------------------------------------------------------------------
@@ -387,6 +398,7 @@ static bool Theme_marker = false;       //Theme-Marker, falls Farben geändert
 short int Mode_state = 0;               //aktuelle Auflösung (im EEProm gespeichert)
 
 static bool break_marker = false;      //********** Test für CardKB *****************
+static bool function_key = false;
 
 uint8_t curGain = 100;                 //current loudness Audiolautstärke
 int Key_l = 0;                         //Tasten für MP3-Player
@@ -908,6 +920,7 @@ static char *sp;
 #define STACK_FOR_FLAG 'F'
 static char table_index;
 static char keyword_index;
+static char key_command;
 static LINENUM linenum;
 
 //---------------------------------- Fehlermeldungen des Interpreters -----------------------------------------------------------------------------
@@ -1181,7 +1194,7 @@ ln = VGAController.getScreenWidth() / y_char[fontsatz] - 3;    //Anzahl Zeilen a
             if (spi_fram.read8(n) < 16) outchar('0');
             printnum(spi_fram.read8(n++), 3);
             if (x_weite > 39) outchar(' ');                       //wenn genug Platz, dann Leerzeichen zwischen den Werten
-            if(n > (SPI_memSize*1024)) n=0;                       //letzte Speicherstelle erreicht?, dann von vorn
+            if(n > SPI_memSize) n=0;                       //letzte Speicherstelle erreicht?, dann von vorn
             break;
           case 2:  //EEPROM
             if (readEEPROM(EEprom_ADDR, n ) < 16) outchar('0');
@@ -1204,7 +1217,7 @@ ln = VGAController.getScreenWidth() / y_char[fontsatz] - 3;    //Anzahl Zeilen a
         switch (was) {
           case 1:  //FRAM
             c = spi_fram.read8(adr++);//readEEPROM(FRam_ADDR, adr++);
-            if(adr > (SPI_memSize*1024)) adr=0;                   //letzte Speicherstelle erreicht?, dann von vorn
+            if(adr > SPI_memSize) adr=0;                   //letzte Speicherstelle erreicht?, dann von vorn
             break;
           case 2:  //EEPROM
             c = readEEPROM(EEprom_ADDR, adr++);
@@ -1307,7 +1320,6 @@ static void getln(int m)//char prompt)
     char c = inchar();
     if (c == 27 && Frame_nr) continue;
 
-
     switch (c)
     {
       case NL:
@@ -1357,7 +1369,6 @@ static void getln(int m)//char prompt)
           txtpos++;
           chpos++;
           outchar(c);
-
         }
     }
   }
@@ -1642,20 +1653,21 @@ static float expr4(void)
         tmo = ((*txtpos - 'A' + 1) * 26);
         a = ((float *)variables_begin)[int(tmp + tmo)];
         txtpos++;
+        v_name = tmp+tmo;  
       }
 
       while (*txtpos >= 'A' && *txtpos <= 'Z') txtpos++;                //lange Variablennamen
 
       //----------------------------------------- Stringvariablen -------------------------------------------------------------------------------------
-      if (*txtpos == '$')                                               //Stringvariable
-      { txtpos++;
-
+      if (*txtpos == '$'){                                              //Stringvariable
+        
+        txtpos++;
+        
         if (*txtpos == '(') {                                           //Stringarray?
           txtpos++;
           var_art = 2;
           expression_error = 0;
           v_adr = rw_array(v_name, STR_TBL);
-
           if (expression_error) goto expr4_error;
         }
 
@@ -1663,7 +1675,7 @@ static float expr4(void)
         while (1)
         {
           if (var_art == 2) {                                           //String-Array?
-            c = spi_fram.read8(v_adr + i);//readEEPROM(FRam_ADDR, v_adr + i );
+            c = spi_fram.read8(v_adr + i);
           }
           else {                                                        //normaler String
             c = Stringtable[stmp + i];
@@ -1678,7 +1690,7 @@ static float expr4(void)
             }
 
             if (var_art == 2) {                                         //String-Array?
-              tempstring[i] = spi_fram.read8(v_adr + i);//readEEPROM(FRam_ADDR, v_adr + i );
+              tempstring[i] = spi_fram.read8(v_adr + i);                //read-spi-ram(FRam_ADDR, v_adr + i );
             }
             else {
               tempstring[i] = Stringtable[stmp + i];                    //normaler String
@@ -2865,7 +2877,7 @@ static float data_get(void)
 {
   float value;
   float *var;
-  int tmp, stmp, i, var_pos, array_art ;
+  int tmp, stmp,stmp_b, i, var_pos, array_art ;
   char c;
   word arr_adr;
   array_art = 0;
@@ -2890,13 +2902,12 @@ static float data_get(void)
   }
   var_pos = *txtpos - 'A';
   var = (float *)variables_begin + *txtpos - 'A';
-  stmp = (int) (*txtpos - 'A') * STR_LEN;                                 //Strings nur als einbuchstabige Variablen erlaubt, deshalb Variablenadresse sichern
+  stmp = (int) (*txtpos - 'A') * STR_LEN;                                 //Strings Variablenadresse sichern
   txtpos++;
   if (*txtpos >= 'A' && *txtpos <= 'Z') {                                 //zweiter Variablenbuchstabe
-    tmp = (int) ((*txtpos - 'A' + 1) * 26);
-    var = var + tmp;
-    //svar = (int)((*txtpos - 'A' + 1)* 40 * 26);                         //zweiter Variablenbuchstabe für Strings
-    //stmp = stmp+svar;
+    var = var + ((*txtpos - 'A' + 1) * 26);                               //einfache Variable (2Buchstaben)
+    tmp = var_pos+ ((*txtpos - 'A' + 1) * 26);
+    var_pos = tmp;                                                        //Array-Adresse (2Buchstaben)
     txtpos++;
   }
 
@@ -3292,6 +3303,9 @@ void Basic_Interpreter()
     else {
       getln(1);
       //-------------------------------- Start Zeile einfügen ---------------------------------------------
+      if(function_key){                                             //Funktionstaste gedrückt? Befehl sofort ausführen
+        goto fkey;
+      }
       move_line();                                                  //Zeile in Großbuchstaben umwandeln und ans Ende des Speicher verschieben
       linenum = testnum();                                          // Zeilennummer vorhanden?
       spaces();
@@ -3336,7 +3350,12 @@ interpreteAtTxtpos:
     scantable(keywords);                                            //Befehlstabelle scannen
     keyword_index = table_index;
 
+fkey:                                                               //Funktionstaste wurde gedrückt -> Befehl ausführen
 
+    if(function_key){
+      keyword_index = key_command;
+      function_key = false;
+    }
     //####################################################################################################
     //############################### Abarbeitung Befehlstabelle #########################################
     //####################################################################################################
@@ -3651,7 +3670,7 @@ interpreteAtTxtpos:
       case KW_THEME:                                      //Farb-und Fontschema setzen
         int a;
         a = int(get_value());
-        set_theme(a);
+        set_theme(a,-1);
         print_info();
         break;
 
@@ -4249,7 +4268,7 @@ static int command_Print(void)
         break;
 
       case ':':
-        if (!semicolon) line_terminator();
+        if (semicolon) line_terminator();
         txtpos++;
         k = 1;
         semicolon = false;
@@ -4360,7 +4379,7 @@ static float var_get(void)
   float value;
   float *var;
   //char *st;
-  int tmp, stmp, i, var_pos, array_art ;
+  int tmp, stmp,stmp_b, i, var_pos, array_art ;
   char c;
   word arr_adr;
 
@@ -4375,9 +4394,10 @@ static float var_get(void)
   var = (float *)variables_begin + var_pos;
   stmp = (int) (*txtpos - 'A') * STR_LEN;                                //Strings nur als einbuchstabige Variablen erlaubt, deshalb Variablenadresse sichern
   txtpos++;
-  if (*txtpos >= 'A' && *txtpos <= 'Z') {                            //zweiter Variablenbuchstabe
+  if (*txtpos >= 'A' && *txtpos <= 'Z') {                               //zweiter Variablenbuchstabe
     tmp = (int) ((*txtpos - 'A' + 1) * 26);
-    var = var + tmp;
+    var_pos = var_pos + tmp;                                            //pos falls array
+    var = var + tmp;                                                    //pos normale variable
     txtpos++;
   }
 
@@ -4388,6 +4408,7 @@ static float var_get(void)
     txtpos++;
     expression_error = 0;
     arr_adr = rw_array(var_pos, VAR_TBL);                                  //numerische Array? Adresse im Zahlen-Arrayfeld
+    //Terminal.print("Hier bin ich");
     if (expression_error) return 1;                                        //Fehler? dann zurück
     array_art = 1;
   }
@@ -4441,10 +4462,11 @@ static float var_get(void)
     }
     return 0;
   }// Ende String?
-
-  if (Test_char('='))
+  
+  //Terminal.print(*txtpos);
+  if (Test_char('=')){
     return 1;
-
+  }
 
   spaces();
   value = get_value();
@@ -4487,10 +4509,13 @@ float rw_array(int num, word table) {
     expression_error = 1;
     return 0;
   }
-
+  
   ort = table + (num * 8);                                         //1=num.Var-Position der Array-Dimension in Array-Tabelle (A=0, B=1, C=2 usw.)
   if (table == VAR_TBL) len = sizeof (float);                        //Eintragslänge bei float 4
-  else if (table == STR_TBL) len = STR_LEN;
+  else if (table == STR_TBL) {
+    len = STR_LEN;
+    
+  }
 
   //Dimensionswerte aus dem FRAM lesen und mit Eingabe vergleichen
   spi_fram.read(ort, p_data, 6);
@@ -4558,7 +4583,7 @@ void cmd_new(void) {
 //--------------------------------------------- THEME - Befehl --------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static int set_theme(int value)
+static int set_theme(int value,int fnt)
 {
   //int fn;
 
@@ -4638,6 +4663,10 @@ static int set_theme(int value)
       value = 11;
       break;
   }
+  if(fnt > -1){
+    set_font(fnt);
+  }
+  //Terminal.println(fnt);
   fbcolor(Vordergrund, Hintergrund);
   tc.setCursorPos(1, 1);
   GFX.clear();
@@ -4667,8 +4696,9 @@ static int Test_char(char az)
 
 static int poke(int fn)             //POKE WAS,ADRESSE,WERT
 {
-  unsigned long address, wert;
+  unsigned long address;
   float w_ert;
+  word wert;
   int was, weite;
   byte value, p_data[2];
 
@@ -4681,15 +4711,10 @@ static int poke(int fn)             //POKE WAS,ADRESSE,WERT
 
   if (fn == KW_FPOKE) {
     w_ert = get_value();                                        //floatwert poken
-    goto next;
   }
-
-  wert = abs(get_value());                                     //zu speichernder Wert
-  if (*txtpos != ',') weite = 1;                               //wenn kein Komma,dann Byte
-  else
-    weite = abs(get_value());                                  //byte, word ->1,2
-
-next:
+  else 
+     wert = abs(get_value());                                   //zu speichernder Wert in byte oder word
+  
   // Testen auf Zeilenende oder ':'
   if (*txtpos != NL && *txtpos != ':')
   {
@@ -5752,7 +5777,7 @@ static int inchar()
         //  c=Serial.read();
         if (Terminal.available() ) {
           c = Terminal.read();          //Standard-Tasteneingabe
-
+          
           switch (c) {
             case 0x03:       // ctrl+c        -> BREAK
               current_line = 0;
@@ -5773,6 +5798,11 @@ static int inchar()
           current_line = 0;
           sp = program + sizeof(program);
           return 0x03;
+        }
+        if (function_key){                      //Funktionsstaste - LIST
+          current_line = 0;
+          sp = program + sizeof(program);
+          return CR;
         }
 
       }//while
@@ -5858,7 +5888,7 @@ static int initSD( void )
   int adr, i;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-  SPI.setFrequency(40000000);
+  //SPI.setFrequency(40000000);
   if (!SD.begin( kSD_CS, spiSD))
   {
     spiSD.end();
@@ -6324,6 +6354,7 @@ return 0;
     spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
     while (!SD.begin(kSD_CS, spiSD)) {
       syntaxerror(sderrormsg);
+      sd_ende();
       delay(3000);
     }
 
@@ -6637,14 +6668,14 @@ return 0;
 
     //Serial.begin(115200);
 
-    set_font(fontsatz);                                                                  // Fontsatz laden (1 Byte)
+    //set_font(fontsatz);                                                                  // Fontsatz laden (1 Byte)
     Terminal.enableCursor(true);
     fbcolor(Vordergrund, Hintergrund);
     tc.setCursorPos(1, 1);
     GFX.clear();
     //set_theme(Theme_state);
-    if (Theme_marker) set_theme(Theme_state);                                            //Theme setzen, wenn im EEprom gespeichert
-
+    if (Theme_marker) set_theme(Theme_state,fontsatz);                                            //Theme setzen, wenn im EEprom gespeichert
+    //Terminal.println(user_font);
     PS2Controller.keyboard()-> onVirtualKey = [&](VirtualKey * vk, bool keyDown) {
       if (*vk == VirtualKey::VK_ESCAPE) {
         if (keyDown) {
@@ -6653,20 +6684,29 @@ return 0;
         }
         *vk = VirtualKey::VK_NONE;
       }
-     /*
-      else if (*vk == VirtualKey::VK_F1) {                                               //Help aufrufen
+     
+      else if (*vk == VirtualKey::VK_F1) {                                               //LIST - Befehl
         if (keyDown) {
-          *txtpos = NL;
+          key_command = KW_LIST;
+          function_key = true;
+          outchar('L');
+          outchar('I');
+          outchar('S');
+          outchar('T');
+          outchar(CR);
         }
         *vk = VirtualKey::VK_NONE;
-        SPI_FRAM_info();
       }
-     */
+     
       
-      else if (*vk == VirtualKey::VK_F2) {                                               //Grafiksymbole on/off
+      else if (*vk == VirtualKey::VK_F2) {                                               //RUN - Befehl
         if (keyDown) {
-          Graph_char = !Graph_char;
-          PS2Controller.keyboard()->setLEDs(false, false, Graph_char);
+          key_command = KW_RUN;
+          function_key = true;
+          outchar('R');
+          outchar('U');
+          outchar('N');
+          outchar(CR);
         }
         *vk = VirtualKey::VK_NONE;
       }
@@ -6698,21 +6738,34 @@ return 0;
         }
         *vk = VirtualKey::VK_NONE;
       }
+      
+      else if (*vk == VirtualKey::VK_F7) {                                               //Grafiksymbole on/off
+        if (keyDown) {
+          Graph_char = !Graph_char;
+          PS2Controller.keyboard()->setLEDs(false, false, Graph_char);
+        }
+        *vk = VirtualKey::VK_NONE;
+      }
 
       else if (*vk == VirtualKey::VK_F10) {                                              //Anzeige Systemparameter
         if (keyDown) {
           show_systemparameters();
         }
         *vk = VirtualKey::VK_NONE;
+       
       }
-      /*
-            else if (*vk == VirtualKey::VK_F11) {                                              //PSRAM-Löschen (Test)
-              if (keyDown) {
-                //SPI_FRAM_init();
-              }
-               vk = VirtualKey::VK_NONE;
-            }
-      */
+      
+      else if (*vk == VirtualKey::VK_F11) {                                              //SPI-RAM-Löschen (Test)
+        if (keyDown) {
+          Terminal.print("erase SPI-RAM, please wait...");
+          SPI_RAM_fill(0, (SPI_memSize),0);
+          line_terminator();
+          printmsg("READY.", 1);
+          
+        }
+         *vk = VirtualKey::VK_NONE;
+      }
+      
       else if (*vk == VirtualKey::VK_F12) {                                               //F12 = Reboot
         if (keyDown) {
           Terminal.print("Now reboot");
@@ -7451,7 +7504,7 @@ nochmal:
 
         if (*txtpos >= 'A' && *txtpos <= 'Z')
         {
-          int tmp, x, y, z;
+          int tmp, tmo,x, y, z;
           int stmp, i;
           word grenze, ort, ad;
           char c;
@@ -7460,8 +7513,15 @@ nochmal:
 
           //len = 4;
           x = y = z = 0;
-          tmp = (*txtpos - 'A');                                    //Variablennummer
+          tmp = (*txtpos - 'A');                                    //erster Variablenbuchstabe
           txtpos++;
+          if (*txtpos >= 'A' && *txtpos <= 'Z' )                    //zweiter Variablenbuchstabe
+          {
+            tmp = tmp+((*txtpos - 'A' + 1) * 26);
+            //a = ((float *)variables_begin)[int(tmp + tmo)];
+            txtpos++;
+          }
+          
           while (*txtpos >= 'A' && *txtpos <= 'Z') txtpos++;        //lange Variablennamen
           if (*txtpos == '$') {
             len = STR_LEN;
@@ -7511,7 +7571,7 @@ nochmal:
             }
             else
             {
-              ort = VAR_TBL + (tmp * 8);
+              ort = VAR_TBL + (tmp  * 8);
             }
           }
 
@@ -7557,7 +7617,7 @@ nochmal:
         case OPT_FONT:
           p[0] = get_value();
           EEPROM.write(2, p[0]);          //Font-Nummer im Flash speichern                        Platz 2
-          EEPROM.write(17, 0);            //THEME-Marker löschen
+          //EEPROM.write(17, 0);            //THEME-Marker löschen
           EEPROM.commit () ;
           set_font(p[0]);                 //setze Font
           break;
@@ -7601,7 +7661,9 @@ nochmal:
           EEPROM.write(16, p[0]);          //Nummer des Themes                                      Platz 16
           EEPROM.write(17, THEME_SET);     //THEME-Marker                                           Platz 17
           EEPROM.commit();
-          set_theme(p[0]);
+          set_theme(p[0],fontsatz);
+          EEPROM.write(2, byte(fontsatz));  //Font-Nummer im Flash speichern                        Platz 2
+          EEPROM.commit () ;
           if (EEPROM.read(100) != erststart_marker) {                              //marker-setzen, das werte im EEprom stehen
             EEPROM.write ( 100, erststart_marker) ;
             EEPROM.commit () ;
@@ -7882,7 +7944,7 @@ nochmal:
         case 'D':                                         //Grafik im FRAM auf dem Bildschirm ausgeben
           if (Test_char('(')) return 1;
           ad = get_value();
-          if (ad > (SPI_memSize/128)) ad = SPI_memSize/128;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
+          if (ad > (SPI_memSize/FRAM_PIC_OFFSET)) ad = SPI_memSize/FRAM_PIC_OFFSET;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
           ad = ad * FRAM_PIC_OFFSET;                      //Bildspeicherplatz (320x240)
           if (*txtpos == ',') {                           //Modus
             txtpos++;
@@ -7949,7 +8011,7 @@ nochmal:
         case 'L':                                         //Load PIC_RAW-Data
           if (Test_char('(')) return 1;
           ad = get_value();                               //Adresse im Speicher
-          if (ad > (SPI_memSize/128)) ad = SPI_memSize/128;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
+          if (ad > (SPI_memSize/FRAM_PIC_OFFSET)) ad = SPI_memSize/FRAM_PIC_OFFSET;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
           ad = ad * FRAM_PIC_OFFSET;                      //Bildspeicherplatz
           if (Test_char(',')) return 1;                   //Komma überspringen
           get_value();                                    //Dateiname in tempstring
@@ -7961,7 +8023,7 @@ nochmal:
         case 'S':                                         //Save PIC_RAW-Data
           if (Test_char('(')) return 1;
           ad = get_value();                               //Adresse im Speicher
-          if (ad > (SPI_memSize/128)) ad = SPI_memSize/128;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
+          if (ad > (SPI_memSize/FRAM_PIC_OFFSET)) ad = SPI_memSize/FRAM_PIC_OFFSET;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
           ad = ad * FRAM_PIC_OFFSET;                      //Bildspeicherplatz
           if (Test_char(',')) return 1;                   //Komma überspringen
           get_value();                                    //Dateiname in tempstring
@@ -7977,7 +8039,7 @@ nochmal:
         case 'P':                                         //Grafikbildschirm in FRAM speichern
           if (Test_char('(')) return 1;
           ad = get_value();
-          if (ad > (SPI_memSize/128)) ad = SPI_memSize/128;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
+          if (ad > (SPI_memSize/FRAM_PIC_OFFSET)) ad = SPI_memSize/FRAM_PIC_OFFSET;       //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab
           ad = ad * FRAM_PIC_OFFSET;                      //0..4 Bildspeicherplatz
           if (*txtpos == ',') {                           //Komma?, dann x,y-Position eingeben
             txtpos++;
@@ -8871,7 +8933,7 @@ nochmal:
     void char_out(int lo, int hi) {
       int z = 0;
       int i;
-      char tx[10];
+      //char tx[10];
 
       for ( i = lo; i < hi ; i++ )
       {

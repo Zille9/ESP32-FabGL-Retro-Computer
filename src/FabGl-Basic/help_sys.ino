@@ -54,7 +54,8 @@ void show_help(void) {  //Unterprogramme des Helpsystems in help_sys
       z = 0;
     }
   }
-  Terminal.println();
+  line_terminator();
+  //Terminal.println();
 }
 
 void show_help_name(void) {                                             //Anzeige aller Befehle und Funktionen
@@ -482,10 +483,10 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("draws a String at x,y position");
       Terminal.println("EXAMPLE: TEXT(100,100,3,'Hello World')");
       break;
-    case KW_PRINTING:
-      Terminal.println("? val");
-      Terminal.println("has the same function as Print");
-      break;
+    //case KW_PRINTING:
+    //  Terminal.println("? val");
+    //  Terminal.println("has the same function as Print");
+    //  break;
     case KW_WINDOW:
       Terminal.println("WINDOW(nr,x,y,xx,yy<,color,Title>)");
       Terminal.println("creates a window nr=1..5");

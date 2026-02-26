@@ -80,3 +80,79 @@ void SPI_RAM_fill(uint32_t addr, uint32_t addr2,const uint8_t value)
   }
   spi_fram.writeEnable(false);
 }
+
+
+uint8_t addrSizeInBytes = 2; // Default to address size of two bytes
+
+
+int32_t readBack(uint32_t addr, int32_t data) {
+  int32_t check = !data;
+  int32_t wrapCheck, backup;
+  spi_fram.read(addr, (uint8_t *)&backup, sizeof(int32_t));
+  spi_fram.writeEnable(true);
+  spi_fram.write(addr, (uint8_t *)&data, sizeof(int32_t));
+  spi_fram.writeEnable(false);
+  spi_fram.read(addr, (uint8_t *)&check, sizeof(int32_t));
+  spi_fram.read(0, (uint8_t *)&wrapCheck, sizeof(int32_t));
+  spi_fram.writeEnable(true);
+  spi_fram.write(addr, (uint8_t *)&backup, sizeof(int32_t));
+  spi_fram.writeEnable(false);
+  // Check for warparound, address 0 will work anyway
+  if (wrapCheck == check)
+    check = 0;
+  return check;
+}
+
+bool testAddrSize(uint8_t addrSize) {
+  spi_fram.setAddressSize(addrSize);
+  if (readBack(4, 0xbeefbead) == 0xbeefbead)
+    return true;
+  return false;
+}
+
+void SPI_FRAM_info(){
+if (spi_fram.begin(addrSizeInBytes)) {
+    Terminal.println();//"Test of SPI RAM");
+  } else {
+    Terminal.println("No SPI RAM found ... check your connections\r\n");
+    return;
+  }
+
+  if (testAddrSize(2))
+    addrSizeInBytes = 2;
+  else if (testAddrSize(3))
+    addrSizeInBytes = 3;
+  else if (testAddrSize(4))
+    addrSizeInBytes = 4;
+  else {
+    Terminal.println(
+        "SPI RAM can not be read/written with any address size\r\n");
+    return;
+  }
+
+  SPI_memSize = 0;
+  while (readBack(SPI_memSize, SPI_memSize) == SPI_memSize) {
+    SPI_memSize += 256;
+    // Serial.print("Block: #"); Serial.println(memSize/256);
+  }
+/*
+  Terminal.println("SPI FRAM address size is ");
+  Terminal.println(addrSizeInBytes);
+  Terminal.println(" bytes.");
+  Terminal.println("SPI FRAM capacity appears to be..");
+  Terminal.println(SPI_memSize);
+  Terminal.println(" bytes");
+  Terminal.println(SPI_memSize / 0x400);
+  Terminal.println(" kilobytes");
+  Terminal.println((SPI_memSize * 8) / 0x400);
+  Terminal.println(" kilobits");
+  if (SPI_memSize >= (0x100000 / 8)) {
+    Terminal.println((SPI_memSize * 8) / 0x100000);
+    Terminal.println(" megabits");
+  }
+  */
+  FRAM_PIC_OFFSET = VGAController.getViewPortWidth() * VGAController.getViewPortHeight();
+  //SPI_memSize = SPI_memSize ;/// 0x400;
+  //line_terminator();
+  //printmsg("READY.", 1);
+}
