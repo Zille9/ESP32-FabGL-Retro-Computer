@@ -56,7 +56,8 @@
 #define BuiltTime "26.02.2026"
 // siehe Logbuch.txt zum Entwicklungsverlauf
 // V2.11a:26.02.2026          -Funktionstasten für List(F1) und RUN(F2) integriert -> Grafiksymbole (vorher F2) jetzt auf F7
-//                            -
+//                            -Fehler im Print-Kommando behoben (PRINT:PRINT:.. ) es wurde nur ein Print ausgeführt.
+//                            -15519 Zeilen/sek (Debug lvl Debug)
 //
 // V2.10b:20.02.2026          -Array-Verarbeitung korrigiert, jetzt sind auch Array's mit 2 Buchstaben funktionsfähig
 //                            -die Werteübergabe von Array's untereinander ist teilweise noch fehlerhaft
@@ -4268,7 +4269,7 @@ static int command_Print(void)
         break;
 
       case ':':
-        if (semicolon) line_terminator();
+        line_terminator();
         txtpos++;
         k = 1;
         semicolon = false;
