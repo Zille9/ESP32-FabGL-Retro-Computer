@@ -53,7 +53,7 @@
 //
 //
 #define BasicVersion "2.11a"
-#define BuiltTime "26.02.2026"
+#define BuiltTime "28.02.2026"
 // siehe Logbuch.txt zum Entwicklungsverlauf
 // V2.11a:26.02.2026          -Funktionstasten für List(F2) , RUN(F3) und DIR (F4) integriert 
 //                            -Anzeige der Funktionstastenbelegung über F1
