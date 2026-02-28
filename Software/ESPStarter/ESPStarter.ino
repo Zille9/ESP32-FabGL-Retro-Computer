@@ -193,7 +193,7 @@ void show_screen(void) {
     cbuf = String(sd_pfad) + String(filenames[i]) + String(filetype[1]);
     cbuf.toUpperCase();                               //String in Grossbuchstaben umwandeln
     cbuf.toCharArray(tempstring, cbuf.length() + 1);
-    import_pic((xx_pos[a] * 8) - 8, (yy_pos[b] * 8) - 47, tempstring, 1);
+    //import_pic((xx_pos[a] * 8) - 8, (yy_pos[b] * 8) - 47, tempstring, 1);
 
     //tc.setCursorPos(xx_pos[a], yy_pos[b]);
     cbuf = String(Programs[i]);

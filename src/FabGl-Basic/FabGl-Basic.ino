@@ -55,9 +55,10 @@
 #define BasicVersion "2.11a"
 #define BuiltTime "26.02.2026"
 // siehe Logbuch.txt zum Entwicklungsverlauf
-// V2.11a:26.02.2026          -Funktionstasten für List(F1) und RUN(F2) integriert -> Grafiksymbole (vorher F2) jetzt auf F7
+// V2.11a:26.02.2026          -Funktionstasten für List(F2) , RUN(F3) und DIR (F4) integriert 
+//                            -Anzeige der Funktionstastenbelegung über F1
 //                            -Fehler im Print-Kommando behoben (PRINT:PRINT:.. ) es wurde nur ein Print ausgeführt.
-//                            -15519 Zeilen/sek (Debug lvl Debug)
+//                            -16158 Zeilen/sek (Debug lvl keine)
 //
 // V2.10b:20.02.2026          -Array-Verarbeitung korrigiert, jetzt sind auch Array's mit 2 Buchstaben funktionsfähig
 //                            -die Werteübergabe von Array's untereinander ist teilweise noch fehlerhaft
@@ -1277,7 +1278,7 @@ void printmsg(const char *msg, int nl)
 static unsigned short wait_key(bool modes) {
   char c;
   if (modes)
-  {
+  { if(function_key) function_key = false;
     line_terminator();//Terminal.println();
     printmsg("SPACE<Continue>/CTR+C or ESC<Exit>", 1);
   }
@@ -4274,7 +4275,8 @@ static int command_Print(void)
         k = 1;
         semicolon = false;
         break;
-
+        
+      case CR:
       case NL:
         line_terminator();
         semicolon = false;
@@ -5800,7 +5802,7 @@ static int inchar()
           sp = program + sizeof(program);
           return 0x03;
         }
-        if (function_key){                      //Funktionsstaste - LIST
+        if (function_key){                      //Funktionsstaste - LIST, RUN etc.
           current_line = 0;
           sp = program + sizeof(program);
           return CR;
@@ -6685,33 +6687,47 @@ return 0;
         }
         *vk = VirtualKey::VK_NONE;
       }
-     
-      else if (*vk == VirtualKey::VK_F1) {                                               //LIST - Befehl
+      
+      else if (*vk == VirtualKey::VK_F1) {                                               //Anzeige der Funktionstastenbelegung
+        if (keyDown) {
+          key_command = KW_LIST;
+          show_function_key();
+        }
+        *vk = VirtualKey::VK_NONE;
+      }     
+      
+      else if (*vk == VirtualKey::VK_F2) {                                               //LIST - Befehl
         if (keyDown) {
           key_command = KW_LIST;
           function_key = true;
-          outchar('L');
-          outchar('I');
-          outchar('S');
-          outchar('T');
-          outchar(CR);
+          Terminal.println();
         }
         *vk = VirtualKey::VK_NONE;
       }
      
       
-      else if (*vk == VirtualKey::VK_F2) {                                               //RUN - Befehl
+      else if (*vk == VirtualKey::VK_F3) {                                               //RUN - Befehl
         if (keyDown) {
           key_command = KW_RUN;
           function_key = true;
-          outchar('R');
-          outchar('U');
-          outchar('N');
-          outchar(CR);
+          Terminal.println();
+         
         }
         *vk = VirtualKey::VK_NONE;
       }
-      else if (*vk == VirtualKey::VK_F3) {                                               //TRON/TROFF
+
+      else if (*vk == VirtualKey::VK_F4) {                                              //Dir - Befehl
+        if (keyDown) {
+          key_command = KW_DIR;
+          function_key = true;
+          Terminal.println();
+        }
+        *vk = VirtualKey::VK_NONE;
+       
+      }
+
+      
+      else if (*vk == VirtualKey::VK_F5) {                                               //TRON/TROFF
         if (keyDown) {
           tron_marker = !tron_marker;
           if (tron_marker) printmsg("TRON", 1);
@@ -6721,32 +6737,33 @@ return 0;
         }
         *vk = VirtualKey::VK_NONE;
       }
-      else if (*vk == VirtualKey::VK_F4) {                                              //Ausgabe Char-Table 32..127
+      else if (*vk == VirtualKey::VK_F6) {                                              //Ausgabe Char-Table 32..127
         if (keyDown) {
           char_out(32, 128);
         }
         *vk = VirtualKey::VK_NONE;
       }
-      else if (*vk == VirtualKey::VK_F5) {                                              //Ausgabe Char-Table 128..255
+      else if (*vk == VirtualKey::VK_F7) {                                              //Ausgabe Char-Table 128..255
         if (keyDown) {
           char_out(128, 256);
         }
         *vk = VirtualKey::VK_NONE;
       }
-      else if (*vk == VirtualKey::VK_F6) {                                              //Ausgabe Color-Tabelle
+      else if (*vk == VirtualKey::VK_F8) {                                              //Ausgabe Color-Tabelle
         if (keyDown) {
           color_out();
         }
         *vk = VirtualKey::VK_NONE;
       }
       
-      else if (*vk == VirtualKey::VK_F7) {                                               //Grafiksymbole on/off
+      else if (*vk == VirtualKey::VK_F9) {                                               //Grafiksymbole on/off
         if (keyDown) {
           Graph_char = !Graph_char;
           PS2Controller.keyboard()->setLEDs(false, false, Graph_char);
         }
         *vk = VirtualKey::VK_NONE;
       }
+
 
       else if (*vk == VirtualKey::VK_F10) {                                              //Anzeige Systemparameter
         if (keyDown) {
