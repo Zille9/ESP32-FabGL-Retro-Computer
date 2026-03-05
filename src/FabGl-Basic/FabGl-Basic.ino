@@ -52,13 +52,16 @@
 //
 //
 //
-#define BasicVersion "2.11a"
-#define BuiltTime "28.02.2026"
+#define BasicVersion "2.11d"
+#define BuiltTime "05.03.2026"
 // siehe Logbuch.txt zum Entwicklungsverlauf
 // V2.11a:26.02.2026          -Funktionstasten für List(F2) , RUN(F3) und DIR (F4) integriert 
 //                            -Anzeige der Funktionstastenbelegung über F1
 //                            -Fehler im Print-Kommando behoben (PRINT:PRINT:.. ) es wurde nur ein Print ausgeführt.
-//                            -16158 Zeilen/sek (Debug lvl keine)
+//                            -Befehl PATH hinzugefügt - Befehl zum Zeichnen von Vielecken mit bis zu 32 Punkten -> PathF zeichnet gefüllte Vielecke 
+//                            -PATH x,y,x1,y1,...xn,yn - PathF x,y,x1,y1,...xn,yn
+//                            -kleine Änderung ind der RUN-Routine, jetzt werden auch Stringvariablen als Dateinamen akzeptiert
+//                            -16470 Zeilen/sek (Debug lvl Warn)
 //
 // V2.10b:20.02.2026          -Array-Verarbeitung korrigiert, jetzt sind auch Array's mit 2 Buchstaben funktionsfähig
 //                            -die Werteübergabe von Array's untereinander ist teilweise noch fehlerhaft
@@ -589,6 +592,7 @@ const static char keywords[] PROGMEM = {
   'S', 'W', 'A', 'P' + 0x80,
   'C', 'O', 'P', 'Y' + 0x80,
   'A', 'N', 'G', 'L', 'E' + 0x80,
+  'P','A','T','H' + 0x80,
   0
 };
 
@@ -678,6 +682,7 @@ enum {
   KW_SWAP,    //80
   KW_COPY,
   KW_ANGLE,
+  KW_PATH,
   KW_DEFAULT  //84/* hier ist das Ende */
 };
 
@@ -3389,7 +3394,7 @@ fkey:                                                               //Funktionst
         break;
 
       case KW_RUN:                                        // RUN
-        if (*txtpos == '"') {                             //RUN"/Filename" lädt und startet das Programm
+        if (*txtpos != NL) {                             //RUN"/Filename" lädt und startet das Programm
           if (load_file()) {
             continue;
           }
@@ -3583,9 +3588,15 @@ fkey:                                                               //Funktionst
         if (line_rec_circ(4, 6))
           continue;
         break;
+        
+      case KW_PATH:                                       // Path x,y,xx,yy,...xn,yn
+        if (draw_path())                            
+          continue;
+        break;
+
       /*
       case KW_BAR:
-        if(line_rec_circ(10,5))                           //BAR x, y, orient, w, h, wert
+        if(line_rec_circ(10,5))                           //BAR typ, x, y, orient, w, h, wert
           continue;
         break;
         */
@@ -4822,7 +4833,7 @@ static int line_rec_circ(int circ_or_rect, int param)
   //#################### Linie, Rechteck oder Kreis zeichnen #################
   //int x,y;
   short int i, par[7];
-  float w[4];
+  //float w[4];
 
   i = 0;
 
@@ -4916,6 +4927,47 @@ static int line_rec_circ(int circ_or_rect, int param)
 }
 
 
+static int draw_path(void){
+short int i, a,par[32];
+bool f;
+String abuf;
+
+    f = false;                    //Fill-Kennung aus
+    i = 1;
+  if(*txtpos =='F') {
+    f=true;     //PathF bedeutet Fillpath, Path heisst keine Füllung
+    txtpos++;
+  }
+  
+  while (i<32) {                 //die ersten Parameter eingeben
+    expression_error = 0;
+    par[i] = get_value();
+    if (expression_error) return 1;
+    abuf=abuf+String(par[i]);
+    // check for a comma
+    if (*txtpos != ',') break;    //kein weiterer Parameter? dann raus
+    txtpos++;
+    abuf = abuf + ";";            //Parametertrennzeichen
+    i++;
+  }
+  //Terminal.print(i%2);
+  if( !(i % 2)){
+    abuf = abuf+"$";              //Parameterende-Kennung
+    abuf.trim();
+    //Terminal.print(abuf);
+      if(f==true){
+        Terminal.print("\e_GFILLPATH" + abuf);
+        return 0;
+      }
+      else{
+        Terminal.print("\e_GPATH" + abuf);
+        return 0;
+      }
+        
+  }
+  
+  return 1;
+}
 //#######################################################################################################################################
 //----------------------------------------------------- Sprite-Befehl -------------------------------------------------------------------
 //#######################################################################################################################################
@@ -6670,7 +6722,7 @@ return 0;
     Terminal.connectLocally();                                                           // für Terminal Komandos
 
     //Serial.begin(115200);
-
+    
     //set_font(fontsatz);                                                                  // Fontsatz laden (1 Byte)
     Terminal.enableCursor(true);
     fbcolor(Vordergrund, Hintergrund);
@@ -8769,7 +8821,7 @@ nochmal:
       vh = GFX.getWidth();
       if (*txtpos == NL || *txtpos == ':') {                   //WINDOW ohne Parameter setzt das Hauptfenster
         if (Frame_nr) {                                        //befinde ich mich in einem Fenster? dann Cursor-Positon merken
-          Frame_curtmpx[Frame_nr] = tc.getCursorCol();
+          Frame_curtmpx[Frame_nr] = tc.getCursorCol();         
           Frame_curtmpy[Frame_nr] = tc.getCursorRow();
         }
 
@@ -8783,7 +8835,7 @@ nochmal:
         Frame_curtmpx[Frame_nr] = tc.getCursorCol();
         Frame_curtmpy[Frame_nr] = tc.getCursorRow();
       }
-      nr = abs(get_value());
+      nr = abs(get_value());                                    //Fensternummer empfangen
 
       if (nr < 0) {
         syntaxerror(valmsg);
@@ -8861,7 +8913,7 @@ nochmal:
 
       win_dimension(nr);                                                   //Cursorposition errechnen
       win_set_cursor(Frame_nr);                                            //Cursor setzen
-
+      
       return 0;
 
     }
