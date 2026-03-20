@@ -49,3 +49,21 @@
       line_terminator();
       printmsg("READY.", 1);
     }
+
+void show_function_key(void){
+      Terminal.println();
+      Terminal.println("F1  - show this Help");
+      Terminal.println("F2  - LIST");
+      Terminal.println("F3  - RUN");
+      Terminal.println("F4  - DIR");
+      Terminal.println("F5  - TRON/TROFF");
+      Terminal.println("F6  - Char-Table 32..127");
+      Terminal.println("F7  - Char-Table 128..255");
+      Terminal.println("F8  - Colour-Table");
+      Terminal.println("F9  - Graphic-Symbol's on/off");
+      Terminal.println("F10 - Systeminfo");
+      Terminal.println("F11 - Erase SPI-RAM");
+      Terminal.println("F12 - Reboot");
+      Terminal.println();
+      printmsg("READY.", 1);
+}

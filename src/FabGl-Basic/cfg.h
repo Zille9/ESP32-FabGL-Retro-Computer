@@ -15,7 +15,7 @@
 #define TFT_SPIBUS VSPI_HOST
 #define RAMEND 30000  //bei Verwendung ILI9341 muss der Ram verkleinert werden
 #else
-#define RAMEND 48000  //um MP3-Funtionalität in allen Auflösungen zu garantieren, sollte der Wert nicht grösser als 52000 sein
+#define RAMEND 0xA000 
 #endif
 #define kRamSize  RAMEND
 

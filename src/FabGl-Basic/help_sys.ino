@@ -37,7 +37,7 @@ void show_help(void) {  //Unterprogramme des Helpsystems in help_sys
   Terminal.println("BASIC-FUNCTIONS:");
   Terminal.println("----------------");
   y = tc.getCursorRow();
-  for (int i = 0; i < FUNC_WORDS; i++)
+  for (int i = 0; i < FUNC_UNKNOWN; i++)
   { e = 0;
     tc.setCursorPos(z * 8, tc.getCursorRow());
 
@@ -55,19 +55,55 @@ void show_help(void) {  //Unterprogramme des Helpsystems in help_sys
     }
   }
   line_terminator();
-  //Terminal.println();
+
+    if (wait_key(true) == 3 || break_marker) {
+    break_marker = false; 
+    return;
+  }
+  n = 0;
+  z = 0;
+  Terminal.println();
+  Terminal.println();
+  Terminal.println("BASIC-OPERATORS:");
+  Terminal.println("----------------");
+  y = tc.getCursorRow();
+  for (int i = 0; i < RELOP_UNKNOWN; i++)
+  { e = 0;
+    tc.setCursorPos(z * 8, tc.getCursorRow());
+
+    while (!e) {
+      if (relop_tab[n] > 0x80) {
+        Terminal.write(relop_tab[n++] - 0x80);
+        e = 1;
+      }
+      else Terminal.write(relop_tab[n++]);
+    }
+    z++;
+    if (z == 5 ) {
+      Terminal.println();
+      z = 0;
+    }
+  }
+  line_terminator();
+  
 }
 
 void show_help_name(void) {                                             //Anzeige aller Befehle und Funktionen
-  int kw, fu;
-  tmptxtpos = txtpos;
-  scantable(keywords);                                                  //Befehlstabelle lesen
-  kw = table_index;
+  int kw, fu,op;
+  tmptxtpos = txtpos;                                                   //txtpos merken
+  table_index = findCommandBinary();                                    //Befehlstabelle lesen
   txtpos = tmptxtpos;
-  scantable(func_tab);                                                  //Funktionstabelle lesen
+  kw = table_index;
+  table_index = findFunctionBinary();                                   //Funktionstabelle lesen
   fu = table_index;
-  if (kw != KW_DEFAULT) show_Command_Help(kw);                          //Hilfe zum Befehl anzeigen
+  txtpos = tmptxtpos;
+  scantable(relop_tab);                                                 //Opreator-Tabelle lesen
+  op = table_index;
+  
+  if (kw != KW_COUNT) show_Command_Help(kw);                            //Hilfe zum Befehl anzeigen
   if (fu != FUNC_UNKNOWN)show_Function_Help(fu);                        //Hilfe zur Funktion anzeigen
+  if (fu != RELOP_UNKNOWN)show_Operator_Help(op);                       //Hilfe zum Operator anzeigen
+  
 }
 
 void show_Command_Help(int was) {                                       //Anzeige eines spezifischen Befehls oder Funktion
@@ -103,8 +139,8 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("NEXT Variable");
       Terminal.println("End of FOR NEXT Loop");
       break;
-    case KW_REN:
-      Terminal.println("REN Filename_old, Filename_new");
+    case KW_RENAME:
+      Terminal.println("RENAME Filename_old, Filename_new");
       Terminal.println("Filename in qoute or as String");
       break;
     case KW_IF:
@@ -162,7 +198,7 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("set the Cursor on Position x,y");
       Terminal.println("EXAMPLE: POS 2,5");
       break;
-    case KW_COLOR:
+    case KW_COL:
       Terminal.println("COL FG,BG");
       Terminal.println("Change the Foreground and Background Color");
       Terminal.println("EXAMPLE: COL 0,60");
@@ -175,7 +211,7 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("Set a Pixel on x,y with color");
       Terminal.println("color is optional");
       break;
-    case KW_CIRCLE:
+    case KW_CIRC:
       Terminal.println("CIRC x,y,w,h,fill");
       Terminal.println("Draws a Circle on x,y,w (width),h (height),fill");
       Terminal.println("fill=1 draw a filled Circle");
@@ -193,7 +229,7 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("FONT f");
       Terminal.println("Change the Fontset (0..26)");
       break;
-    case KW_DELAY:
+    case KW_PAUSE:
       Terminal.println("PAUSE ms");
       Terminal.println("Pause in milliseconds");
       break;
@@ -213,15 +249,15 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("ELSE");
       Terminal.println("alternative condition on IF THEN");
       break;
-    case KW_CURSOR:
+    case KW_CUR:
       Terminal.println("CUR 0..1");
       Terminal.println("CURSOR ON=1 or OFF=0");
       break;
-    case KW_PREZISION:
+    case KW_PRZ:
       Terminal.println("PRZ(n)");
       Terminal.println("number of decimal places");
       break;
-    case KW_DUMP:
+    case KW_DMP:
       Terminal.println("DMP Memtype,Adress");
       Terminal.println("Hexmonitor for Program 0 or FRAM 1");
       break;
@@ -261,7 +297,7 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("Logical OR Condition");
       Terminal.println("EXAMPLE: IF A>5 OR B<6 THEN C=0");
       break;
-    case KW_SRTC:
+    case KW_RTC:
       Terminal.println("RTC dd,mm,jjjj,hh,mm,ss");
       Terminal.println("Set the Realtime-Clock");
       Terminal.println("EXAMPLE: RTC 2,4,2023,13,34,00");
@@ -274,7 +310,7 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("IIC(R) read a Byte");
       Terminal.println("IIC(A) Data Available?");
       break;
-    case KW_DWRITE:
+    case KW_DOUT:
       Terminal.println("DOUT(PIN,0..1)");
       Terminal.println("Set Pin Low(0) or High(1)");
       Terminal.println("Outputpins can be 2,12,26,27");
@@ -293,7 +329,7 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("DRAW x,y,0 move the Pen on x,y");
       Terminal.println("DRAW x,y,1 draw from old Position to x,y");
       break;
-    case KW_SPRITE:
+    case KW_SPRT:
       Terminal.println("SPRT(C,nr)-> create nr Sprites");                                //noch überarbeiten
       Terminal.println("SPRT(D,nr,xdim,ydim,color,A$) def Sprite ");
       Terminal.println("A$ holds the Sprite-Data");
@@ -306,7 +342,7 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("Pulse on PIN,n count Pulse,Pause1(high),Pause2(low)");
       Terminal.println("Pins can be 2,12,26,27");
       break;
-    case KW_SOUND:
+    case KW_SND:
       Terminal.println("SND(waveform,frequency,duration,volume)");
       Terminal.println("Waveform: 1=SINE");
       Terminal.println("          2=SQUARE");
@@ -340,32 +376,32 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("LCD(P,expression) Print expressions with nl");
       Terminal.println("LCD(S,colums,rows,I2C-Adress) set the LCD-Parameter");
       break;
-    case KW_MCPPORT:
+    case KW_PORT:
       Terminal.println("PORT(S/W,A/B/C)");
       Terminal.println("PORT(S,A/B/C,0..1) set Port A, B or AB");
       Terminal.println("PORT(W,A/B/C,Value) write Value on Port A,B or AB");
       break;
-    case KW_MCPPIN:
+    case KW_PIN:
       Terminal.println("PIN(S/W,Pin,val)");
       Terminal.println("PIN(S,Pin,0..1) set Pin Input/Output");
       Terminal.println("PIN(W,Pin,0..1) write Pin High or Low");
       break;
-    case KW_CHDIR:
+    case KW_CHD:
       Terminal.println("CHD Pathname");
       Terminal.println("Change Path of SD-Card");
       Terminal.println("Pathname must be in quotes");
       break;
-    case KW_MKDIR:
+    case KW_MKD:
       Terminal.println("MKD Pathname");
       Terminal.println("Make Directory of SD-Card");
       Terminal.println("Pathname must be in quotes");
       break;
-    case KW_RMDIR:
+    case KW_RMD:
       Terminal.println("RMD Pathname");
       Terminal.println("Remove Directory from SD-Card");
       Terminal.println("Pathname must be in quotes");
       break;
-    case KW_DEFFUNC:
+    case KW_DEFN:
       Terminal.println("DEFN Var=[Function]");
       Terminal.println("Create User-Function");
       Terminal.println("EXAMPLE: DEFN A(A,B)=[SIN(A)*COS(B)]");
@@ -401,7 +437,7 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("DIM Var(dim,dim,dim)");
       Terminal.println("dimensioned arrays with max 3 Dimensions");
       break;
-    case KW_OPTION:
+    case KW_OPT:
       Terminal.println("OPT Func Val");
       Terminal.println("Option saved in EEPROM");
       Terminal.println("Available Options are:");
@@ -416,7 +452,7 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("Save Floatvalue in Memory");
       Terminal.println("Memtype 0=Ram, 1=FRam, 2=EEProm");
       break;
-    case KW_MOUNT:
+    case KW_MNT:
       Terminal.println("MNT");
       Terminal.println("Mount SD-Card");
       break;
@@ -483,10 +519,6 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("draws a String at x,y position");
       Terminal.println("EXAMPLE: TEXT(100,100,3,'Hello World')");
       break;
-    //case KW_PRINTING:
-    //  Terminal.println("? val");
-    //  Terminal.println("has the same function as Print");
-    //  break;
     case KW_WINDOW:
       Terminal.println("WINDOW(nr,x,y,xx,yy<,color,Title>)");
       Terminal.println("creates a window nr=1..5");
@@ -524,6 +556,16 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("ANGLE x,y,grd,l");
       Terminal.println("draw a line from x,y with angle=grd");
       Terminal.println("and length=l");
+      break;
+    case KW_PATH:
+      Terminal.println("PATH x,y,x1,y1...xn,yn - up to 32 points");
+      Terminal.println("draws a Path from x,y to x1,y1 to xn,yn");
+      Terminal.println("PATHF draws a filled Path");
+      break;
+    case KW_RENUM:
+      Terminal.println("RENUM startline, step size");
+      Terminal.println("RENUM without Prameters - set 10,10");
+      Terminal.println("RENUM renumbers the basic lines");
       break;
     default:
 
@@ -737,7 +779,7 @@ void show_Function_Help(int was) {
       break;
     case FUNC_NOT:
       Terminal.println("!");
-      Terminal.println("EXAMPLE: IF !A then PRINT B");
+      Terminal.println("EXAMPLE: IF !(A) then PRINT B");
       Terminal.println("Logical Not Operator");
       break;
     case FUNC_TEMP:
@@ -837,7 +879,70 @@ void show_Function_Help(int was) {
       break;
 
     default:
-      Terminal.println("coming soon");
+      
+      break;
+  }
+}
+
+void show_Operator_Help(int was){
+  Terminal.println();
+  switch (was) {
+    
+    case RELOP_GE:
+      Terminal.println("Greater-Equal");
+      Terminal.println("EXAMPLE: IF A>=B THEN PRINT B");
+      break;
+    case RELOP_NE:
+      Terminal.println("Not Equal");
+      Terminal.println("EXAMPLE: IF A<>B THEN PRINT C");
+      break;
+    case RELOP_SHR:
+      Terminal.println("Bitwise shift right");
+      Terminal.println("EXAMPLE: PRINT 4>>2 -> 1");
+      break;
+    case RELOP_GT:
+      Terminal.println("Greater");
+      Terminal.println("EXAMPLE: IF A>B THEN PRINT'A is Greater'");
+      break;
+    case RELOP_EQ:
+      Terminal.println("Equal");
+      Terminal.println("EXAMPLE: A=PEEK(1,1200)");
+      break;
+    case RELOP_LE:
+      Terminal.println("Lower-Equal");
+      Terminal.println("EXAMPLE: A<=5 PRINT");
+      break;
+    case RELOP_SHL:
+      Terminal.println("Bitwise shift left");
+      Terminal.println("EXAMPLE: PRINT 5<<3 - Result 40");
+      break;
+    case RELOP_XOR:
+      Terminal.println("XOR-Operator");
+      Terminal.println("EXAMPLE: PRINT 5||6 - Result 3");
+      break;
+    case RELOP_LT:
+      Terminal.println("Lower");
+      Terminal.println("EXAMPLE: IF A<B THEN PRINT'A is lower'");
+      break;
+    case RELOP_MOD:
+      Terminal.println("Modulo");
+      Terminal.println("EXAMPLE: PRINT 10 % 3 -> Result 1");
+      break;
+    case RELOP_AND:
+      Terminal.println("AND");
+      Terminal.println("EXAMPLE: PRINT 300 & #FF - Result 44");
+      break;
+    case RELOP_OR:
+      Terminal.println("OR Operator");
+      Terminal.println("EXAMPLE: PRINT 5|9 - Result 13");
+      break;  
+    case RELOP_POW:
+      Terminal.println("POW");
+      Terminal.println("EXAMPLE: PRINT 3^2 - Result 9");
+      break;  
+      
+    default:
+      
       break;
   }
 }

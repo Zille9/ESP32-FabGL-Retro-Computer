@@ -67,9 +67,11 @@ void SPI_RAM_write8(uint32_t addr, uint8_t value) {
 }
 
 void SPI_RAM_write(uint32_t addr, const uint8_t *values, int count) {
+  
   spi_fram.writeEnable(true);
   spi_fram.write(addr, values, count);
   spi_fram.writeEnable(false);
+  
 }
 
 void SPI_RAM_fill(uint32_t addr, uint32_t addr2,const uint8_t value)
@@ -81,13 +83,32 @@ void SPI_RAM_fill(uint32_t addr, uint32_t addr2,const uint8_t value)
   spi_fram.writeEnable(false);
 }
 
+void SPI_RAM_clear(uint32_t start_adr, uint32_t laenge) {
+  
+  const int bufSize = 128; // Puffergröße wählen
+  byte zeroBuf[bufSize];
+  memset(zeroBuf, 0, bufSize); // Puffer einmalig nullen
+
+  uint32_t verbleibend = laenge;
+  uint32_t aktuelle_adr = start_adr;
+
+  while (verbleibend > 0) {
+    int chunk = (verbleibend > bufSize) ? bufSize : verbleibend;
+    SPI_RAM_write(aktuelle_adr, zeroBuf, chunk);
+    aktuelle_adr += chunk;
+    verbleibend -= chunk;
+  }
+  
+}
 
 uint8_t addrSizeInBytes = 2; // Default to address size of two bytes
 
 
 int32_t readBack(uint32_t addr, int32_t data) {
+  
   int32_t check = !data;
   int32_t wrapCheck, backup;
+  
   spi_fram.read(addr, (uint8_t *)&backup, sizeof(int32_t));
   spi_fram.writeEnable(true);
   spi_fram.write(addr, (uint8_t *)&data, sizeof(int32_t));
@@ -111,6 +132,7 @@ bool testAddrSize(uint8_t addrSize) {
 }
 
 void SPI_FRAM_info(){
+  
 if (spi_fram.begin(addrSizeInBytes)) {
     Terminal.println();//"Test of SPI RAM");
   } else {
@@ -151,7 +173,8 @@ if (spi_fram.begin(addrSizeInBytes)) {
     Terminal.println(" megabits");
   }
   */
-  FRAM_PIC_OFFSET = VGAController.getViewPortWidth() * VGAController.getViewPortHeight();
+  FRAM_PIC_OFFSET = (VGAController.getViewPortWidth() * VGAController.getViewPortHeight()) + 4;     //Bildoffset im Speicher X*Y Dimension + 4 Byte für Dimensionsdaten
+  //digitalWrite(FRAM_CS,HIGH);
   //SPI_memSize = SPI_memSize ;/// 0x400;
   //line_terminator();
   //printmsg("READY.", 1);
