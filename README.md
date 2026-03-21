@@ -91,7 +91,7 @@ Die Ursprungsversion wurde durch folgende Funktionen erweitert
 -Darstellung einer BMP-Datei
 ```
 
-![Programmlisting](IMG/prgm.JPG)
+![Programmlisting](IMG/prgm.jpg)
 ```
 -Programmlisting
 ```
