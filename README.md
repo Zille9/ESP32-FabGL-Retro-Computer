@@ -42,6 +42,7 @@ Die Ursprungsversion wurde durch folgende Funktionen erweitert
 -Spritefunktionen (noch in der Entwicklung)
 -Soundfunktionen (noch in der Entwicklung)
 -integrierte Kurzhilfe
+-Syntax-Hervorhebung
 -Binärprogramme können mit RUN"/xxx.bin" gestartet werden - siehe Ordner <Software>
 
 ```
