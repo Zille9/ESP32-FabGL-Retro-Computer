@@ -101,9 +101,6 @@ void SPI_RAM_clear(uint32_t start_adr, uint32_t laenge) {
   
 }
 
-uint8_t addrSizeInBytes = 2; // Default to address size of two bytes
-
-
 int32_t readBack(uint32_t addr, int32_t data) {
   
   int32_t check = !data;
@@ -124,12 +121,61 @@ int32_t readBack(uint32_t addr, int32_t data) {
   return check;
 }
 
+
+uint8_t addrSizeInBytes = 2; // Default to address size of two bytes
+
+void SPI_FRAM_info() {
+  // 1. Initialisierung mit Standardwert
+  if (!spi_fram.begin(addrSizeInBytes)) {
+    Terminal.println("No SPI RAM found!");
+    return;
+  }
+
+  // 2. Adressgröße bestimmen (2, 3 oder 4 Bytes)
+  uint8_t foundSize = 0;
+  for (uint8_t s = 2; s <= 4; s++) {
+    if (testAddrSize(s)) {
+      foundSize = s;
+      break; 
+    }
+  }
+
+  if (foundSize == 0) {
+    Terminal.println("Address size error!");
+    return;
+  }
+  addrSizeInBytes = foundSize;
+  spi_fram.setAddressSize(addrSizeInBytes);
+
+  // 3. Speichergröße effizienter ermitteln (Binäre Schritte)
+  // Wir prüfen immer am Ende einer möglichen Chip-Größe (64k, 128k, 256k...)
+  uint32_t testSize = 1024; 
+  while (testSize < 0xFFFFFFFF) {
+    if (readBack(testSize, 0xABCDEFAF) != 0xABCDEFAF) {
+      break; // Ende erreicht oder Wrap-around
+    }
+    // Verdopple die Testadresse (schneller als +256)
+    if (testSize >= 0x80000000) break; // Überlaufschutz
+    testSize *= 2;
+  }
+  SPI_memSize = testSize;
+
+  Terminal.print("FRAM found: ");
+  Terminal.print(SPI_memSize / 1024);
+  Terminal.println(" KB");
+
+  // Bildoffset berechnen
+  FRAM_PIC_OFFSET = (VGAController.getViewPortWidth() * VGAController.getViewPortHeight()) + 4;
+}
+
 bool testAddrSize(uint8_t addrSize) {
   spi_fram.setAddressSize(addrSize);
   if (readBack(4, 0xbeefbead) == 0xbeefbead)
     return true;
   return false;
 }
+/*
+
 
 void SPI_FRAM_info(){
   
@@ -155,27 +201,9 @@ if (spi_fram.begin(addrSizeInBytes)) {
   SPI_memSize = 0;
   while (readBack(SPI_memSize, SPI_memSize) == SPI_memSize) {
     SPI_memSize += 256;
-    // Serial.print("Block: #"); Serial.println(memSize/256);
   }
-/*
-  Terminal.println("SPI FRAM address size is ");
-  Terminal.println(addrSizeInBytes);
-  Terminal.println(" bytes.");
-  Terminal.println("SPI FRAM capacity appears to be..");
-  Terminal.println(SPI_memSize);
-  Terminal.println(" bytes");
-  Terminal.println(SPI_memSize / 0x400);
-  Terminal.println(" kilobytes");
-  Terminal.println((SPI_memSize * 8) / 0x400);
-  Terminal.println(" kilobits");
-  if (SPI_memSize >= (0x100000 / 8)) {
-    Terminal.println((SPI_memSize * 8) / 0x100000);
-    Terminal.println(" megabits");
-  }
-  */
+
   FRAM_PIC_OFFSET = (VGAController.getViewPortWidth() * VGAController.getViewPortHeight()) + 4;     //Bildoffset im Speicher X*Y Dimension + 4 Byte für Dimensionsdaten
-  //digitalWrite(FRAM_CS,HIGH);
-  //SPI_memSize = SPI_memSize ;/// 0x400;
-  //line_terminator();
-  //printmsg("READY.", 1);
+
 }
+*/

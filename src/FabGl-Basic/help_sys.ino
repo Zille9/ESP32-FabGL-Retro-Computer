@@ -1,7 +1,7 @@
 //************************************************integrated Helpsystem***************************************************
 //*************************************************** Befehl Help ***************************************************************************
 void show_help(void) {  //Unterprogramme des Helpsystems in help_sys
-  int n, e, z, y;
+  int i, n, e, z, y;
 
   Terminal.println("BASIC-COMMANDS:");
   n = z = 0;
@@ -26,10 +26,10 @@ void show_help(void) {  //Unterprogramme des Helpsystems in help_sys
   }
 
   if (wait_key(true) == 3 || break_marker) {
-    break_marker = false; 
+    break_marker = false;
     return;
   }
-  
+
   n = 0;
   z = 0;
   Terminal.println();
@@ -56,8 +56,8 @@ void show_help(void) {  //Unterprogramme des Helpsystems in help_sys
   }
   line_terminator();
 
-    if (wait_key(true) == 3 || break_marker) {
-    break_marker = false; 
+  if (wait_key(true) == 3 || break_marker) {
+    break_marker = false;
     return;
   }
   n = 0;
@@ -67,29 +67,34 @@ void show_help(void) {  //Unterprogramme des Helpsystems in help_sys
   Terminal.println("BASIC-OPERATORS:");
   Terminal.println("----------------");
   y = tc.getCursorRow();
-  for (int i = 0; i < RELOP_UNKNOWN; i++)
-  { e = 0;
+
+  for (int i = 0; i < 13; i++)
+  { 
     tc.setCursorPos(z * 8, tc.getCursorRow());
 
-    while (!e) {
-      if (relop_tab[n] > 0x80) {
-        Terminal.write(relop_tab[n++] - 0x80);
-        e = 1;
-      }
-      else Terminal.write(relop_tab[n++]);
+    // Hole beide Zeichen des aktuellen Operators aus dem Flash
+    char c1 = pgm_read_byte(&relop_tab[i * 2]);
+    char c2 = pgm_read_byte(&relop_tab[i * 2 + 1]);
+
+    // Erstes Zeichen immer drucken
+    Terminal.write(c1);
+
+    // Zweites Zeichen nur drucken, wenn es kein Null-Byte ist
+    if (c2 != 0) {
+      Terminal.write(c2);
     }
     z++;
-    if (z == 5 ) {
+    // Nach 5 Operatoren eine neue Zeile anfangen
+    if (z >= 5) {
       Terminal.println();
       z = 0;
     }
   }
   line_terminator();
-  
 }
 
 void show_help_name(void) {                                             //Anzeige aller Befehle und Funktionen
-  int kw, fu,op;
+  int kw, fu, op;
   tmptxtpos = txtpos;                                                   //txtpos merken
   table_index = findCommandBinary();                                    //Befehlstabelle lesen
   txtpos = tmptxtpos;
@@ -97,13 +102,13 @@ void show_help_name(void) {                                             //Anzeig
   table_index = findFunctionBinary();                                   //Funktionstabelle lesen
   fu = table_index;
   txtpos = tmptxtpos;
-  scantable(relop_tab);                                                 //Opreator-Tabelle lesen
+  table_index = findRelopBinary();//scantable(relop_tab);               //Opreator-Tabelle lesen
   op = table_index;
-  
+
   if (kw != KW_COUNT) show_Command_Help(kw);                            //Hilfe zum Befehl anzeigen
   if (fu != FUNC_UNKNOWN)show_Function_Help(fu);                        //Hilfe zur Funktion anzeigen
-  if (fu != RELOP_UNKNOWN)show_Operator_Help(op);                       //Hilfe zum Operator anzeigen
-  
+  if (op != RELOP_UNKNOWN)show_Operator_Help(op);                       //Hilfe zum Operator anzeigen
+
 }
 
 void show_Command_Help(int was) {                                       //Anzeige eines spezifischen Befehls oder Funktion
@@ -525,7 +530,7 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("WINDOW without Parameters switch to Mainwindow");
       Terminal.println("WINDOW(nr) switch to Window nr");
       Terminal.println("color determines the border-color");
-      Terminal.println("Title is the window title"); 
+      Terminal.println("Title is the window title");
       break;
     case KW_HELP:
       Terminal.println("HELP");
@@ -879,15 +884,15 @@ void show_Function_Help(int was) {
       break;
 
     default:
-      
+
       break;
   }
 }
 
-void show_Operator_Help(int was){
+void show_Operator_Help(int was) {
   Terminal.println();
   switch (was) {
-    
+
     case RELOP_GE:
       Terminal.println("Greater-Equal");
       Terminal.println("EXAMPLE: IF A>=B THEN PRINT B");
@@ -935,14 +940,14 @@ void show_Operator_Help(int was){
     case RELOP_OR:
       Terminal.println("OR Operator");
       Terminal.println("EXAMPLE: PRINT 5|9 - Result 13");
-      break;  
+      break;
     case RELOP_POW:
       Terminal.println("POW");
       Terminal.println("EXAMPLE: PRINT 3^2 - Result 9");
-      break;  
-      
+      break;
+
     default:
-      
+
       break;
   }
 }

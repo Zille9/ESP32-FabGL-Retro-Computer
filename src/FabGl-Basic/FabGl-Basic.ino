@@ -52,9 +52,12 @@
 //
 //
 //
-#define BasicVersion "2.13a"
-#define BuiltTime "17.03.2026"
+#define BasicVersion "2.14"
+#define BuiltTime "21.03.2026"
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// V2.14:21.03.2026           -Syntax-Hervorhebung integriert - das ist cool ;-)
+//                            -25020 Zeilen/sek.
+//
 // V2.13:07.03.2026           -Zeileneditor erweitert, ENTER führt jetzt zum Aufrufen der nächsten Zeile -> Abbruch der Eingabe mit ESC und danach ENTER
 //                            -Umstellung der scantable-funktion auf binäre Suche der Basic-Befehle und Funktionen, das hatte eine massive Steigerung der Geschwindigkeit
 //                            -zur folge, nur noch die RELOP-Tabelle sowie TO und STEP werden über scantable abgefragt
@@ -63,7 +66,9 @@
 //                            -Help-Funktion um die Operatoren erweitert
 //                            -command_print umgebaut und etwas geschrumpft
 //                            -Fehler in FN X(... behoben, das Leerzeichen wurde nach FN nicht übersprungen - nach der Umstellung der Funktionstabelle auf Index-Suche
-//                            - 27154 Zeilen/sek. (Debug lvl keine) :-)
+//                            -alle Befehle nun auf die neue Suche umgestellt, scantable nicht mehr nötig
+//                            -OPT Vmode entfernt, es gibt jetzt nur noch die Standardauflösung von 320x240 Pixel
+//                            -26484 Zeilen/sek. (Debug lvl keine) :-)
 //
 //
 // V2.12a:07.03.2026          -RENUM für Neunummerierung der Programmzeilen integriert mit Berücksichtigung GOTO und GOSUB sowie ON .. GOTO und ON .. GOSUB :-)
@@ -386,7 +391,12 @@ volatile bool ed_newKey = false;
 
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------
-
+#define COL_RESET  "\e[0m"
+#define COL_KEYW   "\e[33m" // Gelb für Keywords (PRINT, IF...)
+#define COL_FUNC   "\e[36m" // Cyan für Funktionen (ABS, SIN...)
+#define COL_VAR    "\e[32m" // Grün für Variablen
+#define COL_STR    "\e[31m" // Rot für Strings "..."
+#define COL_NUM    "\e[35m" // Magenta für Zahlen
 
 //------------------------------- BMP-Info-Parameter für PIC-Befehl -------------------------------------------------------------------------------
 uint32_t bmp_width, bmp_height;
@@ -537,7 +547,32 @@ bool Graph_char = false;                               //Grafiksymbole "AUS"
 bool tron_marker = false;                              //TRON "AUS"
 
 typedef short unsigned LINENUM;
-// Dieses Array speichert die Offsets (Positionen) jedes Wortes in der keywords-Tabelle
+
+// Variablen zur Zwischenspeicherung von logischen Operationen (AND OR)
+
+int logic_counter;
+int logic_ergebnis[10];
+
+//-> bis zu 5 AND oder OR Vergleiche können in einer Zeile vorkommen
+
+struct stack_for_frame {
+  char frame_type;    //1byte
+  int for_var;        //2byte
+  float to_var;       //4byte
+  float step;         //4byte
+  char *current_line; //1byte
+  char *txtpos;       //1byte
+};
+
+struct stack_gosub_frame {
+  char frame_type;
+  char *current_line;
+  char *txtpos;
+};
+
+bool useColor = true;         //Text-Highlightning on
+
+#define User_Ram (kRamSize-STACK_SIZE-(26 * 27 * VAR_SIZE))
 
 /***************************Basic-Befehle ********************************/
 const static char keywords[] PROGMEM = {
@@ -811,29 +846,7 @@ const uint8_t kw_id_map[] PROGMEM = {
 int KW_WORDS = KW_COUNT;
 
 
-// Variablen zur Zwischenspeicherung von logischen Operationen (AND OR)
 
-int logic_counter;
-int logic_ergebnis[10];
-
-//-> bis zu 5 AND oder OR Vergleiche können in einer Zeile vorkommen
-
-struct stack_for_frame {
-  char frame_type;    //1byte
-  int for_var;        //2byte
-  float to_var;       //4byte
-  float step;         //4byte
-  char *current_line; //1byte
-  char *txtpos;       //1byte
-};
-
-struct stack_gosub_frame {
-  char frame_type;
-  char *current_line;
-  char *txtpos;
-};
-
-#define User_Ram (kRamSize-STACK_SIZE-(26 * 27 * VAR_SIZE))
 
 //**************************** Basic-Funktionen *********************************
 
@@ -978,74 +991,89 @@ enum {
 int FUNC_WORDS = FUNC_UNKNOWN;
 
 //------------------------------- OPTION-Tabelle - alle Optionen, die dauerhaft gespeichert werden sollen -----------------------------------------
-const static char options[] PROGMEM = {
-  'V', 'M', 'O', 'D', 'E' + 0x80,           //VGA-Modus 0=320x240, 1=320x200
-  'F', 'R', 'A', 'M' + 0x80,                //CS-Pin FRAM
-  'E', 'E', 'P', 'R', 'O', 'M' + 0x80,      //Adresse des I2C-EEproms
-  'F', 'O', 'N', 'T' + 0x80,                //Font dauerhaft speichern
-  'C', 'O', 'L' , 'O', 'R' + 0x80,          //Vordergrund- und Hintergrundfarbe dauerhaft speichern
-  'K', 'E', 'Y' + 0x80,                     //Keyboardlayout 1=US,2=UK,3=GE,4=IT,5=ES,6=FR,7=BE,8=NO,9=JP
-  'T', 'H', 'E', 'M', 'E' + 0x80,           //THEME
-  'P', 'A', 'T', 'H' + 0x80,                //Arbeitsverzeichnis
+static uint16_t opt_offsets[6]; // RAM-Speicher für die Startpositionen
 
+const static char options_tab[] PROGMEM = {
+  'C', 'O', 'L', 'O', 'R' + 0x80,      // OPT_COLOR
+  'E', 'E', 'P', 'R', 'O', 'M' + 0x80, // OPT_EEP
+  'F', 'O', 'N', 'T' + 0x80,           // OPT_FONT
+  'K', 'E', 'Y' + 0x80,                // OPT_KEYBOARD
+  'P', 'A', 'T', 'H' + 0x80,           // OPT_PATH
+  'T', 'H', 'E', 'M', 'E' + 0x80,      // OPT_THEME
   0
 };
 
-enum {
-  OPT_VMODE,
-  OPT_FRAM,
+#define OPT_COLOR 0
+#define OPT_EEP 1
+#define OPT_FONT 2
+#define OPT_KEYBOARD 3
+#define OPT_PATH 4
+#define OPT_THEME 5
+#define OPT_COUNT 6
+
+// Die IDs passend zur alphabetischen Sortierung
+const uint8_t opt_id_map[] PROGMEM = {
+  OPT_COLOR,
   OPT_EEP,
   OPT_FONT,
-  OPT_COLOR,
   OPT_KEYBOARD,
-  OPT_THEME,
   OPT_PATH,
-  OPT_UNKNOWN  //8
+  OPT_THEME,
 };
+
+
+
+
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
-
-const static char to_tab[] PROGMEM = {
-  'T', 'O' + 0x80,
-  0
+// Sortierung: Erst nach 1. Zeichen (ASCII), dann Länge (2-Zeichen vor 1-Zeichen)
+const char relop_tab[] PROGMEM = {
+  '%', 0,   // MOD   (ID 9)
+  '&', 0,   // AND   (ID 10)
+  '<', '<', // SHL   (ID 6)
+  '<', '=', // LE    (ID 5)
+  '<', '>', // NE    (ID 1)
+  '<', 0,   // LT    (ID 8)
+  '=', 0,   // EQ    (ID 4)
+  '>', '>', // SHR   (ID 2)
+  '>', '=', // GE    (ID 0)
+  '>', 0,   // GT    (ID 3)
+  '^', 0,   // POW   (ID 12)
+  '|', '|', // XOR   (ID 7)
+  '|', 0    // OR    (ID 11)
 };
 
-const static char step_tab[] PROGMEM = {
-  'S', 'T', 'E', 'P' + 0x80,
-  0
-};
+#define RELOP_GE 0
+#define RELOP_NE 1
+#define RELOP_SHR 2
+#define RELOP_GT 3
+#define RELOP_EQ 4
+#define RELOP_LE 5
+#define RELOP_SHL 6
+#define RELOP_XOR 7
+#define RELOP_LT 8
+#define RELOP_MOD 9
+#define RELOP_AND 10
+#define RELOP_OR 11
+#define RELOP_POW 12
+#define RELOP_UNKNOWN  13
 
-const static char relop_tab[] PROGMEM = {
-  '>', '=' + 0x80,  //größer gleich
-  '<', '>' + 0x80,  //ungleich
-  '>', '>' + 0x80,  //SHIFT RIGHT
-  '>' + 0x80,       //größer
-  '=' + 0x80,       //gleich
-  '<', '=' + 0x80,  //kleiner gleich
-  '<', '<' + 0x80,  //SHIFT LEFT
-  '|', '|' + 0x80,  //XOR
-  '<' + 0x80,       //kleiner
-  '%' + 0x80,       //MODULO
-  '&' + 0x80,       //AND
-  '|' + 0x80,       //OR
-  '^' + 0x80,       //POW
-  0
+// Die IDs exakt nach deiner Definition
+const uint8_t relop_id[] PROGMEM = {
+  9,  // MOD
+  10, // AND
+  6,  // SHL
+  5,  // LE
+  1,  // NE
+  8,  // LT
+  4,  // EQ
+  2,  // SHR
+  0,  // GE
+  3,  // GT
+  12, // POW
+  7,  // XOR
+  11  // OR
 };
-
-#define RELOP_GE		0
-#define RELOP_NE		1
-#define RELOP_SHR   2
-#define RELOP_GT		3
-#define RELOP_EQ		4
-#define RELOP_LE		5
-#define RELOP_SHL   6
-#define RELOP_XOR   7
-#define RELOP_LT		8
-#define RELOP_MOD   9
-#define RELOP_AND   10
-#define RELOP_OR    11
-#define RELOP_POW   12
-#define RELOP_UNKNOWN	13
 
 #define STACK_SIZE (sizeof(struct stack_for_frame)*26)   // 26 verschachtelte For-Next-Schleifen erlaubt (32bytes pro frame) 
 #define VAR_SIZE sizeof(float)                           // Variablengrösse für float 4Bytes
@@ -1177,9 +1205,9 @@ static char spaces(void) {
   return *txtpos; // Das erste Zeichen, das kein Leerzeichen/Tab ist
 }
 //--------------------------------------------- Unterprogramm - Befehls-und Funktionstabellen lesen -----------------------------------------------
-
-static void scantable(const char *table)
-{
+/*
+  static void scantable(const char *table)
+  {
   int i = 0;
   table_index = 0;
 
@@ -1215,8 +1243,7 @@ static void scantable(const char *table)
       i = 0;
     }
   }
-}
-
+  }*/
 
 
 //--------------------------------------------- Unterprogramm - Zahlenausgabe ---------------------------------------------------------------------
@@ -1541,8 +1568,9 @@ static void toUppercaseBuffer(void)
   }
 }
 //--------------------------------------------- Unterprogramm - Zeile ausgeben (Bildschirm oder Datei) --------------------------------------------
-int printline(void)
-{
+/*
+  int printline(void)
+  {
   LINENUM line_num;
 
   // 1. Sicherer Zugriff auf die Zeilennummer (verhindert Alignment-Crash)
@@ -1556,15 +1584,183 @@ int printline(void)
   outchar(' ');
 
   // 3. Zeileninhalt ausgeben (mit zusätzlichem Null-Check für Stabilität)
+
   while (*list_line != NL && *list_line != '\0')
   {
-    outchar(*list_line);
-    list_line++;
+   outchar(*list_line);
+   list_line++;
   }
 
   // Pointer über das NL-Zeichen hinausbewegen
   if (*list_line == NL) list_line++;
 
+  line_terminator();
+  return (int)line_num;
+  }*/
+
+int8_t peekRelop(const char* p, int &matched_len) {
+  int8_t low = 0;
+  int8_t high = 12; 
+  char r1 = *p;
+  char r2 = *(p + 1);
+
+  while (low <= high) {
+    int8_t mid = (low + high) >> 1;
+    char c1 = pgm_read_byte(&relop_tab[mid << 1]);
+
+    if (c1 == r1) {
+      // Zum Anfang der Gruppe mit diesem Startzeichen springen
+      while (mid > 0 && pgm_read_byte(&relop_tab[(mid - 1) << 1]) == r1) mid--;
+      
+      int8_t found_id = -1;
+      matched_len = 0;
+
+      // Die Gruppe durchsuchen
+      while (mid <= 12 && pgm_read_byte(&relop_tab[mid << 1]) == r1) {
+        char c2 = pgm_read_byte(&relop_tab[(mid << 1) + 1]);
+        
+        if (c2 != 0 && c2 == r2) {
+          // Volltreffer 2-Zeichen (z.B. "<=") -> Sofort fertig!
+          matched_len = 2;
+          return pgm_read_byte(&relop_id[mid]);
+        }
+        
+        if (c2 == 0) {
+          // Merken, dass ein 1-Zeichen Match möglich wäre, aber weitersuchen 
+          // (vielleicht kommt noch ein 2-Zeichen Match in der Tabelle)
+          matched_len = 1;
+          found_id = pgm_read_byte(&relop_id[mid]);
+        }
+        mid++;
+      }
+      return found_id; // Wenn kein 2-Zeichen Match kam, nimm das 1-Zeichen Match
+    }
+    if (c1 < r1) low = mid + 1;
+    else high = mid - 1;
+  }
+  return -1;
+}
+// Eine Kopie von findInTable, die txtpos NICHT verändert
+int8_t peekInTable(const char* start_p, const char* table, const uint8_t* id_map, const uint16_t* offsets, uint8_t count, int &matched_len) {
+  int8_t low = 0;
+  int8_t high = count - 1;
+
+  while (low <= high) {
+    int8_t mid = (low + high) >> 1;
+    uint16_t offset = offsets[mid];
+    int8_t i = 0;
+    int8_t res = 0;
+
+    while (true) {
+      uint8_t t_byte = pgm_read_byte(&table[offset + i]);
+      uint8_t t_char = t_byte & 0x7F;
+      uint8_t i_char = (uint8_t)start_p[i];
+
+      if (i_char != t_char) {
+        res = i_char - t_char;
+        break;
+      }
+
+      if (t_byte & 0x80) { // Wortende in der Tabelle
+        char next = start_p[i + 1];
+        if (isalnum(next) || next == '_' || next == '$') {
+          res = 1;
+        } else {
+          matched_len = i + 1; // Wie viele Zeichen hat das Wort?
+          return pgm_read_byte(&id_map[mid]);
+        }
+        break;
+      }
+      i++;
+    }
+    if (res < 0) high = mid - 1;
+    else low = mid + 1;
+  }
+  return -1;
+}
+
+
+void setSyntaxColor(const char* ansiCode) {
+  if (useColor) {
+    Terminal.print(ansiCode);
+  }
+}
+
+
+
+int printline(void) {
+  LINENUM line_num;
+  memcpy(&line_num, list_line, sizeof(LINENUM));
+  list_line += sizeof(LINENUM) + sizeof(char);
+
+  printnum((int)line_num, 0);
+  outchar(' ');
+
+  while (*list_line != NL && *list_line != '\0') {
+    char c = *list_line;
+    int matched_len = 0;
+
+    // --- LEERZEICHEN ---
+    if (isspace(c)) {
+      outchar(*list_line++);
+      continue;
+    }
+// --- 1. RELOPS (Höchste Priorität) ---
+    // Wir prüfen nur, wenn c ein Operator-Startzeichen ist
+    if (strchr("<>=!&|^%+-/*", c) != NULL) { 
+      if (peekRelop(list_line, matched_len) != -1 && matched_len > 0) {
+        setSyntaxColor("\e[94m"); // Blau
+        for(int k=0; k < matched_len; k++) {
+          outchar(*list_line++);
+        }
+        setSyntaxColor("\e[0m");
+        continue; // Sofort zum nächsten Zeichen im Quelltext
+      }
+    }
+    // --- STRINGS (Rot) ---
+    if (c == '"') {
+      setSyntaxColor("\e[31m");
+      outchar(*list_line++);
+      while (*list_line != '"' && *list_line != NL && *list_line != '\0') outchar(*list_line++);
+      if (*list_line == '"') outchar(*list_line++);
+      setSyntaxColor("\e[0m");
+    }
+    // --- ZAHLEN (Magenta) ---
+    else if (isdigit(c)) {
+      setSyntaxColor("\e[35m");
+      while (isdigit(*list_line)) outchar(*list_line++);
+      setSyntaxColor("\e[0m");
+    }
+    // --- WORTER (Befehle, Funktionen, Variablen) ---
+    else if (isalpha(c)) {
+      // 1. Prüfen ob Keyword (Gelb)
+      if (peekInTable(list_line, keywords, kw_id_map, kw_offsets, KW_COUNT, matched_len) != -1) {
+        setSyntaxColor("\e[33m");
+        for (int k = 0; k < matched_len; k++) outchar(*list_line++);
+        setSyntaxColor("\e[0m");
+      }
+      // 2. Prüfen ob Funktion (Cyan)
+      else if (peekInTable(list_line, func_tab, func_id_map, func_offsets, 60, matched_len) != -1) {
+        setSyntaxColor("\e[36m");
+        for (int k = 0; k < matched_len; k++) outchar(*list_line++);
+        setSyntaxColor("\e[0m");
+      }
+
+
+      // 3. Sonst Variable (Grün)
+      else {
+        setSyntaxColor("\e[32m");
+        while (isalnum(*list_line) || *list_line == '$' || *list_line == '_') outchar(*list_line++);
+        setSyntaxColor("\e[0m");
+      }
+    }
+    // --- OPERATOREN & REST ---
+    else {
+      outchar(*list_line++);
+    }
+  }
+
+  if (*list_line == NL) list_line++;
   line_terminator();
   return (int)line_num;
 }
@@ -1843,7 +2039,7 @@ static float expr4(void)
     int fu = table_index, iic, cc;
     int charb, fname;                                         //Hilfsvariable für FN
     unsigned long result;                                     //Hilfsvariable für Peek
-    
+
     //-------------------------------------------------------- einfache Funktionen ohne Klammer ------------------------------------------------------------------
     switch (fu)                                               // Rückgabe einfache Werte (ohne Klammer)
     {
@@ -1882,7 +2078,7 @@ static float expr4(void)
         break;
 
       case FUNC_FN:                                           //FN-Funktion
-        if(*txtpos==' ') txtpos++;                            //Leerzeichen überspringen
+        if (*txtpos == ' ') txtpos++;                         //Leerzeichen überspringen
         if (*txtpos < 'A' || *txtpos > 'Z')
           goto expr4_error;
         charb = *txtpos - 'A';                                //Funktionsname
@@ -1947,8 +2143,8 @@ static float expr4(void)
     else  {
       a = get_value();                         //1.Zahl (bei Stringvariablen steht in tempstring die 1.Zeichenkette)
     }
-    
-    
+
+
     switch (fu)                                 //Rückgabe komplexer Werte (mit Klammer und 1-4 Operatoren)
     {
       case  FUNC_PEEK:                          //Peek Byte
@@ -1980,18 +2176,18 @@ static float expr4(void)
         break;
 
       case FUNC_FN:
-          ((float *)variables_begin)[Fnoperator[charb]] = a;
-          Fnvar = 0;
-          b = Fnoperator[charb + 4];
-          while (*txtpos == ',') {
-           txtpos++;
-           Fnvar += 1;
-           if (Fnvar >= b) {                                      //mehr Parameter als mit DEFN dimensioniert?
-             syntaxerror(illegalmsg);
-             goto expr4_error;
-           }
-           ((float *)variables_begin)[Fnoperator[charb + Fnvar]] = get_value();
+        ((float *)variables_begin)[Fnoperator[charb]] = a;
+        Fnvar = 0;
+        b = Fnoperator[charb + 4];
+        while (*txtpos == ',') {
+          txtpos++;
+          Fnvar += 1;
+          if (Fnvar >= b) {                                      //mehr Parameter als mit DEFN dimensioniert?
+            syntaxerror(illegalmsg);
+            goto expr4_error;
           }
+          ((float *)variables_begin)[Fnoperator[charb + Fnvar]] = get_value();
+        }
         break;
 
       case FUNC_LEFT:
@@ -2486,22 +2682,22 @@ expr4_error:
 }
 
 float call_user_function(int fname) {
-    // 1. Sichere den aktuellen globalen txtpos LOKAL auf dem Stack
-    char *old_txtpos = txtpos; 
+  // 1. Sichere den aktuellen globalen txtpos LOKAL auf dem Stack
+  char *old_txtpos = txtpos;
 
-    // 2. Setze den Parser auf den Funktions-String aus der Fntable
-    txtpos = Fntable[fname]; 
+  // 2. Setze den Parser auf den Funktions-String aus der Fntable
+  txtpos = Fntable[fname];
 
-    // 3. Berechne den Ausdruck der Funktion
-    // get_value() wird nun den String in Fntable[fname] abarbeiten
-    float result = get_value(); 
+  // 3. Berechne den Ausdruck der Funktion
+  // get_value() wird nun den String in Fntable[fname] abarbeiten
+  float result = get_value();
 
-    // 4. Stelle den ursprünglichen txtpos wieder her
-    // Egal ob get_value() fertig ist oder einen Fehler hatte
-    txtpos = old_txtpos; 
+  // 4. Stelle den ursprünglichen txtpos wieder her
+  // Egal ob get_value() fertig ist oder einen Fehler hatte
+  txtpos = old_txtpos;
 
-    // 5. Gib das Ergebnis der Funktion zurück
-    return result;
+  // 5. Gib das Ergebnis der Funktion zurück
+  return result;
 }
 
 /***************************************************************************/
@@ -2615,7 +2811,7 @@ static float get_value(void)
   // Check if we have an error
   if (expression_error)  return a;
 
-  scantable(relop_tab);
+  table_index = findRelopBinary(); //scantable(relop_tab);
   if (table_index == RELOP_UNKNOWN)
     return a;
 
@@ -4193,18 +4389,25 @@ forloop:
       initial = get_value();
       if (expression_error) continue;
 
-      scantable(to_tab);
-      if (table_index != 0)
-      {
+      if (*txtpos != 'T' && *txtpos + 1 != 'O') { //scantable(to_tab);
         syntaxerror(syntaxmsg);
         continue;
       }
+      txtpos += 2;
+      //if (table_index != 0)
+      //{
+      //  syntaxerror(syntaxmsg);
+      //  continue;
+      //}
 
       to_var = get_value();
       if (expression_error) continue;
-      scantable(step_tab);
-      if (table_index == 0)
+
+      //scantable(step_tab);
+
+      if (txtpos[0] == 'S' && txtpos[1] == 'T' && txtpos[2] == 'E' && txtpos[3] == 'P')//if (isStep())//table_index == 0)
       {
+        txtpos += 4;
         step = get_value();
         if (expression_error) continue;
       }
@@ -4349,117 +4552,25 @@ gosub_return:
 //#################################################################################################################################################
 
 
-
-
-
+/*
+  bool isStep() {
+    // Prüfe auf 'S', 'T', 'E', 'P' (Großbuchstaben vorausgesetzt)
+    if (txtpos[0] == 'S' && txtpos[1] == 'T' && txtpos[2] == 'E' && txtpos[3] == 'P') {
+        // Wortgrenzen-Check: Danach darf kein Buchstabe/Zahl kommen (z.B. "STEPS")
+        char next = txtpos[4];
+        if (!isalnum(next) && next != '_') {
+            txtpos += 4; // Zeiger hinter STEP bewegen
+            return true;
+        }
+    }
+    return false;
+  }
+*/
 //#######################################################################################################################################
 //--------------------------------------------- PRINT - Befehl --------------------------------------------------------------------------
 //#######################################################################################################################################
 static int command_Print(void)
 {
-  int k = 0;
-  int xp, yp;
-
-  semicolon = false; // Initialisierung
-
-  while (!k)
-  {
-    char c = spaces(); // Nächstes Zeichen holen
-
-    // Ende der Print-Liste prüfen
-    if (c == NL || c == CR || c == '\0') {
-      if (!semicolon) line_terminator();
-      k = 1;
-      break;
-    }
-
-    if (c == ':') {
-      line_terminator();
-      txtpos++; // Doppelpunkt überspringen für nächsten Befehl
-      k = 1;
-      break;
-    }
-
-    switch (c)
-    {
-      case ';':
-        semicolon = true;
-        txtpos++; // Semikolon überspringen
-        break;
-
-      case '"':
-        print_quoted_string(); // Verarbeitet Anführungszeichen intern
-        semicolon = false;
-        break;
-
-      case ',':
-        {
-          // Tabulator-Logik: Springe zur nächsten 10er Spalte
-          int nextTab = ((tc.getCursorCol() / 10) + 1) * 10;
-          if (nextTab >= 40) { // Angenommen 40 Spalten Breite
-            line_terminator();
-          } else {
-            tc.setCursorPos(nextTab, tc.getCursorRow());
-          }
-          semicolon = true;
-          txtpos++;
-        }
-        break;
-
-      case 'A': // Prüfung auf AT(x,y)
-        if (txtpos[1] == 'T' && txtpos[2] == '(')
-        {
-          txtpos += 3; // "AT(" überspringen
-          xp = (int)get_value();
-          if (*txtpos == ',') {
-            txtpos++;
-            yp = (int)get_value();
-            tc.setCursorPos(xp, yp);
-            if (*txtpos == ')') txtpos++; // Klammer zu überspringen
-          }
-          semicolon = true;
-          break;
-        }
-        // Falls kein AT, falle in default (Ausdruck/Variable beginnend mit A)
-        [[fallthrough]];
-
-      default:
-        float e = get_value(); // Zahl, Variable oder Funktion (z.B. CHR$, STR$)
-
-        if (expression_error) return 1;
-
-        // Zentrale Marker-Abfrage
-        if (func_string_marker || string_marker)
-        {
-          // Für Funktionen die Strings zurückgeben oder direkte String-Variablen
-          printmsg(tempstring, 0);
-          func_string_marker = false;
-          string_marker = false;
-        }
-        else if (chr)
-        {
-          outchar((int)e);
-          chr = false;
-        }
-        else if (tab_marker)
-        {
-          // TAB/SPC wurde bereits intern durch tc.setCursorPos in get_value erledigt
-          tab_marker = false;
-        }
-        else
-        {
-          printnum(e, Zahlenformat);
-        }
-        semicolon = false; // Nach einer Zahl/String wird standardmäßig ein CR erwartet
-        break;
-    }
-  }
-
-  return 0;
-}
-/*
-  static int command_Print(void)
-  {
   int k = 0;
   int i, xp, yp;
   int tb[] = {0, 10, 20, 30};
@@ -4548,8 +4659,8 @@ static int command_Print(void)
         e = get_value();                    //Zahl oder Variable lesen
 
         if (expression_error) k = 2;
-        if (func_string_marker == true) {
-          for (int i = 0; i < fstring; i++) {
+        if (func_string_marker == true) {               //String$ funktion
+          for (int i = 0; i < fstring; i++) {           //in fstring steht die Anzahl der Wiederholungen
             printmsg(tempstring, 0);
           }
           func_string_marker = false;
@@ -4585,8 +4696,8 @@ static int command_Print(void)
     return 1;                               //Fehler - wieder von vorn
 
   return 0;                                 // nächster Befehl
-  }
-*/
+}
+
 //#######################################################################################################################################
 //--------------------------------------------- Variablen - Eingabe ---------------------------------------------------------------------
 //#######################################################################################################################################
@@ -5067,6 +5178,7 @@ static int line_rec_circ(int circ_or_rect, int param)
         bcolor(Hintergrund);
         GFX.fillEllipse(par[0], par[1], par[2], par[3]);                      //Circle circ x,y,xx,yy,fill=1
       }
+      //GFX.waitCompletion();
       break;
 
     case 2:
@@ -5075,6 +5187,7 @@ static int line_rec_circ(int circ_or_rect, int param)
         bcolor(Hintergrund);
         GFX.fillRectangle(par[0], par[1], par[2], par[3]);                    //Rectangle rect x,y,xx,yy,fill=1
       }
+      //GFX.waitCompletion();
       break;
 
     case 3:                                                                   //Frame frame x,y,xx,yy,r
@@ -5088,6 +5201,7 @@ static int line_rec_circ(int circ_or_rect, int param)
         GFX.setPixel(par[0] + par[2] - par[4] * 1.6 * (1 - cos(i / 25.*M_PI / 2.)), par[1] + par[3] - par[4] * (1 - sin(i / 25.*M_PI / 2.)));
         GFX.setPixel(par[0] + par[4] * 1.6 * (1 - cos(i / 25.*M_PI / 2.)), par[1] + par[3] - par[4] * (1 - sin(i / 25.*M_PI / 2.)));
       }
+      //GFX.waitCompletion();
       break;
 
     case 4:
@@ -5115,6 +5229,7 @@ static int line_rec_circ(int circ_or_rect, int param)
       //x=par[0]+par[3]*cos(par[2]*M_PI/180);                                  //Angle x,y,winkel,länge
       //y=par[1]+par[3]*sin(par[2]*M_PI/180);
       GFX.drawLine(par[0], par[1], par[0] + par[3]*cos(par[2]*M_PI / 180), par[1] + par[3]*sin(par[2]*M_PI / 180));
+      //GFX.waitCompletion();
       break;
     /*
       case 10:
@@ -5123,6 +5238,7 @@ static int line_rec_circ(int circ_or_rect, int param)
     */
     default:
       GFX.drawLine(par[0], par[1], par[2], par[3]);                          //Line line x,y,xx,yy
+      //GFX.waitCompletion();
       break;
   }
   //bcolor(Hintergrund);
@@ -5131,6 +5247,51 @@ static int line_rec_circ(int circ_or_rect, int param)
 
 
 static int draw_path(void) {
+  // FabGL nutzt den Typ 'Point' (enthält int16_t X und Y)
+  Point points[16];
+  uint8_t ptCount = 0;
+  bool fill = false;
+
+  if (*txtpos == 'F') {
+    fill = true;
+    txtpos++;
+  }
+
+  // Parameter einsammeln
+  while (ptCount < 16) {
+    expression_error = 0;
+
+    // X-Koordinate
+    points[ptCount].X = (int16_t)get_value();
+    if (expression_error || *txtpos != ',') break;
+    txtpos++;
+
+    // Y-Koordinate
+    points[ptCount].Y = (int16_t)get_value();
+    if (expression_error) break;
+
+    ptCount++;
+
+    // Check für das nächste Paar
+    if (*txtpos == ',') txtpos++;
+    else break;
+  }
+
+  // Zeichnen mit FabGL
+  if (ptCount >= 2) {
+    if (fill) {
+      // Syntax: Canvas.fillPath(Point* points, int numPoints)
+      GFX.fillPath(points, ptCount);
+    } else {
+      GFX.drawPath(points, ptCount);
+    }
+    return 0;
+  }
+
+  return 1; // Fehler: Zu wenig Punkte
+}
+/*
+  static int draw_path(void) {
   short int i, a, par[32];
   bool f;
   String abuf;
@@ -5160,6 +5321,7 @@ static int draw_path(void) {
     //Terminal.print(abuf);
     if (f == true) {
       Terminal.print("\e_GFILLPATH" + abuf);
+
       return 0;
     }
     else {
@@ -5170,7 +5332,8 @@ static int draw_path(void) {
   }
 
   return 1;
-}
+  }
+*/
 //#######################################################################################################################################
 //----------------------------------------------------- Sprite-Befehl -------------------------------------------------------------------
 //#######################################################################################################################################
@@ -6427,14 +6590,14 @@ static int save_file()
     printmsg("Open File-Error!", 1);
   }
   outStream = kStreamFile;
-
+  useColor = false;                                                 //Farbausgabe unterdrücken
   // copied from "List"
   list_line = findline();
   while (list_line != program_end)                                  //Zeile für Zeile des Programms in die Datei schreiben
     printline();
 
   outStream = kStreamTerminal;                                      // zurück zum standard output, Datei schließen
-
+  useColor = true;                                                  //Farbausgabe unterdrücken
   fp.close();
 
   line_terminator();
@@ -6910,8 +7073,8 @@ void IRAM_ATTR onTimer()
 
 
 //#######################################################################################################################################
-
-void setupKeywordIndex() {
+/*
+  void setupKeywordIndex() {
   uint16_t pos = 0;
   for (int i = 0; i < KW_COUNT; i++) {
     kw_offsets[i] = pos;
@@ -6921,8 +7084,8 @@ void setupKeywordIndex() {
     }
     pos++; // Nächstes Wort beginnt nach dem markierten Zeichen
   }
-}
-
+  }
+*/
 
 // Hilfsfunktion zum Vergleichen von txtpos mit einem Wort im Flash
 int compareInputWithFlash(const char* input, int kw_index, int &matched_len) {
@@ -6947,29 +7110,7 @@ int compareInputWithFlash(const char* input, int kw_index, int &matched_len) {
     i++;
   }
 }
-/*
-  int findCommandBinary() {
-  int low = 0;
-  int high = KW_COUNT - 1;
-  int matched_len = 0;
 
-  while (low <= high) {
-    int mid = (low + high) / 2;
-    int res = compareInputWithFlash(txtpos, mid, matched_len);
-
-    if (res == 0) {
-      // Gefunden!
-      txtpos += matched_len;
-      spaces();
-      return mid; // Gibt die ID (0-84) aus deinem Enum zurück
-    }
-
-    if (res < 0) high = mid - 1;
-    else low = mid + 1;
-  }
-
-  return KW_COUNT; // Nichts gefunden
-  }*/
 
 int findCommandBinary() {
   int low = 0;
@@ -7041,8 +7182,8 @@ int findFunctionBinary() {
   }
   return FUNC_UNKNOWN; // Keine Funktion gefunden
 }
-
-void setupFunctionIndex() {
+/*
+  void setupFunctionIndex() {
   uint16_t pos = 0;
   for (int i = 0; i < 60; i++) {
     func_offsets[i] = pos;
@@ -7051,9 +7192,159 @@ void setupFunctionIndex() {
     }
     pos++;
   }
+  }
+*/
+
+int findRelopBinary() {
+  int8_t low = 0;
+  int8_t high = 12;
+  char r1 = *txtpos;
+  char r2 = *(txtpos + 1);
+
+  while (low <= high) {
+    int8_t mid = (low + high) >> 1;
+    char c1 = pgm_read_byte(&relop_tab[mid << 1]);
+
+    if (c1 == r1) {
+      // 1. Finde den absolut ersten Eintrag mit diesem Startzeichen in der Tabelle
+      while (mid > 0 && pgm_read_byte(&relop_tab[(mid - 1) << 1]) == r1) {
+        mid--;
+      }
+
+      // 2. Prüfe alle Einträge, die mit r1 beginnen (max. 4 Stück)
+      while (mid <= 12) {
+        uint16_t addr = mid << 1;
+        if (pgm_read_byte(&relop_tab[addr]) != r1) break;
+
+        char c2 = pgm_read_byte(&relop_tab[addr + 1]);
+
+        if (c2 != 0) {
+          // 2-Zeichen-Check (z.B. <=, <>, <<)
+          if (c2 == r2) {
+            txtpos += 2;
+            return pgm_read_byte(&relop_id[mid]);
+          }
+        } else {
+          // 1-Zeichen-Check (z.B. <) -> Immer das letzte in der r1-Gruppe
+          txtpos += 1;
+          return pgm_read_byte(&relop_id[mid]);
+        }
+        mid++;
+      }
+      break;
+    }
+    if (c1 < r1) low = mid + 1;
+    else high = mid - 1;
+  }
+  return RELOP_UNKNOWN;
 }
 
-//#######################################################################################################################################
+int findOptionBinary() {
+  int8_t low = 0;
+  int8_t high = 7; // 8 Einträge
+
+  while (low <= high) {
+    int8_t mid = (low + high) >> 1;
+    uint16_t offset = opt_offsets[mid];
+    int i = 0;
+    int res = 0;
+
+    while (true) {
+      uint8_t table_byte = pgm_read_byte(&options_tab[offset + i]);
+      uint8_t table_char = table_byte & 0x7F;
+      uint8_t input_char = (uint8_t)txtpos[i];
+
+      if (input_char != table_char) {
+        res = input_char - table_char;
+        break;
+      }
+
+      // Ende des Wortes in der Tabelle erreicht?
+      if (table_byte & 0x80) {
+        // Wortgrenzen-Check (danach darf kein Buchstabe/Zahl kommen)
+        char next_c = txtpos[i + 1];
+        if (isalnum(next_c) || next_c == '_') {
+          res = 1; // Eingabe ist länger als Tabelleneintrag
+          break;
+        }
+        // MATCH!
+        txtpos += (i + 1);
+        return pgm_read_byte(&opt_id_map[mid]);
+      }
+      i++;
+    }
+
+    if (res < 0) high = mid - 1;
+    else low = mid + 1;
+  }
+  return OPT_COUNT;
+}
+/*
+  void setupOptionOffsets() {
+  uint16_t pos = 0;
+  for (int i = 0; i < 8; i++) {
+    opt_offsets[i] = pos;
+    while (!(pgm_read_byte(&options_tab[pos++]) & 0x80));
+  }
+  }
+*/
+
+void setupTableIndex(const char* table, uint16_t* offsets, int count) {
+  uint16_t pos = 0;
+  for (int i = 0; i < count; i++) {
+    offsets[i] = pos;
+    while (!(pgm_read_byte(&table[pos]) & 0x80)) {
+      pos++;
+    }
+    pos++;
+  }
+}
+//################################################################# Versuch einer einheitlichen Tabellensuche (keywords, Functions,Option #######################################
+
+// Rückgabe: ID aus der Map oder -1 (nicht gefunden)
+int8_t findInTable(const char* table, const uint8_t* id_map, const uint16_t* offsets, uint8_t count) {
+  int8_t low = 0;
+  int8_t high = count - 1;
+
+  while (low <= high) {
+    int8_t mid = (low + high) >> 1;
+    uint16_t offset = offsets[mid];
+    int8_t i = 0;
+    int8_t res = 0;
+
+    while (true) {
+      uint8_t t_byte = pgm_read_byte(&table[offset + i]);
+      uint8_t t_char = t_byte & 0x7F;
+      uint8_t i_char = (uint8_t)txtpos[i];
+
+      if (i_char != t_char) {
+        res = i_char - t_char;
+        break;
+      }
+
+      if (t_byte & 0x80) { // Wortende in der Tabelle erreicht
+        // Das Zeichen im Quelltext DIREKT nach dem gematchten Wort
+        char next = txtpos[i + 1];
+
+        // Wenn das nächste Zeichen im Quelltext ein Buchstabe/Zahl/_ ist,
+        // dann ist das Wort im Quelltext länger (z.B. "DIMA" statt "DIM").
+        if (isalnum((uint8_t)next) || next == '_' || next == '$') {
+          res = 1; // Suche im Alphabet weiter rechts
+        } else {
+          // TREFFER! Das Wort ist zu Ende (danach kommt Space, '(', ',' etc.)
+          txtpos += (i + 1); // Pointer hinter das Wort setzen
+          return pgm_read_byte(&id_map[mid]);
+        }
+        break;
+      }
+      i++;
+    }
+    if (res < 0) high = mid - 1;
+    else low = mid + 1;
+  }
+  return count; // UNKNOWN
+}
+//##############################################################################################################################################################################
 
 //#######################################################################################################################################
 //--------------------------------------------- SETUP -----------------------------------------------------------------------------------
@@ -7063,9 +7354,14 @@ void setup()
 {
   setCpuFrequencyMhz(240);                                                           //mit dieser Option gibt's Startschwierigkeiten
 
-  setupKeywordIndex();                                                               // Basic-Befehls-Index-Tabelle erstellen
-  setupFunctionIndex();                                                              //Funktions-Index-Tabelle erstellen
-  //setupSprites();                                                                    // Sprite-Speicher initialisieren
+  // Im Programm-Start:
+  setupTableIndex(keywords, kw_offsets, KW_COUNT);
+  setupTableIndex(func_tab, func_offsets, FUNC_UNKNOWN);
+  setupTableIndex(options_tab, opt_offsets, OPT_COUNT);
+
+  //setupKeywordIndex();                                                               // Basic-Befehls-Index-Tabelle erstellen
+  //setupFunctionIndex();                                                              //Funktions-Index-Tabelle erstellen
+  //setupOptionOffsets();                                                              //Index-Tabelle für Options erstellen
 
   EEPROM. begin ( EEPROM_SIZE ) ;
   delay(200);
@@ -7130,40 +7426,40 @@ void setup()
 #elif defined VGA64
 
   VGAController.begin();                                                                //VGA-Variante //64 Farben
-  byte vm = EEPROM.read(6);                                                             //Videomodus lesen
-  v_mode = vm;
-  switch ( vm ) {
-    case 0:
-      VGAController.setResolution(QVGA_320x240_60Hz);                                    //Standard-Auflösung
-      //Theme_state = 2;
-      break;
-    case 1:
-      VGAController.setResolution(VGA_320x200_60Hz);                                     //C64, CPC
-      //Theme_state = 0;
-      break;
-    case 2:
-      VGAController.setResolution(VGA_320x200_60Hz, 256, 192);                           //ZX-Spectrum, TI99
-      //Theme_state = 4;
-      break;
-    case 3:
-      VGAController.setResolution(VGA_400x300_60Hz, 320, 256);                           //KC85
-      //Theme_state = 6;
-      break;
-    case 4:
-      VGAController.setResolution(VGA_320x200_60Hz, 320, 192);                           //Atari 800XL
-      //Theme_state = 7;
-      break;
-    case 5:
-      VGAController.setResolution(VGA_400x300_60Hz);
-      break;
+  //  byte vm = EEPROM.read(6);                                                             //Videomodus lesen
+  //  v_mode = vm;
+  //  switch ( vm ) {
+  //    case 0:
+  VGAController.setResolution(QVGA_320x240_60Hz);                                    //Standard-Auflösung
+  //Theme_state = 2;
+  //      break;
+  /*    case 1:
+        VGAController.setResolution(VGA_320x200_60Hz);                                     //C64, CPC
+        //Theme_state = 0;
+        break;
+      case 2:
+        VGAController.setResolution(VGA_320x200_60Hz, 256, 192);                           //ZX-Spectrum, TI99
+        //Theme_state = 4;
+        break;
+      case 3:
+        VGAController.setResolution(VGA_400x300_60Hz, 320, 256);                           //KC85
+        //Theme_state = 6;
+        break;
+      case 4:
+        VGAController.setResolution(VGA_320x200_60Hz, 320, 192);                           //Atari 800XL
+        //Theme_state = 7;
+        break;
+      case 5:
+        VGAController.setResolution(VGA_400x300_60Hz);
+        break;
 
-    default:
-      VGAController.setResolution(QVGA_320x240_60Hz);                                    //Standard-Auflösung
-      //Theme_state = 2;
-      v_mode = 0;
-      break;
-  }
-
+      default:
+        VGAController.setResolution(QVGA_320x240_60Hz);                                    //Standard-Auflösung
+        //Theme_state = 2;
+        v_mode = 0;
+        break;
+    }
+  */
 
 
 #else                                                                                 //ILI9341
@@ -8032,124 +8328,30 @@ nochmal:
       }
     }
 
-    /*
-      int Array_Dim(void) {
-      while (1) {
-
-        if (*txtpos >= 'A' && *txtpos <= 'Z')
-        {
-          int tmp, tmo, x, y, z;
-          int stmp, i;
-          word grenze, ort, ad;
-          char c;
-          byte p_data[8], len;
-          bool str = false;
-
-          //len = 4;
-          x = y = z = 0;
-          tmp = (*txtpos - 'A');                                    //erster Variablenbuchstabe
-          txtpos++;
-          if (*txtpos >= 'A' && *txtpos <= 'Z' )                    //zweiter Variablenbuchstabe
-          {
-            tmp = tmp + ((*txtpos - 'A' + 1) * 26);
-            //a = ((float *)variables_begin)[int(tmp + tmo)];
-            txtpos++;
-          }
-
-          while (*txtpos >= 'A' && *txtpos <= 'Z') txtpos++;        //lange Variablennamen
-          if (*txtpos == '$') {
-            len = STR_LEN;
-            str = true;
-            txtpos++;
-          }
-          else {
-            len = sizeof (float);
-          }
-          if (Test_char('(')) return 1;
-          x = abs(get_value());
-          if (*txtpos == ',') {
-            txtpos++;
-            y = abs(get_value());
-            if (*txtpos == ',') {
-              txtpos++;
-              z = abs(get_value());
-            }
-          }
-          if (Test_char(')')) return 1;                            //Überprüfung der generellen Feldgrenzen
-
-          grenze = (z + 1) * (y + 1) * (x + 1) * len;
-          if (grenze > (32256) ) {                                 //Feldgrenze überschritten maximal 32256 Bytes
-            syntaxerror(outofmemory);
-            return 1;
-          }
-
-          if (str) {                                              //Überprüfung unter Berücksichtigung des schon zugewiesenen Array-Speichers
-            ad = Var_Neu_Platz + grenze;
-            if (ad > (32256))                                     //überprüfung, ob noch Platz vorhanden ist maximal 32256 Bytes
-            {
-              syntaxerror(outofmemory);
-              return 1;
-            }
-            else
-            {
-              ort = STR_TBL + (tmp * 8);
-            }
-          }
-
-          else
-          {
-            ad = Var_Neu_Platz + grenze;                          //Überprüfung unter Berücksichtigung des schon zugewiesenen Array-Speichers
-            if (ad > (32256)) {                                   //überprüfung, ob noch Platz vorhanden ist maximal 32256 Bytes
-              syntaxerror(outofmemory);
-              return 1;
-            }
-            else
-            {
-              ort = VAR_TBL + (tmp  * 8);
-            }
-          }
-
-          p_data[0] = highByte(Var_Neu_Platz);                     //Adresse im FRAM
-          p_data[1] = lowByte(Var_Neu_Platz);
-          p_data[2] = highByte(x);
-          p_data[3] = lowByte(x);
-          p_data[4] = y;
-          p_data[5] = z;
-          SPI_RAM_write(ort, p_data, 6);
-          Var_Neu_Platz += grenze;//* len);
-        }
-
-        if (*txtpos != ',') return 0;                              //kein weiteres dim
-        txtpos++;                                                  //nächstes Dim
-      }//while(1)
-
-      syntaxerror(syntaxmsg);
-      return 1;
-      }
-    */
     //#######################################################################################################################################
     //----------------------------------------------------------- OPTION-Befehl -------------------------------------------------------------
     //#######################################################################################################################################
     int Option(void) {
       byte p[6];
-      scantable(options);                                                  //Optionstabelle lesen
+      table_index = findOptionBinary();
+      //scantable(options);                                                  //Optionstabelle lesen
       char fu = table_index;
       int i, adr;
 
       switch (fu) {
-        case OPT_VMODE:                                                    //Festlegung Bildschirmauflösung 0=320x240, 1=320X200 2=400x300 EEPROM Platz 6
-          p[0] = get_value();
-          EEPROM.write(6, p[0]);                                                                //Platz 6
-          EEPROM.commit () ;
-          Terminal.println("For take effect now reboot!");
-          delay(1000);
-          ESP.restart();
-          break;
-
+        /*
+                case OPT_VMODE:                                                    //Festlegung Bildschirmauflösung 0=320x240, 1=320X200 2=400x300 EEPROM Platz 6
+                  p[0] = get_value();
+                  EEPROM.write(6, p[0]);                                                                //Platz 6
+                  EEPROM.commit () ;
+                  Terminal.println("For take effect now reboot!");
+                  delay(1000);
+                  ESP.restart();
+                  break;
+        */
         case OPT_FONT:
           p[0] = get_value();
           EEPROM.write(2, p[0]);          //Font-Nummer im Flash speichern                        Platz 2
-          //EEPROM.write(17, 0);            //THEME-Marker löschen
           EEPROM.commit () ;
           set_font(p[0]);                 //setze Font
           break;
@@ -8222,7 +8424,7 @@ nochmal:
       }
 
 
-      if (fu == OPT_UNKNOWN)                                              //am ende angekommen, Option nicht gefunden
+      if (fu == OPT_COUNT)                                              //am ende angekommen, Option nicht gefunden
       {
         syntaxerror(syntaxmsg);
         return 1;
@@ -8494,14 +8696,14 @@ nochmal:
           py = buf[2] + (buf[3] << 8);
           ad += 4;
           for (y = dy + py - 1 ; y > dy - 1; y--) {
-              spi_fram.read(FRAM_OFFSET + ad,w,px);
-              for(int i=0; i<px; i++){
-                fcolor(w[i]);
-                if ((dx + i) < vh && y < vv) GFX.setPixel(dx + i, y); 
-              }
-               ad+=px;
-               x=0;
-         }
+            spi_fram.read(FRAM_OFFSET + ad, w, px);
+            for (int i = 0; i < px; i++) {
+              fcolor(w[i]);
+              if ((dx + i) < vh && y < vv) GFX.setPixel(dx + i, y);
+            }
+            ad += px;
+            x = 0;
+          }
           if (iv > 0) GFX.swapRectangle(dx, dy , dx + px - 1, dy + py - 1); //swap Backcolor
           break;
 
@@ -9845,3 +10047,323 @@ nochmal:
       }
       return num_neu;
     }
+
+
+
+    void print_colored_line(const char* p) {
+      while (*p != 0 && *p != '\n' && *p != '\r') {
+
+        // 1. Strings (Rot)
+        if (*p == '"') {
+          Terminal.print(COL_STR);
+          Terminal.write(*p++);
+          while (*p != '"' && *p != 0) Terminal.write(*p++);
+          if (*p == '"') Terminal.write(*p++);
+          Terminal.print(COL_RESET);
+          continue;
+        }
+
+        // 2. Zahlen (Magenta)
+        if (isdigit(*p)) {
+          Terminal.print(COL_NUM);
+          while (isdigit(*p)) Terminal.write(*p++);
+          Terminal.print(COL_RESET);
+          continue;
+        }
+
+        // 3. Wörter (Keywords oder Funktionen)
+        if (isalpha(*p)) {
+          const char* word_start = p;
+          // Temporär das Wort scannen (ohne txtpos zu zerstören)
+          // Hier nutzt du deine findInTable Logik (im "Peek"-Modus)
+
+          // Simpler Ansatz: Erstmal schauen, ob es ein Keyword ist
+          // Wir setzen txtpos kurzzeitig auf p für die Suche
+          static char* old_txtpos = txtpos;
+          txtpos = (char*)p;
+
+          int8_t kw = findCommandBinary();//findInTable(keyword_tab, key_id_map, kw_offsets, KW_COUNT);
+          if (kw != -1) {
+            Terminal.print(COL_KEYW);
+            // Wort drucken bis zum Ende
+            while (p < txtpos) Terminal.write(*p++);
+            Terminal.print(COL_RESET);
+          } else {
+            int8_t fn = findFunctionBinary();//findInTable(func_tab, func_id_map, func_offsets, 60);
+            if (fn != -1) {
+              Terminal.print(COL_FUNC);
+              while (p < txtpos) Terminal.write(*p++);
+              Terminal.print(COL_RESET);
+            } else {
+              // Es ist eine Variable (Grün)
+              Terminal.print(COL_VAR);
+              while (isalnum(*p) || *p == '$' || *p == '%') Terminal.write(*p++);
+              Terminal.print(COL_RESET);
+            }
+          }
+          txtpos = old_txtpos; // txtpos wieder herstellen
+          continue;
+        }
+
+        // 4. Alles andere (Operatoren, Klammern etc.)
+        Terminal.write(*p++);
+      }
+    }
+
+    //########################################################################## Testbereich - Labels #########################################################################
+    /*
+      struct Label {
+      char name[12];    // Name des Labels (z.B. "loop:")
+      const char* pos;  // Pointer auf die Stelle im Quelltext
+      };
+
+      #define MAX_LABELS 50
+      Label label_table[MAX_LABELS];
+      int label_count = 0;
+
+      const char* findLabel(const char* name) {
+      for (int i = 0; i < label_count; i++) {
+        if (strcmp(label_table[i].name, name) == 0) {
+          return label_table[i].pos;
+        }
+      }
+      return NULL; // Fehler: Label nicht gefunden
+      }
+
+      //GOTO und GOSUB sollen jetzt statt zahlen strings verarbeiten
+      // Alt: lineno = get_value();
+      // Neu:
+      char lname[12];
+      get_label_name(lname); // Hilfsfunktion zum Einlesen des Namens
+      const char* new_pos = findLabel(lname);
+      if (new_pos) txtpos = new_pos;
+
+      //************************* PRESCAN-Funktion
+      #define MAX_LABELS 40
+      #define MAX_LABEL_LEN 12
+
+      struct Label {
+      char name[MAX_LABEL_LEN];
+      const char* address;
+      };
+
+      Label label_table[MAX_LABELS];
+      int label_count = 0;
+
+      void preScanLabels(const char* p_start) {
+      const char* p = p_start;
+      label_count = 0;
+
+      while (*p != 0 && label_count < MAX_LABELS) {
+        // 1. Führende Leerzeichen ignorieren
+        while (*p == ' ') p++;
+
+        // 2. Prüfen, ob hier ein Label steht (Wort gefolgt von :)
+        const char* start_of_word = p;
+        uint8_t len = 0;
+
+        while (isalnum((uint8_t)*p) || *p == '_') {
+          if (len < MAX_LABEL_LEN - 1) len++;
+          p++;
+        }
+
+        if (*p == ':' && len > 0) {
+          // Label gefunden! In Tabelle kopieren
+          strncpy(label_table[label_count].name, start_of_word, len);
+          label_table[label_count].name[len] = '\0'; // Null-Terminierung
+
+          p++; // Den Doppelpunkt überspringen
+          while (*p == ' ') p++; // Leerzeichen nach dem Label ignorieren
+
+          label_table[label_count].address = p; // Hier geht der Code nach dem GOTO weiter
+          label_count++;
+        }
+
+        // 3. Zum Ende der Zeile springen (bis \r oder \n)
+        while (*p != 0 && *p != '\n' && *p != '\r') p++;
+        if (*p == '\r') p++;
+        if (*p == '\n') p++;
+      }
+      }
+      //****************************** GOTO-Programmteil ************************************
+      void do_goto() {
+      char target[MAX_LABEL_LEN];
+      uint8_t len = 0;
+
+      skipSpaces();
+      // Labelname aus dem Quelltext lesen
+      while (isalnum((uint8_t)*txtpos) || *txtpos == '_') {
+        if (len < MAX_LABEL_LEN - 1) target[len++] = *txtpos;
+        txtpos++;
+      }
+      target[len] = '\0';
+
+      // In der Tabelle suchen
+      for (int i = 0; i < label_count; i++) {
+        if (strcasecmp(label_table[i].name, target) == 0) {
+          txtpos = label_table[i].address; // Sprung!
+          return;
+        }
+      }
+      // Fehler: Label nicht gefunden
+      expression_error = 1;
+      }
+      //**************************** GOSUB-Programmteil ************************************
+      #define GOSUB_STACK_SIZE 10
+      const char* gosub_stack[GOSUB_STACK_SIZE];
+      int8_t gosub_stack_ptr = 0;
+
+      void do_gosub() {
+      if (gosub_stack_ptr >= GOSUB_STACK_SIZE) {
+        // Fehler: Stack Überlauf (zu viele GOSUBs verschachtelt)
+        expression_error = ERROR_STACK_OVERFLOW;
+        return;
+      }
+
+      // 1. Label-Namen einlesen (wie bei GOTO)
+      char target[MAX_LABEL_LEN];
+      read_label_name(target); // Hilfsfunktion, die Namen extrahiert
+
+      // 2. In der label_table suchen
+      for (int i = 0; i < label_count; i++) {
+        if (strcmp(label_table[i].name, target) == 0) {
+          // 3. Rücksprungadresse speichern (STELLE HINTER DEM LABELNAMEN)
+          gosub_stack[gosub_stack_ptr++] = txtpos;
+
+          // 4. Sprung ausführen
+          txtpos = label_table[i].address;
+          return;
+        }
+      }
+      expression_error = ERROR_LABEL_NOT_FOUND;
+      }
+
+      void do_return() {
+      if (gosub_stack_ptr <= 0) {
+        // Fehler: RETURN ohne GOSUB
+        expression_error = ERROR_RETURN_WITHOUT_GOSUB;
+        return;
+      }
+
+      // Adresse vom Stack holen und dorthin springen
+      txtpos = gosub_stack[--gosub_stack_ptr];
+
+      // Optional: Nach dem Rücksprung zum Ende der Zeile oder nächsten Befehl
+      skip_to_next_statement();
+      }
+
+      //****************************************** Read-Label *********************************
+      void read_label_name(char* buffer) {
+      uint8_t len = 0;
+
+      // 1. Führende Leerzeichen überspringen
+      while (*txtpos == ' ' || *txtpos == '\t') txtpos++;
+
+      // 2. Zeichen lesen, solange sie gültig sind (A-Z, 0-9, _)
+      while (isalnum((uint8_t)*txtpos) || *txtpos == '_') {
+        if (len < MAX_LABEL_LEN - 1) {
+          buffer[len++] = *txtpos;
+        }
+        txtpos++;
+      }
+
+      // 3. Null-Terminierung (Wichtig für strcmp!)
+      buffer[len] = '\0';
+
+      // 4. Nachfolgende Leerzeichen überspringen, um direkt beim nächsten Token zu stehen
+      while (*txtpos == ' ' || *txtpos == '\t') txtpos++;
+      }
+      //****************************** GOTO-Programmteil mit Read_label_name ************************************
+      void do_goto() {
+        char target[MAX_LABEL_LEN];
+        read_label_name(target); // Name sicher extrahieren
+
+        if (target[0] == '\0') {
+            expression_error = ERROR_MISSING_LABEL;
+            return;
+        }
+
+        for (int i = 0; i < label_count; i++) {
+            if (strcmp(label_table[i].name, target) == 0) {
+                txtpos = label_table[i].address;
+                return;
+            }
+        }
+        expression_error = ERROR_LABEL_NOT_FOUND;
+      }
+
+      //***************************** Fehlerausgabe mit labels ***************************************************
+      uint16_t get_current_line(const char* p_start) {
+      uint16_t line = 1;
+      const char* p = p_start;
+
+      // Zähle alle Newlines bis zur aktuellen Position
+      while (p < txtpos && *p != 0) {
+        if (*p == '\n') line++;
+        p++;
+      }
+      return line;
+      }
+
+      void report_error(int error_code, const char* p_start) {
+      uint16_t line = get_current_line(p_start);
+
+      Terminal.print("\r\nError ");
+      Terminal.print(error_code);
+      Terminal.print(" in line ");
+      Terminal.println(line);
+
+      // Optional: Zeige die Zeile im Terminal an (Debugging-Hilfe)
+      show_error_context();
+      }
+
+      void show_error_context() {
+      const char* p = txtpos;
+
+      // 1. Gehe zum Anfang der aktuellen Zeile zurück
+      while (p > program_start && *(p-1) != '\n' && *(p-1) != '\r') p--;
+
+      // 2. Drucke die Zeile bis zum Umbruch
+      while (*p != 0 && *p != '\n' && *p != '\r') {
+        Terminal.write(*p++);
+      }
+      Terminal.println();
+
+      // 3. (Optional) Ein Pfeil an der Stelle von txtpos
+      // Das erfordert, dass du dir den Versatz von txtpos zum Zeilenanfang merkst.
+      }
+
+      //**************************************** LIST-Funktion *******************************************
+      void list_program() {
+      const char* p = program_start; // Dein Pointer auf den Anfang des BASIC-Speichers
+      uint16_t line_cnt = 1;
+
+      if (*p == 0) {
+        Terminal.println("Empty program.");
+        return;
+      }
+
+      while (*p != 0) {
+        // 1. Zeilennummer drucken (rechtsbündig formatiert für Ordnung)
+        if (line_cnt < 10) Terminal.write(' ');
+        if (line_cnt < 100) Terminal.write(' ');
+        Terminal.print(line_cnt);
+        Terminal.print(": ");
+
+        // 2. Die aktuelle Zeile bis zum Ende (\n oder \r) drucken
+        while (*p != 0 && *p != '\n' && *p != '\r') {
+          Terminal.write(*p++);
+        }
+
+        Terminal.println(); // Zeilenumbruch im Terminal
+        line_cnt++;
+
+        // 3. Steuerzeichen (\r\n) überspringen, um zum nächsten Zeilenanfang zu kommen
+        if (*p == '\r') p++;
+        if (*p == '\n') p++;
+
+        // Optional: Abbruch durch Tastendruck (z.B. ESC), falls das Programm sehr lang ist
+        if (Terminal.available() && Terminal.read() == 27) break;
+      }
+      }
+    */
