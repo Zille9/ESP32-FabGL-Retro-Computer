@@ -56,7 +56,8 @@
 #define BuiltTime "21.03.2026"
 // siehe Logbuch.txt zum Entwicklungsverlauf
 // V2.14:21.03.2026           -Syntax-Hervorhebung integriert - das ist cool ;-)
-//                            -25020 Zeilen/sek.
+//                            -Hardwarefehler beim FRAM-Modul behoben - an der CS-Leitung ist zwingend ein Pullup-Widerstand (10k nach VDD) notwendig
+//                            -28251 Zeilen/sek.
 //
 // V2.13:07.03.2026           -Zeileneditor erweitert, ENTER führt jetzt zum Aufrufen der nächsten Zeile -> Abbruch der Eingabe mit ESC und danach ENTER
 //                            -Umstellung der scantable-funktion auf binäre Suche der Basic-Befehle und Funktionen, das hatte eine massive Steigerung der Geschwindigkeit
@@ -1122,12 +1123,13 @@ static const char dimmsg[]           PROGMEM = "Array-Dimension!";              
 static const char commsg[]           PROGMEM = "No COM-Port defined!";          //20
 static const char comsetmsg[]        PROGMEM = "Wrong COM-Port Definition!";    //21
 static const char bmpfilemsg[]       PROGMEM = "No BMP-File!";                  //22
-static const char no_prg_msg[]       PROGMEM = "No Program in Memory !";        //23
-static const char no_command_msg[]   PROGMEM = "Keyword not found !";           //24
+static const char no_prg_msg[]       PROGMEM = "No Program in Memory!";         //23
+static const char no_command_msg[]   PROGMEM = "Keyword not found!";            //24
 static const char not_openmsg[]      PROGMEM = "File not open!";                //25
 static const char dirnotfound[]      PROGMEM = "DIR not found !";               //26
 static const char extension_error[]  PROGMEM = "invalid File-Extension !";      //27
 static const char stringtolong[]     PROGMEM = "String to long!";               //28
+static const char wronglinenr[]      PROGMEM = "Wrong Line-Number!";            //29
 
 //----------------------------------- Interpreter-Variablen ---------------------------------------------------------------------------------------
 char *pstart;
@@ -1185,7 +1187,7 @@ void Beep(int n, int len)
 //--------------------------------------------- Unterprogramm - Zeichen überspringen --------------------------------------------------------------
 //--------------------------------------------- nächstes Zeichen zurückgeben ----------------------------------------------------------------------
 
-static char skip_spaces(void) {
+static char skip_spaces() {
   if (*txtpos)
   {
     txtpos++;
@@ -1197,54 +1199,13 @@ static char skip_spaces(void) {
 //--------------------------------------------- Unterprogramm - Leerzeichen überspringen ----------------------------------------------------------
 //--------------------------------------------- erstes gültiges Zeichen zurückgeben ---------------------------------------------------------------
 
-static char spaces(void) {
+static char spaces() {
   // Direkt in der Bedingung prüfen und Pointer inkrementieren
   while (*txtpos == SPACE || *txtpos == TAB) {
     txtpos++;
   }
   return *txtpos; // Das erste Zeichen, das kein Leerzeichen/Tab ist
 }
-//--------------------------------------------- Unterprogramm - Befehls-und Funktionstabellen lesen -----------------------------------------------
-/*
-  static void scantable(const char *table)
-  {
-  int i = 0;
-  table_index = 0;
-
-  while (1)
-  {
-    // Keine Tabelleneinträge mehr?
-    if (pgm_read_byte( table ) == 0)
-      return;
-
-    // Passt das Zeichen??
-    if (txtpos[i] == pgm_read_byte( table ))
-    {
-      i++;
-      table++;
-    }
-    else
-    {
-      //Wort komplett, dann zurück
-      if (txtpos[i] + 0x80 == pgm_read_byte( table ))
-      {
-        txtpos += i + 1;
-        spaces();
-        return;
-      }
-
-      while ((pgm_read_byte( table ) & 0x80) == 0)
-        table++;
-
-      // Fortfahren mit dem ersten Zeichen des nächsten Wortes, Positionsindex zurücksetzen
-      table++;
-      table_index++;
-      spaces();
-      i = 0;
-    }
-  }
-  }*/
-
 
 //--------------------------------------------- Unterprogramm - Zahlenausgabe ---------------------------------------------------------------------
 
@@ -1391,7 +1352,7 @@ ln = VGAController.getScreenWidth() / y_char[fontsatz] - 3;    //Anzahl Zeilen a
 
 //--------------------------------------------- Unterprogramm teste auf gültige Zeilennummer ------------------------------------------------------
 
-static uint16_t testnum(void) {
+static uint16_t testnum() {
   uint32_t num = 0; // Intern mit 32-Bit rechnen für Überlauf-Check
   spaces();
 
@@ -1443,7 +1404,7 @@ static uint16_t wait_key(bool modes) {
 //--------------------------------------------- Unterprogramm - Zeile eingeben --------------------------------------------------------------------
 
 //----------- Original -------------
-static void getln(int m)//char prompt)
+static void getln(int m)
 { int chpos = -1;
   if (m)
   {
@@ -1516,13 +1477,11 @@ static void getln(int m)//char prompt)
 
 
 //--------------------------------------------- Unterprogramm - Programmzeile finden ---------------------------------------------------------------
-static char *findline(void)
+static char *findline()
 {
   char *line = program_start;
   while (line != program_end)
   {
-    //if (line == program_end)
-    //  return line;
 
     if (((LINENUM *)line)[0] >= linenum)
       return line;
@@ -1536,13 +1495,11 @@ static char *findline(void)
 
 //--------------------------------------------- Unterprogramm - Data-zeile finden -----------------------------------------------------------------
 
-static char *find_data_line(void)
+static char *find_data_line()
 {
   char *line = program_start;
   while (line < program_end)
   {
-    //if (line == program_end)
-    //  return 0;
 
     dataline = line + sizeof(LINENUM) + sizeof(char);         //Programmzeile übergeben
 
@@ -1559,7 +1516,7 @@ static char *find_data_line(void)
 
 //--------------------------------------------- Unterprogramm - Grossbuchstabenumwandlung ---------------------------------------------------------
 
-static void toUppercaseBuffer(void)
+static void toUppercaseBuffer()
 {
   char *c = program_end + sizeof(LINENUM);
   for (char q = 0; *c != NL; c++) {
@@ -1567,40 +1524,11 @@ static void toUppercaseBuffer(void)
     if (!q && *c >= 'a' && *c <= 'z') *c -= 32;
   }
 }
+
 //--------------------------------------------- Unterprogramm - Zeile ausgeben (Bildschirm oder Datei) --------------------------------------------
-/*
-  int printline(void)
-  {
-  LINENUM line_num;
-
-  // 1. Sicherer Zugriff auf die Zeilennummer (verhindert Alignment-Crash)
-  memcpy(&line_num, list_line, sizeof(LINENUM));
-
-  // Pointer weiterschalten: Zeilennummer + Längen-Byte (oder Marker)
-  list_line += sizeof(LINENUM) + sizeof(char);
-
-  // 2. Zeilennummer ausgeben
-  printnum((int)line_num, 0);
-  outchar(' ');
-
-  // 3. Zeileninhalt ausgeben (mit zusätzlichem Null-Check für Stabilität)
-
-  while (*list_line != NL && *list_line != '\0')
-  {
-   outchar(*list_line);
-   list_line++;
-  }
-
-  // Pointer über das NL-Zeichen hinausbewegen
-  if (*list_line == NL) list_line++;
-
-  line_terminator();
-  return (int)line_num;
-  }*/
-
 int8_t peekRelop(const char* p, int &matched_len) {
   int8_t low = 0;
-  int8_t high = 12; 
+  int8_t high = 12;
   char r1 = *p;
   char r2 = *(p + 1);
 
@@ -1611,22 +1539,22 @@ int8_t peekRelop(const char* p, int &matched_len) {
     if (c1 == r1) {
       // Zum Anfang der Gruppe mit diesem Startzeichen springen
       while (mid > 0 && pgm_read_byte(&relop_tab[(mid - 1) << 1]) == r1) mid--;
-      
+
       int8_t found_id = -1;
       matched_len = 0;
 
       // Die Gruppe durchsuchen
       while (mid <= 12 && pgm_read_byte(&relop_tab[mid << 1]) == r1) {
         char c2 = pgm_read_byte(&relop_tab[(mid << 1) + 1]);
-        
+
         if (c2 != 0 && c2 == r2) {
           // Volltreffer 2-Zeichen (z.B. "<=") -> Sofort fertig!
           matched_len = 2;
           return pgm_read_byte(&relop_id[mid]);
         }
-        
+
         if (c2 == 0) {
-          // Merken, dass ein 1-Zeichen Match möglich wäre, aber weitersuchen 
+          // Merken, dass ein 1-Zeichen Match möglich wäre, aber weitersuchen
           // (vielleicht kommt noch ein 2-Zeichen Match in der Tabelle)
           matched_len = 1;
           found_id = pgm_read_byte(&relop_id[mid]);
@@ -1640,6 +1568,7 @@ int8_t peekRelop(const char* p, int &matched_len) {
   }
   return -1;
 }
+
 // Eine Kopie von findInTable, die txtpos NICHT verändert
 int8_t peekInTable(const char* start_p, const char* table, const uint8_t* id_map, const uint16_t* offsets, uint8_t count, int &matched_len) {
   int8_t low = 0;
@@ -1679,7 +1608,7 @@ int8_t peekInTable(const char* start_p, const char* table, const uint8_t* id_map
   return -1;
 }
 
-
+//####################################################### Programmzeile ausgeben auf dem Bildschirm in Farbe, auf SD-Karte ohne Farbe ###################################
 void setSyntaxColor(const char* ansiCode) {
   if (useColor) {
     Terminal.print(ansiCode);
@@ -1688,7 +1617,7 @@ void setSyntaxColor(const char* ansiCode) {
 
 
 
-int printline(void) {
+int printline() {
   LINENUM line_num;
   memcpy(&line_num, list_line, sizeof(LINENUM));
   list_line += sizeof(LINENUM) + sizeof(char);
@@ -1705,12 +1634,12 @@ int printline(void) {
       outchar(*list_line++);
       continue;
     }
-// --- 1. RELOPS (Höchste Priorität) ---
+    // --- 1. RELOPS (Höchste Priorität) ---
     // Wir prüfen nur, wenn c ein Operator-Startzeichen ist
-    if (strchr("<>=!&|^%+-/*", c) != NULL) { 
+    if (strchr("<>=!&|^%+-/*", c) != NULL) {
       if (peekRelop(list_line, matched_len) != -1 && matched_len > 0) {
         setSyntaxColor("\e[94m"); // Blau
-        for(int k=0; k < matched_len; k++) {
+        for (int k = 0; k < matched_len; k++) {
           outchar(*list_line++);
         }
         setSyntaxColor("\e[0m");
@@ -1764,6 +1693,8 @@ int printline(void) {
   line_terminator();
   return (int)line_num;
 }
+//######################################################################################################################################################################
+
 //--------------------------------------------- Unterprogramm - RTC auslesen ----------------------------------------------------------------------
 
 void getdatetime()
@@ -1799,7 +1730,7 @@ static int hexDigit(char c)
 /*************************************************************************************************************************************************/
 
 
-static float expr4(void)
+static float expr4()
 {
   float a = 0;
   float b = 0;
@@ -1928,7 +1859,7 @@ static float expr4(void)
   // Is it a function or variable reference?
   //--------------------------------------------------------------------------------------------------------------------------------------------------------------
   //scantable(func_tab);                                                  //Funktionstabelle lesen
-  table_index = findFunctionBinary();
+  table_index = findFunction();//Binary();
 
   if (table_index == FUNC_UNKNOWN)                                      //am ende angekommen, Funktion nicht gefunden
   {
@@ -2702,7 +2633,7 @@ float call_user_function(int fname) {
 
 /***************************************************************************/
 
-static float expr3(void)
+static float expr3()
 {
   float a, b;
   a = expr4();
@@ -2736,7 +2667,7 @@ static float expr3(void)
 }
 
 /***************************************************************************/
-static float expr2(void)
+static float expr2()
 {
   float a, b;
   String abuf, bbuf, cbuf;
@@ -2800,7 +2731,7 @@ static float expr2(void)
 }
 /***************************************************************************/
 
-static float get_value(void)
+static float get_value()
 {
   float a, b;
 
@@ -2876,7 +2807,7 @@ static float get_value(void)
 //--------------------------------------------- SDT - Befehl "SDT Tag,Monat,Jahr,Stunde,Minute,Sekunde"----------------------------------
 //#######################################################################################################################################
 
-static int set_TimeDate(void)
+static int set_TimeDate()
 { int tagzeit[7];
   expression_error = 0;
   tagzeit[0] = abs(int(get_value()));         //nur ganze Zahlen
@@ -2905,7 +2836,7 @@ static int set_TimeDate(void)
 //--------------------------------------------- PRZ - Befehl ----------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static int set_prezision(void)
+static int set_prezision()
 {
   if (Test_char('(')) return 1;
   expression_error = 0;
@@ -2974,7 +2905,7 @@ void warmstart() {
 
 //--------------------------------------------- Unterprogramm - Direkteingabe ---------------------------------------------------------------------
 
-static int direct(void) {
+static int direct() {
   txtpos = program_end + sizeof(LINENUM);
   if (*txtpos == NL) return 0;                //Zeilenende?
   else return 1;  //                          //nein?, nächster Befehl
@@ -2982,7 +2913,7 @@ static int direct(void) {
 
 //--------------------------------------------- Unterprogramm - gehe zu nächsten Befehl -----------------------------------------------------------
 
-static int run_next(void) {
+static int run_next() {
   if (spaces() == ':') txtpos++;
   if (spaces() == NL ) return 1;              //nächste Zeile
   return 0;                                   //nächster Befehl
@@ -2992,7 +2923,7 @@ static int run_next(void) {
 //--------------------------------------------- GOSUB - Befehl --------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static int gosub(void)
+static int gosub()
 {
   struct stack_gosub_frame *f;
   if (sp + sizeof(struct stack_gosub_frame) < stack_limit)
@@ -3016,7 +2947,7 @@ static int gosub(void)
 //--------------------------------------------- INPUT - Befehl --------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static char Input_String(void)
+static char Input_String()
 {
   spaces();
   // make sure there are no quotes or spaces, search for valid characters
@@ -3032,7 +2963,7 @@ static char Input_String(void)
   return 0;
 }
 
-static int input(void)
+static int input()
 {
   char var, c, d, e;
   float value, vl;
@@ -3158,7 +3089,7 @@ inputagain:
 //--------------------------------------------- DATA - Befehl ---------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static float data_get(void)
+static float data_get()
 {
   float value;
   float *var;
@@ -3269,7 +3200,7 @@ static float data_get(void)
 }
 
 
-static char data_spaces(void) {
+static char data_spaces() {
   char c;
   while (1) {
     c = *dataline;
@@ -3283,7 +3214,7 @@ static char data_spaces(void) {
 //--------------------------------------------- Wert aus DATA - Anweisung lesen ---------------------------------------------------------
 //#######################################################################################################################################
 
-static float data_expr(void)
+static float data_expr()
 {
   unsigned long t = 0;
   unsigned long f = 0;
@@ -3391,7 +3322,7 @@ data_expr_error:
 //--------------------------------------------- Zeichenkette aus DATA - Anweisung lesen -------------------------------------------------
 //#######################################################################################################################################
 
-static char Data_String_quoted_read(void)
+static char Data_String_quoted_read()
 {
   char c;
   data_spaces();
@@ -3566,14 +3497,13 @@ void Basic_Interpreter()
   initSD();                                              //SD-Karte initialisieren
   cmd_new();                                             //alles löschen
   print_info();                                          //Start-Bildschirm anzeigen
+  //readFRAMIdent();
   SPI_FRAM_info();                                       //SPI-Ram ermitteln
-  //check_editor();                                        // befindet sich im EEPROM-Platz 50 die 123, dann die datei tmp.bas automatisch laden
   int a, e;
 
   //################################################# Hauptprogrammschleife ######################################################
   while (1)
   {
-Anfang:
     expression_error = 0;                               //alle Errors zurücksetzen
 
     if ( triggerRun ) {                                 // AUTO-START-FUNKTION
@@ -3632,14 +3562,11 @@ interpreteAtTxtpos:
 
     }
     table_index = findCommandBinary();
-    //scantable(keywords);                                            //Befehlstabelle scannen
     keyword_index = table_index;
-    //Terminal.print(cmd);
 
 fnkey:                                                               //Funktionstaste wurde gedrückt -> Befehl ausführen
 
     if (function_key) {
-
       keyword_index = key_command;
       function_key = false;
     }
@@ -3762,7 +3689,7 @@ fnkey:                                                               //Funktions
 
           if (a < 0 || a > 65535)
           {
-            //syntaxerror(syntaxmsg);
+            syntaxerror(wronglinenr);
             continue;
           }
         }
@@ -4106,11 +4033,6 @@ fnkey:                                                               //Funktions
         break;
 
       case KW_SPRT:                                     //SPRITE-Befehl
-        /*if(exec_sprite())
-          continue;
-          break;*/
-
-
         if (Test_char('(')) continue;
         pa = *txtpos;
         if (pa == 'C' || pa == 'D' || pa == 'S') {
@@ -4133,7 +4055,6 @@ fnkey:                                                               //Funktions
       case KW_PULSE:                                      //PULSE(PORT,MS)
 
         if (set_pulse()) {
-          //  syntaxerror(syntaxmsg);
           continue;
         }
         break;
@@ -4141,7 +4062,6 @@ fnkey:                                                               //Funktions
       case KW_PEN:                                        //Stiftfarbe und Breite setzen
 
         if (set_pen()) {
-          //  syntaxerror(syntaxmsg);
           continue;
         }
         break;
@@ -4149,7 +4069,6 @@ fnkey:                                                               //Funktions
 
       case KW_LCD:                                        //I2C LCD-Befehle
         if (LCD_Set()) {
-          //syntaxerror(syntaxmsg);
           continue;
         }
         break;
@@ -4214,24 +4133,15 @@ fnkey:                                                               //Funktions
 
       case KW_LED:                                      //LED-Strip-Befehle
         if (LED_Set()) {
-          //syntaxerror(syntaxmsg);
           continue;
         }
         break;
 
       case KW_EDIT:
-        /*
+         /*
           if (*txtpos == NL) {
             editor_mode = true;
-            basic_editor();
-            editor_mode = false;
-
-            //save_tempfile();                            //Edit ohne Zeilennummer lädt den Texteditor KILO
-            //kilo();
-            //set_font(fontsatz);                       // Fontsatz laden (1 Byte)
-            //tc.setCursorPos(1, 1);
-            //GFX.clear();
-            //check_editor();
+            basic_editor();            editor_mode = false;
           }
           else
           {
@@ -4389,21 +4299,14 @@ forloop:
       initial = get_value();
       if (expression_error) continue;
 
-      if (*txtpos != 'T' && *txtpos + 1 != 'O') { //scantable(to_tab);
+      if (*txtpos != 'T' && *txtpos + 1 != 'O') {
         syntaxerror(syntaxmsg);
         continue;
       }
       txtpos += 2;
-      //if (table_index != 0)
-      //{
-      //  syntaxerror(syntaxmsg);
-      //  continue;
-      //}
 
       to_var = get_value();
       if (expression_error) continue;
-
-      //scantable(step_tab);
 
       if (txtpos[0] == 'S' && txtpos[1] == 'T' && txtpos[2] == 'E' && txtpos[3] == 'P')//if (isStep())//table_index == 0)
       {
@@ -4448,9 +4351,6 @@ forloop:
       }
 
     }
-
-    //syntaxerror(syntaxmsg);
-    //continue;
 
 
 next:
@@ -4542,8 +4442,6 @@ gosub_return:
     // Didn't find the variable we've been looking for
 
     syntaxerror(syntaxmsg);
-    //continue;
-    // yield();
   }//while(1)
 } //Basic_interpreter
 
@@ -4551,25 +4449,122 @@ gosub_return:
 //############################################# Ende Basic_Interpreter ############################################################################
 //#################################################################################################################################################
 
-
-/*
-  bool isStep() {
-    // Prüfe auf 'S', 'T', 'E', 'P' (Großbuchstaben vorausgesetzt)
-    if (txtpos[0] == 'S' && txtpos[1] == 'T' && txtpos[2] == 'E' && txtpos[3] == 'P') {
-        // Wortgrenzen-Check: Danach darf kein Buchstabe/Zahl kommen (z.B. "STEPS")
-        char next = txtpos[4];
-        if (!isalnum(next) && next != '_') {
-            txtpos += 4; // Zeiger hinter STEP bewegen
-            return true;
-        }
-    }
-    return false;
-  }
-*/
 //#######################################################################################################################################
 //--------------------------------------------- PRINT - Befehl --------------------------------------------------------------------------
 //#######################################################################################################################################
 static int command_Print(void)
+{
+  int k = 0;
+  int xp, yp;
+
+  semicolon = false; // Initialisierung
+
+  while (!k)
+  {
+    char c = spaces(); // Nächstes Zeichen holen
+
+    // Ende der Print-Liste prüfen
+    if (c == ':' || c == NL || c == CR || c == '\0') {
+      if (!semicolon) line_terminator();
+      if( c == ':' ) txtpos++;
+      k = 1;
+      break;
+    }
+/*
+    if (c == ':') {
+      if (!semicolon) line_terminator();
+      txtpos++; // Doppelpunkt überspringen für nächsten Befehl
+      k = 1;
+      break;
+    }
+*/
+    switch (c)
+    {
+      case ';':
+        semicolon = true;
+        txtpos++; // Semikolon überspringen
+        break;
+
+      case '"':
+        print_quoted_string(); // Verarbeitet Anführungszeichen intern
+        semicolon = false;
+        break;
+
+      case ',':
+        {
+          // Tabulator-Logik: Springe zur nächsten 10er Spalte
+          int nextTab = ((tc.getCursorCol() / 10) + 1) * 10;
+          if (nextTab >= 40) { // Angenommen 40 Spalten Breite
+            line_terminator();
+          } else {
+            tc.setCursorPos(nextTab, tc.getCursorRow());
+          }
+          semicolon = true;
+          txtpos++;
+        }
+        break;
+
+      case 'A': // Prüfung auf AT(x,y)
+        if (txtpos[1] == 'T' && txtpos[2] == '(')
+        {
+          txtpos += 3; // "AT(" überspringen
+          xp = (int)get_value();
+          if (*txtpos == ',') {
+            txtpos++;
+            yp = (int)get_value();
+            tc.setCursorPos(xp, yp);
+            if (*txtpos == ')') txtpos++; // Klammer zu überspringen
+          }
+          semicolon = true;
+          break;
+        }
+        // Falls kein AT, falle in default (Ausdruck/Variable beginnend mit A)
+        [[fallthrough]];
+
+      default:
+        float e = get_value(); // Zahl, Variable oder Funktion (z.B. CHR$, STR$)
+
+        if (expression_error) return 1;
+
+        // Zentrale Marker-Abfrage
+        if (func_string_marker == true) {               //String$ funktion
+          for (int i = 0; i < fstring; i++) {           //in fstring steht die Anzahl der Wiederholungen
+            printmsg(tempstring, 0);
+          }
+          func_string_marker = false;
+          string_marker = false;
+          chr = false;
+        }
+        else if (string_marker)
+        {
+          // Für Funktionen die Strings zurückgeben oder direkte String-Variablen
+          printmsg(tempstring, 0);
+          func_string_marker = false;
+          string_marker = false;
+        }
+        else if (chr)
+        {
+          outchar((int)e);
+          chr = false;
+        }
+        else if (tab_marker)
+        {
+          // TAB/SPC wurde bereits intern durch tc.setCursorPos in get_value erledigt
+          tab_marker = false;
+        }
+        else
+        {
+          printnum(e, Zahlenformat);
+        }
+        semicolon = false; // Nach einer Zahl/String wird standardmäßig ein CR erwartet
+        break;
+    }
+  }
+
+  return 0;
+}
+/*
+static int command_Print()
 {
   int k = 0;
   int i, xp, yp;
@@ -4594,11 +4589,11 @@ static int command_Print(void)
         break;
 
       case ':':
-        //if (!semicolon)
-        line_terminator();
+        if (!semicolon)
+           line_terminator();
         txtpos++;
         k = 1;
-        //semicolon = false;
+        semicolon = false;
         break;
 
       case CR:
@@ -4697,12 +4692,12 @@ static int command_Print(void)
 
   return 0;                                 // nächster Befehl
 }
-
+*/
 //#######################################################################################################################################
 //--------------------------------------------- Variablen - Eingabe ---------------------------------------------------------------------
 //#######################################################################################################################################
 
-static float var_get(void)
+static float var_get()
 {
   float value;
   float *var;
@@ -4894,7 +4889,7 @@ void clear_var()
 //#######################################################################################################################################
 //--------------------------------------------- NEW-Befehl ------------------------------------------------------------------------------
 //#######################################################################################################################################
-void cmd_new(void) {
+void cmd_new() {
   long w_ert = 0;
   byte* bytes = (byte*)&w_ert;
   program_start = program;
@@ -5101,7 +5096,7 @@ static int poke(int fn)             //POKE WAS,ADRESSE,WERT
 //--------------------------------------------- STYLE - Befehl --------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static int set_style(void)
+static int set_style()
 {
   int st;
 
@@ -5246,7 +5241,7 @@ static int line_rec_circ(int circ_or_rect, int param)
 }
 
 
-static int draw_path(void) {
+static int draw_path() {
   // FabGL nutzt den Typ 'Point' (enthält int16_t X und Y)
   Point points[16];
   uint8_t ptCount = 0;
@@ -5290,50 +5285,7 @@ static int draw_path(void) {
 
   return 1; // Fehler: Zu wenig Punkte
 }
-/*
-  static int draw_path(void) {
-  short int i, a, par[32];
-  bool f;
-  String abuf;
 
-  f = false;                    //Fill-Kennung aus
-  i = 1;
-  if (*txtpos == 'F') {
-    f = true;   //PathF bedeutet Fillpath, Path heisst keine Füllung
-    txtpos++;
-  }
-
-  while (i < 32) {               //die ersten Parameter eingeben
-    expression_error = 0;
-    par[i] = get_value();
-    if (expression_error) return 1;
-    abuf = abuf + String(par[i]);
-    // check for a comma
-    if (*txtpos != ',') break;    //kein weiterer Parameter? dann raus
-    txtpos++;
-    abuf = abuf + ";";            //Parametertrennzeichen
-    i++;
-  }
-  //Terminal.print(i%2);
-  if ( !(i % 2)) {
-    abuf = abuf + "$";            //Parameterende-Kennung
-    abuf.trim();
-    //Terminal.print(abuf);
-    if (f == true) {
-      Terminal.print("\e_GFILLPATH" + abuf);
-
-      return 0;
-    }
-    else {
-      Terminal.print("\e_GPATH" + abuf);
-      return 0;
-    }
-
-  }
-
-  return 1;
-  }
-*/
 //#######################################################################################################################################
 //----------------------------------------------------- Sprite-Befehl -------------------------------------------------------------------
 //#######################################################################################################################################
@@ -5534,7 +5486,7 @@ static int Sound(void) {
 //--------------------------------------------- PSET - Befehl ---------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static int pset(void)
+static int pset()
 {
 
   short int xp, yp, pc;
@@ -5572,7 +5524,7 @@ static int pset(void)
 //--------------------------------------------- COL - Befehl ----------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static int color(void)
+static int color()
 {
 
   short int fc, bc;
@@ -5634,7 +5586,7 @@ void bcolor(int bc) {
 //--------------------------------------------- PEN - Befehl --------------------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static int set_pen(void)
+static int set_pen()
 {
 
   short int pc, pw;
@@ -5667,7 +5619,7 @@ static int set_pen(void)
 //#######################################################################################################################################
 //---------------------------------------------- DEF_FN Befehl --------------------------------------------------------------------------
 //#######################################################################################################################################
-static int def_func(void)
+static int def_func()
 {
   int fname, fnpos, i;
 
@@ -5732,68 +5684,12 @@ static int def_func(void)
   Fntable[fname][i + 1] = '\0';
 
   if (*txtpos == ']') txtpos++; // Schließende Klammer überspringen
-  //Terminal.println(String(Fntable[fname]));
   return 0;
 }
-/*
-  static int def_func(void)
-  {
-  int fname, fnpos, fault, i;
-
-  if (*txtpos < 'A' || *txtpos > 'Z') return 1;                           //Funktionsname
-
-  fname = (*txtpos - 'A');                                                //Position im Funktionsspeicher
-  fnpos = fname * 5;
-  txtpos++;
-
-  if (Test_char('(')) return 1;                                           //Klammer Auf vorhanden?
-
-  fault = 0;
-  i = 0;
-
-  while (1) {                                                             //Eingabeschleife für bis zu vier Operatoren
-    if (*txtpos < 'A' || *txtpos > 'Z')                                   //Überprüfung auf gültiges Zeichen
-    {
-      syntaxerror(syntaxmsg);
-      fault = 1;
-      break;
-    }
-    Fnoperator[fnpos + i] = *txtpos - 'A';
-    i++;
-    txtpos++;
-
-    if (*txtpos == ',') txtpos++;                              //Komma vorhanden?
-
-    else if (*txtpos == ')') break;                            //oder Klammer ZU
-
-    if ( i > 3) {                                              //mehr als 3 Kommas?
-      fault = 1;
-      syntaxerror(illegalmsg);
-      break;
-    }
-  }
-  Fnoperator[fnpos + 4] = i;                                  //Anzahl Operatoren speichern
-  if (fault) return fault;                                    //wenn es bis hier Fehler gab, dann zurück
-
-  txtpos++;
-  if (Test_char('=')) return 1;                                // = vorhanden?
-  if (Test_char('[')) return 1;                                // [ vorhanden?
-
-  i = 0;
-  while (*txtpos != ']') {                                    //Funktionsstring in Funktionsspeicher einlesen
-    Fntable[fname][i++] = *txtpos++;
-  }
-  Fntable[fname][i] = NL;
-  Fntable[fname][i + 1] = 0;
-  txtpos++;
-  //Terminal.println(String(Fntable[fname]));
-  return 0;
-  }
-*/
 
 //--------------------------------------------- Unterprogramm - String in Anführungszeichen ausgeben ----------------------------------------------
 
-static char print_quoted_string(void)
+static char print_quoted_string()
 {
   int i = 0;
   char delim = *txtpos;
@@ -5825,7 +5721,7 @@ static char print_quoted_string(void)
 //--------------------------------------------- PULSE - Befehl --------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static int set_pulse(void)
+static int set_pulse()
 {
   int p, x, y, pl;
   if (Test_char('(')) return 1;
@@ -5881,7 +5777,7 @@ static int set_pulse(void)
 //#######################################################################################################################################
 //--------------------------------------------- DOUT-Befehl -----------------------------------------------------------------------------
 //#######################################################################################################################################
-static int set_port(void)
+static int set_port()
 {
   int p, x;
 
@@ -5923,7 +5819,7 @@ static int set_port(void)
 //--------------------------------------------- PWM-Befehl ------------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static int set_pwm(void)
+static int set_pwm()
 {
   int p, x, chan;
   if (Test_char('(')) return 1;
@@ -5976,7 +5872,7 @@ static int set_pwm(void)
 //--------------------------------------------- CUR - Befehl ----------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static int cursor_onoff(void)
+static int cursor_onoff()
 {
 
   // Work out where to put it
@@ -5990,21 +5886,12 @@ static int cursor_onoff(void)
 
 }
 
-//--------------------------------------------- CLS mit Scrolleffekt ------------------------------------------------------------------------------
-/*
-  void cmd_cls(void) {
-  int t = VGAController.getScreenHeight();
 
-  for (int i = 0; i < (t+1); i++) {
-    GFX.scroll(0, -1);
-  }
-  }
-*/
 //#######################################################################################################################################
 //--------------------------------------------- POS - Befehl --------------------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static int set_pos(void)
+static int set_pos()
 {
   int xp, yp;
 
@@ -6030,7 +5917,7 @@ static int set_pos(void)
 
 //----------------------------Unterprogramm - einzelnen Char oder Zeichenkette in Anführungszeichen lesen -----------------------------------------
 
-static char String_quoted_read(void)
+static char String_quoted_read()
 {
   char c;
 
@@ -6072,7 +5959,7 @@ static char String_quoted_read(void)
 }
 
 //--------------------------------------------- Unterprogramm - Zeilenabschluss -------------------------------------------------------------------
-static void line_terminator(void)
+static void line_terminator()
 {
   outchar(CR);
   outchar(NL);
@@ -6210,16 +6097,8 @@ Terminal.write("%");
 //#######################################################################################################################################
 //--------------------------------------------- Unterprogramm - Üerprüfung auf Abbruch-Taste (Ctrl-C) -----------------------------------
 //#######################################################################################################################################
-/*
-  static char breakcheck(void)
-  {
-  if (Terminal.available()) {
-    return Terminal.read() == CTRLC;
-  }
-  return 0;
-  }
-*/
-static char breakcheck(void) {
+
+static char breakcheck() {
   // 1. Schneller Check, ob Daten im Puffer liegen
   if (Terminal.available()) {
     char c = Terminal.read();
@@ -6237,7 +6116,7 @@ static char breakcheck(void) {
   return 0;
 }
 
-void break_program(void)
+void break_program()
 {
   printmsg(breakmsg, 1);
   if (current_line != NULL)
@@ -6401,7 +6280,7 @@ static void outchar(char c)
 //############################################# Dateioperationen auf der SD-Karte #######################################################
 //--------------------------------------------- Unterprogramm SD-Karte initialisieren ---------------------------------------------------
 //#######################################################################################################################################
-static int initSD( void )
+static int initSD()
 {
   int c;
   int adr, i;
@@ -6441,7 +6320,7 @@ static int initSD( void )
     return 1;
   }
 
-  printmsg("SD-Card OK", 1);
+  //printmsg("SD-Card OK", 1);
   sd_ende();                                               //unmount
   return 1;                                                //OK
 }
@@ -6450,9 +6329,9 @@ static int initSD( void )
 //--------------------------------------------- SPI-Bus umschalten ----------------------------------------------------------------------
 //#######################################################################################################################################
 
-void sd_ende(void) {
+void sd_ende() {
   spiSD.end();                                              //SD-Card unmount
-  spi_fram.begin(3);                                        //FRAM aktivieren
+  spi_fram.begin(3);                                         //FRAM aktivieren
   string_marker == false;                                   //Stringmarker für Dateioperationen löschen
 }
 
@@ -6461,7 +6340,7 @@ void sd_ende(void) {
 //--------------------------------------------- LOAD - Befehl ---------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static int load_file(void)
+static int load_file()
 {
   int fcheck;
   // Programmspeicher löschen
@@ -6611,7 +6490,7 @@ static int save_file()
 //#######################################################################################################################################
 //---------------------------------------- Save ohne Parameter speichert das Programm ab 0x7000 im FRAM ---------------------------------
 //#######################################################################################################################################
-static int save_ram(void) {
+static int save_ram() {
   uint32_t address = (uint32_t)load_adress;
 
   // Berechnung der Programmlänge (Abstand zwischen Start und Ende)
@@ -6644,7 +6523,7 @@ static int save_ram(void) {
 //----------------------------------------------- Load ohne Parameter lädt das Programm aus dem FRAM ab 0x7000 --------------------------
 //#######################################################################################################################################
 
-static int load_ram(void) {
+static int load_ram() {
   uint32_t address = (uint32_t)load_adress;
   uint16_t n_bytes;
   uint8_t header[4];
@@ -6683,7 +6562,7 @@ static int load_ram(void) {
 //--------------------------------------------- DEL - Befehl ----------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static int cmd_delFiles(void)
+static int cmd_delFiles()
 {
 
   char c;
@@ -6729,7 +6608,7 @@ static int cmd_delFiles(void)
 //--------------------------------------------- CHDIR - Befehl --------------------------------------------------------------------------
 //#######################################################################################################################################
 
-void cmd_chdir(void)
+void cmd_chdir()
 {
   int i = 0;
   if (*txtpos == '"') *txtpos++;
@@ -6853,7 +6732,7 @@ bool search_file(const char* names) {
   else return false;
 }
 
-void cmd_Dir(void)
+void cmd_Dir()
 { int ln = 1;
   int ex = 0;
   String cbuf;
@@ -6880,10 +6759,10 @@ void cmd_Dir(void)
   }
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
-  while (!SD.begin(kSD_CS, spiSD)) {
+  delay(5);
+  if (!SD.begin(kSD_CS, spiSD)) {
     syntaxerror(sderrormsg);
     sd_ende();
-    delay(3000);
   }
 
   File dir = SD.open(String(sd_pfad));
@@ -7072,20 +6951,71 @@ void IRAM_ATTR onTimer()
 }
 
 
-//#######################################################################################################################################
-/*
-  void setupKeywordIndex() {
-  uint16_t pos = 0;
-  for (int i = 0; i < KW_COUNT; i++) {
-    kw_offsets[i] = pos;
-    // Suche das Ende des Wortes (Bit 7 gesetzt)
-    while (!(pgm_read_byte(&keywords[pos]) & 0x80)) {
-      pos++;
+//###############################################################################################################################################################################
+//################################################################# Versuch einer einheitlichen Tabellensuche (keywords, Functions,Option #######################################
+// Für Befehle
+int findCommand() {
+  return findInTable(keywords, kw_offsets, kw_id_map, KW_COUNT, KW_COUNT);
+}
+
+// Für Funktionen
+int findFunction() {
+  return findInTable(func_tab, func_offsets, func_id_map, FUNC_UNKNOWN, FUNC_UNKNOWN);
+}
+
+// Für Optionen
+int findOption() {
+  return findInTable(options_tab, opt_offsets, opt_id_map, OPT_COUNT, OPT_COUNT);
+}
+
+int8_t findInTable(const char* table, const uint16_t* offsets, const uint8_t* id_map, uint8_t count, int8_t error_val) {
+  int low = 0;
+  int high = count - 1;
+
+  while (low <= high) {
+    int mid = (low + high) / 2;
+    uint16_t offset = offsets[mid];
+    int i = 0;
+    int res = 0;
+
+    // Vergleichsschleife (Direkt integriert statt Hilfsfunktion spart Flash)
+    while (true) {
+      uint8_t table_byte = pgm_read_byte(&table[offset + i]);
+      uint8_t table_char = table_byte & 0x7F;
+      uint8_t input_char = (uint8_t)txtpos[i];
+      
+      // Case-Insensitive (Optional, falls gewünscht)
+      if (input_char >= 'a' && input_char <= 'z') input_char -= 32;
+
+      if (input_char != table_char) {
+        res = input_char - table_char;
+        break;
+      }
+
+      if (table_byte & 0x80) { // Wortende in Tabelle erreicht
+        // WORTGRENZEN-CHECK:
+        // Wir akzeptieren das Wort nur, wenn danach KEIN Buchstabe folgt.
+        // (Damit 'IF' nicht in 'IFFA' matcht). 
+        // Zahlen, Klammern, Kommas, Leerzeichen sind OK!
+        char next_c = txtpos[i + 1];
+        if (isalpha((uint8_t)next_c) || next_c == '_') {
+          res = 1; // Tu so, als wäre die Eingabe "größer", um weiterzusuchen
+          break;
+        }
+
+        // MATCH GEFUNDEN!
+        txtpos += (i + 1); // Zeiger vorrücken
+        // Hier kein spaces() aufrufen, das machen wir lieber im Parser
+        return pgm_read_byte(&id_map[mid]);
+      }
+      i++;
     }
-    pos++; // Nächstes Wort beginnt nach dem markierten Zeichen
+
+    if (res < 0) high = mid - 1;
+    else low = mid + 1;
   }
-  }
-*/
+  return error_val;
+}
 
 // Hilfsfunktion zum Vergleichen von txtpos mit einem Wort im Flash
 int compareInputWithFlash(const char* input, int kw_index, int &matched_len) {
@@ -7137,7 +7067,7 @@ int findCommandBinary() {
   // Rückgabe eines Fehlerwertes (z.B. KW_COUNT oder -1), wenn nichts gefunden wurde
   return KW_COUNT;
 }
-
+/*
 int findFunctionBinary() {
   int low = 0;
   int high = 59; // Index 0 bis 59
@@ -7182,18 +7112,60 @@ int findFunctionBinary() {
   }
   return FUNC_UNKNOWN; // Keine Funktion gefunden
 }
-/*
-  void setupFunctionIndex() {
-  uint16_t pos = 0;
-  for (int i = 0; i < 60; i++) {
-    func_offsets[i] = pos;
-    while (!(pgm_read_byte(&func_tab[pos]) & 0x80)) {
-      pos++;
+
+
+int findOptionBinary() {
+  int8_t low = 0;
+  int8_t high = 7; // 8 Einträge
+
+  while (low <= high) {
+    int8_t mid = (low + high) >> 1;
+    uint16_t offset = opt_offsets[mid];
+    int i = 0;
+    int res = 0;
+
+    while (true) {
+      uint8_t table_byte = pgm_read_byte(&options_tab[offset + i]);
+      uint8_t table_char = table_byte & 0x7F;
+      uint8_t input_char = (uint8_t)txtpos[i];
+
+      if (input_char != table_char) {
+        res = input_char - table_char;
+        break;
+      }
+
+      // Ende des Wortes in der Tabelle erreicht?
+      if (table_byte & 0x80) {
+        // Wortgrenzen-Check (danach darf kein Buchstabe/Zahl kommen)
+        char next_c = txtpos[i + 1];
+        if (isalnum(next_c) || next_c == '_') {
+          res = 1; // Eingabe ist länger als Tabelleneintrag
+          break;
+        }
+        // MATCH!
+        txtpos += (i + 1);
+        return pgm_read_byte(&opt_id_map[mid]);
+      }
+      i++;
     }
-    pos++;
+
+    if (res < 0) high = mid - 1;
+    else low = mid + 1;
   }
-  }
+  return OPT_COUNT;
+}
 */
+void setupTableIndex(const char* table, uint16_t* offsets, int count) {
+  uint16_t pos = 0;
+  for (int i = 0; i < count; i++) {
+    offsets[i] = pos;
+    while (!(pgm_read_byte(&table[pos++]) & 0x80)) {
+//      pos++;
+    }
+//    pos++;
+  }
+}
+
 
 int findRelopBinary() {
   int8_t low = 0;
@@ -7239,111 +7211,6 @@ int findRelopBinary() {
   return RELOP_UNKNOWN;
 }
 
-int findOptionBinary() {
-  int8_t low = 0;
-  int8_t high = 7; // 8 Einträge
-
-  while (low <= high) {
-    int8_t mid = (low + high) >> 1;
-    uint16_t offset = opt_offsets[mid];
-    int i = 0;
-    int res = 0;
-
-    while (true) {
-      uint8_t table_byte = pgm_read_byte(&options_tab[offset + i]);
-      uint8_t table_char = table_byte & 0x7F;
-      uint8_t input_char = (uint8_t)txtpos[i];
-
-      if (input_char != table_char) {
-        res = input_char - table_char;
-        break;
-      }
-
-      // Ende des Wortes in der Tabelle erreicht?
-      if (table_byte & 0x80) {
-        // Wortgrenzen-Check (danach darf kein Buchstabe/Zahl kommen)
-        char next_c = txtpos[i + 1];
-        if (isalnum(next_c) || next_c == '_') {
-          res = 1; // Eingabe ist länger als Tabelleneintrag
-          break;
-        }
-        // MATCH!
-        txtpos += (i + 1);
-        return pgm_read_byte(&opt_id_map[mid]);
-      }
-      i++;
-    }
-
-    if (res < 0) high = mid - 1;
-    else low = mid + 1;
-  }
-  return OPT_COUNT;
-}
-/*
-  void setupOptionOffsets() {
-  uint16_t pos = 0;
-  for (int i = 0; i < 8; i++) {
-    opt_offsets[i] = pos;
-    while (!(pgm_read_byte(&options_tab[pos++]) & 0x80));
-  }
-  }
-*/
-
-void setupTableIndex(const char* table, uint16_t* offsets, int count) {
-  uint16_t pos = 0;
-  for (int i = 0; i < count; i++) {
-    offsets[i] = pos;
-    while (!(pgm_read_byte(&table[pos]) & 0x80)) {
-      pos++;
-    }
-    pos++;
-  }
-}
-//################################################################# Versuch einer einheitlichen Tabellensuche (keywords, Functions,Option #######################################
-
-// Rückgabe: ID aus der Map oder -1 (nicht gefunden)
-int8_t findInTable(const char* table, const uint8_t* id_map, const uint16_t* offsets, uint8_t count) {
-  int8_t low = 0;
-  int8_t high = count - 1;
-
-  while (low <= high) {
-    int8_t mid = (low + high) >> 1;
-    uint16_t offset = offsets[mid];
-    int8_t i = 0;
-    int8_t res = 0;
-
-    while (true) {
-      uint8_t t_byte = pgm_read_byte(&table[offset + i]);
-      uint8_t t_char = t_byte & 0x7F;
-      uint8_t i_char = (uint8_t)txtpos[i];
-
-      if (i_char != t_char) {
-        res = i_char - t_char;
-        break;
-      }
-
-      if (t_byte & 0x80) { // Wortende in der Tabelle erreicht
-        // Das Zeichen im Quelltext DIREKT nach dem gematchten Wort
-        char next = txtpos[i + 1];
-
-        // Wenn das nächste Zeichen im Quelltext ein Buchstabe/Zahl/_ ist,
-        // dann ist das Wort im Quelltext länger (z.B. "DIMA" statt "DIM").
-        if (isalnum((uint8_t)next) || next == '_' || next == '$') {
-          res = 1; // Suche im Alphabet weiter rechts
-        } else {
-          // TREFFER! Das Wort ist zu Ende (danach kommt Space, '(', ',' etc.)
-          txtpos += (i + 1); // Pointer hinter das Wort setzen
-          return pgm_read_byte(&id_map[mid]);
-        }
-        break;
-      }
-      i++;
-    }
-    if (res < 0) high = mid - 1;
-    else low = mid + 1;
-  }
-  return count; // UNKNOWN
-}
 //##############################################################################################################################################################################
 
 //#######################################################################################################################################
@@ -7355,14 +7222,17 @@ void setup()
   setCpuFrequencyMhz(240);                                                           //mit dieser Option gibt's Startschwierigkeiten
 
   // Im Programm-Start:
-  setupTableIndex(keywords, kw_offsets, KW_COUNT);
-  setupTableIndex(func_tab, func_offsets, FUNC_UNKNOWN);
-  setupTableIndex(options_tab, opt_offsets, OPT_COUNT);
+  setupTableIndex(keywords, kw_offsets, KW_COUNT);                                  // Basic-Befehls-Index-Tabelle erstellen
+  setupTableIndex(func_tab, func_offsets, FUNC_UNKNOWN);                            //Funktions-Index-Tabelle erstellen
+  setupTableIndex(options_tab, opt_offsets, OPT_COUNT);                             //Index-Tabelle für Options erstellen
 
-  //setupKeywordIndex();                                                               // Basic-Befehls-Index-Tabelle erstellen
-  //setupFunctionIndex();                                                              //Funktions-Index-Tabelle erstellen
-  //setupOptionOffsets();                                                              //Index-Tabelle für Options erstellen
-
+  pinMode(kSD_CS, OUTPUT);
+  pinMode(FRAM_CS, OUTPUT);
+  digitalWrite(FRAM_CS, HIGH);
+  digitalWrite(kSD_CS, HIGH);
+  
+  SPI.begin();
+  
   EEPROM. begin ( EEPROM_SIZE ) ;
   delay(200);
   if (EEPROM.read(100) == erststart_marker) {                                         //auf jungfräulichkeit prüfen
@@ -7612,7 +7482,7 @@ void setup()
 
   //SoundGenerator.play(true);
   //Serial.begin(115200);                                                           // open serial port
-
+  
   // das I2C-Interface definieren
   myI2C.begin(SDA_RTC, SCL_RTC, 400000); //400kHz
   rtc.begin(&myI2C);
@@ -8256,6 +8126,7 @@ nochmal:
     //********************************************************** DIM-Befehl **************************************************************
     //#######################################################################################################################################
     int Array_Dim(void) {
+      
       while (1) {
         if (*txtpos >= 'A' && *txtpos <= 'Z') {
           uint32_t tmp;
@@ -8263,7 +8134,8 @@ nochmal:
           uint32_t grenze, ort;
           uint8_t p_data[6], len;
           bool str = false;
-
+          
+          
           // 1. Variablenname parsen (Unterstützt AA, AB...)
           tmp = (*txtpos - 'A');
           txtpos++;
@@ -8283,6 +8155,7 @@ nochmal:
           }
 
           // 3. Dimensionen parsen (X, Y, Z)
+          
           if (Test_char('(')) return 1;
           x = abs(get_value());
           if (*txtpos == ',') {
@@ -8293,6 +8166,7 @@ nochmal:
               z = abs(get_value());
             }
           }
+          
           if (Test_char(')')) return 1;
 
           // 4. Speicherbedarf berechnen (32-Bit für ESP32)
@@ -8324,7 +8198,9 @@ nochmal:
         }
 
         if (*txtpos != ',') return 0; // Ende der DIM-Anweisung
+        //spaces();
         txtpos++; // Nächstes Array in derselben Zeile
+
       }
     }
 
@@ -8333,7 +8209,7 @@ nochmal:
     //#######################################################################################################################################
     int Option(void) {
       byte p[6];
-      table_index = findOptionBinary();
+      table_index = findOption();//Binary();
       //scantable(options);                                                  //Optionstabelle lesen
       char fu = table_index;
       int i, adr;
@@ -8898,6 +8774,7 @@ nochmal:
           fp.write( g );
           fp.write( r );
         }
+
       }
       fp.close();
       sd_ende();                                                //SD-Card unmount
@@ -8992,6 +8869,7 @@ nochmal:
         }
         skipx += (stepy - 1) * xx * 3;                         //nächste Bildzeile
         fp.seek(skipx);
+
       }
 
       fp.close();
@@ -9812,7 +9690,7 @@ nochmal:
       GFX.waitCompletion();
     }
 
-    //########################################################### Befehl RENUM ###########################################################
+    //########################################################### Befehl RENUM ########################################################################################
 
     void renum()
     {
@@ -10048,67 +9926,9 @@ nochmal:
       return num_neu;
     }
 
+    //#########################################################################################################################################################################
 
 
-    void print_colored_line(const char* p) {
-      while (*p != 0 && *p != '\n' && *p != '\r') {
-
-        // 1. Strings (Rot)
-        if (*p == '"') {
-          Terminal.print(COL_STR);
-          Terminal.write(*p++);
-          while (*p != '"' && *p != 0) Terminal.write(*p++);
-          if (*p == '"') Terminal.write(*p++);
-          Terminal.print(COL_RESET);
-          continue;
-        }
-
-        // 2. Zahlen (Magenta)
-        if (isdigit(*p)) {
-          Terminal.print(COL_NUM);
-          while (isdigit(*p)) Terminal.write(*p++);
-          Terminal.print(COL_RESET);
-          continue;
-        }
-
-        // 3. Wörter (Keywords oder Funktionen)
-        if (isalpha(*p)) {
-          const char* word_start = p;
-          // Temporär das Wort scannen (ohne txtpos zu zerstören)
-          // Hier nutzt du deine findInTable Logik (im "Peek"-Modus)
-
-          // Simpler Ansatz: Erstmal schauen, ob es ein Keyword ist
-          // Wir setzen txtpos kurzzeitig auf p für die Suche
-          static char* old_txtpos = txtpos;
-          txtpos = (char*)p;
-
-          int8_t kw = findCommandBinary();//findInTable(keyword_tab, key_id_map, kw_offsets, KW_COUNT);
-          if (kw != -1) {
-            Terminal.print(COL_KEYW);
-            // Wort drucken bis zum Ende
-            while (p < txtpos) Terminal.write(*p++);
-            Terminal.print(COL_RESET);
-          } else {
-            int8_t fn = findFunctionBinary();//findInTable(func_tab, func_id_map, func_offsets, 60);
-            if (fn != -1) {
-              Terminal.print(COL_FUNC);
-              while (p < txtpos) Terminal.write(*p++);
-              Terminal.print(COL_RESET);
-            } else {
-              // Es ist eine Variable (Grün)
-              Terminal.print(COL_VAR);
-              while (isalnum(*p) || *p == '$' || *p == '%') Terminal.write(*p++);
-              Terminal.print(COL_RESET);
-            }
-          }
-          txtpos = old_txtpos; // txtpos wieder herstellen
-          continue;
-        }
-
-        // 4. Alles andere (Operatoren, Klammern etc.)
-        Terminal.write(*p++);
-      }
-    }
 
     //########################################################################## Testbereich - Labels #########################################################################
     /*

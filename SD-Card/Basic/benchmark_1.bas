@@ -1,0 +1,6 @@
+10 CLS:PRINT"Benchmark 1"
+20 T=TIMER
+120 FOR K=0 TO 1000
+130 NEXT K
+500 PRINT (TIMER-T)/1000;" sek."
+600 RUN"/benchmark_2.bas"

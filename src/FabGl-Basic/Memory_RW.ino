@@ -101,6 +101,7 @@ void SPI_RAM_clear(uint32_t start_adr, uint32_t laenge) {
   
 }
 
+
 int32_t readBack(uint32_t addr, int32_t data) {
   
   int32_t check = !data;
@@ -121,53 +122,7 @@ int32_t readBack(uint32_t addr, int32_t data) {
   return check;
 }
 
-
 uint8_t addrSizeInBytes = 2; // Default to address size of two bytes
-
-void SPI_FRAM_info() {
-  // 1. Initialisierung mit Standardwert
-  if (!spi_fram.begin(addrSizeInBytes)) {
-    Terminal.println("No SPI RAM found!");
-    return;
-  }
-
-  // 2. Adressgröße bestimmen (2, 3 oder 4 Bytes)
-  uint8_t foundSize = 0;
-  for (uint8_t s = 2; s <= 4; s++) {
-    if (testAddrSize(s)) {
-      foundSize = s;
-      break; 
-    }
-  }
-
-  if (foundSize == 0) {
-    Terminal.println("Address size error!");
-    return;
-  }
-  addrSizeInBytes = foundSize;
-  spi_fram.setAddressSize(addrSizeInBytes);
-
-  // 3. Speichergröße effizienter ermitteln (Binäre Schritte)
-  // Wir prüfen immer am Ende einer möglichen Chip-Größe (64k, 128k, 256k...)
-  uint32_t testSize = 1024; 
-  while (testSize < 0xFFFFFFFF) {
-    if (readBack(testSize, 0xABCDEFAF) != 0xABCDEFAF) {
-      break; // Ende erreicht oder Wrap-around
-    }
-    // Verdopple die Testadresse (schneller als +256)
-    if (testSize >= 0x80000000) break; // Überlaufschutz
-    testSize *= 2;
-  }
-  SPI_memSize = testSize;
-
-  Terminal.print("FRAM found: ");
-  Terminal.print(SPI_memSize / 1024);
-  Terminal.println(" KB");
-
-  // Bildoffset berechnen
-  FRAM_PIC_OFFSET = (VGAController.getViewPortWidth() * VGAController.getViewPortHeight()) + 4;
-}
-
 bool testAddrSize(uint8_t addrSize) {
   spi_fram.setAddressSize(addrSize);
   if (readBack(4, 0xbeefbead) == 0xbeefbead)
@@ -175,8 +130,33 @@ bool testAddrSize(uint8_t addrSize) {
   return false;
 }
 /*
+void SPI_FRAM_info() {
+  uint8_t manID;
+  uint16_t prodID;
+  spi_fram.getDeviceID(&manID, &prodID);
 
+  if (manID == 0x04 && prodID == 0x4903) {
+    Terminal.println("Fujitsu 8Mbit FRAM erkannt.");
+    SPI_memSize = 1024 * 1024; // 1 MB
+    addrSizeInBytes = 3;
+  } else if (manID == 0x04 && prodID == 0x4803) {
+    Terminal.println("Fujitsu 4Mbit FRAM erkannt.");
+    SPI_memSize = 512 * 1024;  // 512 KB
+    addrSizeInBytes = 3;
+  } else {
+    // Fallback auf deine bisherige Suche, falls ID unbekannt
+    Terminal.println("Unbekannter Chip, starte Suche...");
+    // ... dein Suchcode ...
+  }
 
+  spi_fram.begin(addrSizeInBytes); // Pin 0 als CS
+  spi_fram.setAddressSize(addrSizeInBytes);
+
+  Terminal.print("Memorysize: ");
+  Terminal.print(SPI_memSize / 1024);
+  Terminal.println(" KB");
+}
+*/
 void SPI_FRAM_info(){
   
 if (spi_fram.begin(addrSizeInBytes)) {
@@ -193,8 +173,7 @@ if (spi_fram.begin(addrSizeInBytes)) {
   else if (testAddrSize(4))
     addrSizeInBytes = 4;
   else {
-    Terminal.println(
-        "SPI RAM can not be read/written with any address size\r\n");
+    Terminal.println("SPI RAM can not be read/written with any address size\r\n");
     return;
   }
 
@@ -204,6 +183,22 @@ if (spi_fram.begin(addrSizeInBytes)) {
   }
 
   FRAM_PIC_OFFSET = (VGAController.getViewPortWidth() * VGAController.getViewPortHeight()) + 4;     //Bildoffset im Speicher X*Y Dimension + 4 Byte für Dimensionsdaten
-
+  Terminal.print("SPI-RAM found:"); Terminal.print(SPI_memSize / 1024); Terminal.println(" kB");
+  Terminal.println();
 }
-*/
+
+
+void readFRAMIdent() {
+  uint8_t manufacturerID, deviceID;
+  uint16_t productID;
+
+  // Die Bibliothek liest die JEDEC ID aus
+  spi_fram.getDeviceID(&manufacturerID, &productID);
+
+  Terminal.print("Manufacturer ID: 0x"); Terminal.println(manufacturerID, HEX);
+  Terminal.print("Product ID: 0x");      Terminal.println(productID, HEX);
+
+  // Beispiel für 4 Mbit (512 KB) MB85RS4MT:
+  // Manufacturer: 0x04 (Fujitsu)
+  // Product ID: 0x4803 (4 Mbit Modell)
+}

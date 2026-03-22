@@ -99,7 +99,7 @@ void show_help_name(void) {                                             //Anzeig
   table_index = findCommandBinary();                                    //Befehlstabelle lesen
   txtpos = tmptxtpos;
   kw = table_index;
-  table_index = findFunctionBinary();                                   //Funktionstabelle lesen
+  table_index = findFunction();//Binary();                                   //Funktionstabelle lesen
   fu = table_index;
   txtpos = tmptxtpos;
   table_index = findRelopBinary();//scantable(relop_tab);               //Opreator-Tabelle lesen

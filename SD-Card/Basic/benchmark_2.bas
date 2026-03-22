@@ -1,0 +1,7 @@
+10 PRINT"Benchmark 2"
+20 T=TIMER
+120 K=0
+130 K=K+1
+190 IF K<1000 THEN GOTO 130
+500 PRINT (TIMER-T)/1000;" sek."
+600 RUN"/benchmark_3.bas"
