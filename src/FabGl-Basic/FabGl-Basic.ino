@@ -52,12 +52,13 @@
 //
 //
 //
-#define BasicVersion "2.14"
-#define BuiltTime "21.03.2026"
+#define BasicVersion "2.14a"
+#define BuiltTime "23.03.2026"
 // siehe Logbuch.txt zum Entwicklungsverlauf
 // V2.14:21.03.2026           -Syntax-Hervorhebung integriert - das ist cool ;-)
 //                            -Hardwarefehler beim FRAM-Modul behoben - an der CS-Leitung ist zwingend ein Pullup-Widerstand (10k nach VDD) notwendig
-//                            -28251 Zeilen/sek.
+//                            -Hardwareänderung am I2C-Bus - SDA jetzt auf IO27 - IO3 funktionierte nur mit angeschlossenem USB-Kabel - ohne funktionierte der I2C-Bus nicht (ist mir bisher nicht aufgefallen :-( )
+//                            -27825 Zeilen/sek.
 //
 // V2.13:07.03.2026           -Zeileneditor erweitert, ENTER führt jetzt zum Aufrufen der nächsten Zeile -> Abbruch der Eingabe mit ESC und danach ENTER
 //                            -Umstellung der scantable-funktion auf binäre Suche der Basic-Befehle und Funktionen, das hatte eine massive Steigerung der Geschwindigkeit
@@ -268,8 +269,8 @@ float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA;
 
 //---------------------------- EEPROM o.FRAM-Chip I2C-Adressen ------------------------------------------------------------------------------------
 
-short int EEprom_ADDR = 0x50; //-> Adresse 0x50 ist der EEPROM auf dem Board
-//short int EEprom_ADDR = 0x57; //-> Adresse 0x57 ist der EEPROM auf dem RTC3231 Board
+//short int EEprom_ADDR = 0x50; //-> Adresse 0x50 ist der EEPROM auf dem Board
+short int EEprom_ADDR = 0x57; //-> Adresse 0x57 ist der EEPROM auf dem RTC3231 Board
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 
@@ -297,7 +298,7 @@ RTC_DS3231 rtc;
 //diese Konstellation funktioniert mit ESP-Eigenboard und RTC-Modul oder 27 und 26 für die Freigabe des Seriellports
 byte IIC_SET = 55;      // -steht 55 im EEprom-Platz 13, dann sind die Werte im EEprom gültig
 // dies ist die Standard-Konfiguration
-byte SDA_RTC = 3;
+byte SDA_RTC = 27;
 byte SCL_RTC = 1;
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -1422,7 +1423,6 @@ static void getln(int m)
     switch (c)
     {
       case NL:
-
       case CR:
         line_terminator();
         // Terminate all strings with a NL
@@ -1687,6 +1687,7 @@ int printline() {
     else {
       outchar(*list_line++);
     }
+    yield();
   }
 
   if (*list_line == NL) list_line++;
@@ -3601,7 +3602,7 @@ fnkey:                                                               //Funktions
         break;
 
       case KW_RUN:                                        // RUN
-        if (*txtpos != NL) {                             //RUN"/Filename" lädt und startet das Programm
+        if (*txtpos != NL) {                              //RUN"/Filename" lädt und startet das Programm
           if (load_file()) {
             continue;
           }
@@ -3634,10 +3635,10 @@ fnkey:                                                               //Funktions
         goto next;
         break;
 
-      case KW_RENAME:                                        // RENAME
+      case KW_RENAME:                                     // RENAME
         expression_error = 0;
         get_value();
-        strcpy(filestring, tempstring);       //Tempstring nach filestring kopieren
+        strcpy(filestring, tempstring);                   //Tempstring nach filestring kopieren
         if (Test_char(',')) continue;
         get_value();
         renameFile(SD, filestring, tempstring);
@@ -3673,10 +3674,8 @@ fnkey:                                                               //Funktions
         break;
 
       case KW_GOSUB ... KW_GOTO:                          // GOTO/GOSUB
-        //Terminal.print("hier bin ich");
         expression_error = 0;
         linenum = get_value();
-        //Terminal.print(linenum);
         if (ongosub > 0)
         {
           e = 1;
