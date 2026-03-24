@@ -44,6 +44,7 @@
 //                                          -Exponential-Ein/Ausgabe
 //                                          -Verschiedene Sensoren und Komponenten HC-S04, Dallas DS18S20, DHT, LCD, Neopixel-LED, BMP180
 //                                          -Zeileneditor
+//                                          -Syntax-Hervorhebung
 //                                          -integrierte Kurzhilfe
 //
 // Author:Reinhard Zielinski <zille09@gmail.com>
@@ -58,7 +59,10 @@
 // V2.14:21.03.2026           -Syntax-Hervorhebung integriert - das ist cool ;-)
 //                            -Hardwarefehler beim FRAM-Modul behoben - an der CS-Leitung ist zwingend ein Pullup-Widerstand (10k nach VDD) notwendig
 //                            -Hardwareänderung am I2C-Bus - SDA jetzt auf IO27 - IO3 funktionierte nur mit angeschlossenem USB-Kabel - ohne funktionierte der I2C-Bus nicht (ist mir bisher nicht aufgefallen :-( )
-//                            -27825 Zeilen/sek.
+//                            -RENUM-Befehl nochmals überarbeitet - es werden falsche Zielnummern identifiziert und der Rest der Zeile nach Goto oder Gosub (durch : getrennt) nicht abgeschnitten
+//                            -Fehler in der Behandlung der ersten Zeilennummer nach on x Goto/Gosub behoben, die erste Zahl wurde nicht erkannt
+//                            -Startbildschirm zeigt jetzt SD-Card-Status und FRAM-Größe an
+//                            -26433 Zeilen/sek. (Debug)
 //
 // V2.13:07.03.2026           -Zeileneditor erweitert, ENTER führt jetzt zum Aufrufen der nächsten Zeile -> Abbruch der Eingabe mit ESC und danach ENTER
 //                            -Umstellung der scantable-funktion auf binäre Suche der Basic-Befehle und Funktionen, das hatte eine massive Steigerung der Geschwindigkeit
@@ -71,7 +75,6 @@
 //                            -alle Befehle nun auf die neue Suche umgestellt, scantable nicht mehr nötig
 //                            -OPT Vmode entfernt, es gibt jetzt nur noch die Standardauflösung von 320x240 Pixel
 //                            -26484 Zeilen/sek. (Debug lvl keine) :-)
-//
 //
 // V2.12a:07.03.2026          -RENUM für Neunummerierung der Programmzeilen integriert mit Berücksichtigung GOTO und GOSUB sowie ON .. GOTO und ON .. GOSUB :-)
 //                            -Bearbeitung erfolgt mithilfe der SD-Karte als Bearbeitungsspeicher - funktioniert erstaunlich gut :-)
@@ -199,9 +202,6 @@ const char * Themes[]    PROGMEM = {"C64", "C128", "CPC", "ATARI 800", "ZX-Spect
 const char * Keylayout[] PROGMEM = {" ", "US", "UK", "GE", "IT", "ES", "FR", "BE", "NO", "JP"};
 byte x_char[]      PROGMEM = {8, 5, 6, 8,  10, 8,  8,  8,  8,  8,  8,  8,  8,  6,  8,  4, 6,  7,  7,  8, 8, 8, 6, 9, 8, 8, 6}; //x-werte der Fontsätze zur Berechnung der Terminalbreite
 byte y_char[]      PROGMEM = {8, 8, 8, 14, 20, 14, 14, 16, 16, 14, 14, 14, 16, 10, 14, 6, 12, 13, 14, 9, 14, 14, 13, 15, 16, 8, 8}; //y-werte der Fontsätze zur Berechnung der Terminalhöhe
-//int screencell_x;
-//int screencell_y;
-
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //------------------------------------------------------------- Soundgenerator ----------------------------------------------------------------------------
@@ -209,7 +209,6 @@ unsigned int noteTable []  PROGMEM = {16350, 17320, 18350, 19450, 20600, 21830, 
 //------------------------------------------------------------- Soundgenerator ----------------------------------------------------------------------------
 
 //----------------------------------- Editor -Marker ----------------------------------------------------------------------------------------------
-byte Editor_marker = 101;            // EEPROM-Platz 101 beinhaltet den Editor-marker (123) lädt die Datei tmp.bas nach Rückkehr vom Kilo-Editor
 bool Editor_ende = true;
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -315,6 +314,7 @@ bool LCD_Backlight = true;
 #include "Adafruit_FRAM_SPI.h"        // Library unterstützt 23LC1024, Adafruit SPI-FRAM und PSRAM
 
 byte FRAM_CS  = 0;                    //SPI-RAM CS-Pin
+
 Adafruit_FRAM_SPI spi_fram = Adafruit_FRAM_SPI(kSD_CLK, kSD_MISO, kSD_MOSI, FRAM_CS);
 uint32_t SPI_memSize;                 //ermittelte SPI-Ram-Grösse
 uint32_t renum_addr = 0x8004;         //Adresse ab der Renumber arbeitet
@@ -3495,9 +3495,9 @@ void Basic_Interpreter()
 {
   char pa, pb;
   uint8_t cmd;
-  initSD();                                              //SD-Karte initialisieren
   cmd_new();                                             //alles löschen
   print_info();                                          //Start-Bildschirm anzeigen
+  initSD();                                              //SD-Karte initialisieren
   //readFRAMIdent();
   SPI_FRAM_info();                                       //SPI-Ram ermitteln
   int a, e;
@@ -3804,12 +3804,6 @@ fnkey:                                                               //Funktions
           continue;
         break;
 
-      /*
-        case KW_BAR:
-        if(line_rec_circ(10,5))                           //BAR typ, x, y, orient, w, h, wert
-          continue;
-        break;
-      */
       case KW_SWAP:
         if (line_rec_circ(5, 3))                          //SWAP x,y,xx,yy ->vertauscht vorder und Hintergrundfarbe eines rechtecks
           continue;
@@ -4137,10 +4131,10 @@ fnkey:                                                               //Funktions
         break;
 
       case KW_EDIT:
-         /*
+        /*
           if (*txtpos == NL) {
-            editor_mode = true;
-            basic_editor();            editor_mode = false;
+           editor_mode = true;
+           basic_editor();            editor_mode = false;
           }
           else
           {
@@ -4465,18 +4459,11 @@ static int command_Print(void)
     // Ende der Print-Liste prüfen
     if (c == ':' || c == NL || c == CR || c == '\0') {
       if (!semicolon) line_terminator();
-      if( c == ':' ) txtpos++;
+      if ( c == ':' ) txtpos++;
       k = 1;
       break;
     }
-/*
-    if (c == ':') {
-      if (!semicolon) line_terminator();
-      txtpos++; // Doppelpunkt überspringen für nächsten Befehl
-      k = 1;
-      break;
-    }
-*/
+
     switch (c)
     {
       case ';':
@@ -4562,136 +4549,7 @@ static int command_Print(void)
 
   return 0;
 }
-/*
-static int command_Print()
-{
-  int k = 0;
-  int i, xp, yp;
-  int tb[] = {0, 10, 20, 30};
 
-  while (!k)
-  { char c = spaces();
-
-    switch (c)
-    {
-
-      case ';':
-        semicolon = true;
-        if (skip_spaces() == NL)
-        {
-          k = 1;
-        }
-        break;
-
-      case '"':
-        print_quoted_string();
-        break;
-
-      case ':':
-        if (!semicolon)
-           line_terminator();
-        txtpos++;
-        k = 1;
-        semicolon = false;
-        break;
-
-      case CR:
-      case NL:
-        line_terminator();
-        semicolon = false;
-        k = 1;
-        break;
-
-      case ',':                       //Tabulator ausgeben
-        i++;
-        if (i > 3) {
-          line_terminator();
-          i = 0;
-        }
-        yp = tc.getCursorRow();
-        tc.setCursorPos(tb[i], yp);
-        semicolon = true;
-        if (skip_spaces() == NL)
-        {
-          k = 1;
-        }
-        break;
-
-      case 'A':                             //Print AT(x,y);
-        tmptxtpos = txtpos;
-        txtpos++;
-        if (*txtpos == 'T')
-        {
-          txtpos++;
-          if (*txtpos == '(')
-          {
-            txtpos++;
-            xp = get_value();
-            if (*txtpos == ',')
-            {
-              txtpos++;
-              yp = get_value();
-              tc.setCursorPos(xp, yp);
-              if (*txtpos != ')') k = 2;
-              else {
-                txtpos++;
-                break;
-              }
-            }
-            else k = 2;
-          }
-          else  txtpos = tmptxtpos; //wenn nach AT keine Klammer kommt kann es sich um die Funktion ATN(x) handeln
-
-        }
-        else {
-          txtpos = tmptxtpos;
-        }
-
-      default:
-        float e;
-
-        e = get_value();                    //Zahl oder Variable lesen
-
-        if (expression_error) k = 2;
-        if (func_string_marker == true) {               //String$ funktion
-          for (int i = 0; i < fstring; i++) {           //in fstring steht die Anzahl der Wiederholungen
-            printmsg(tempstring, 0);
-          }
-          func_string_marker = false;
-          string_marker = false;
-          chr = false;
-        }
-        else if (string_marker == true)                  //String?
-        {
-          printmsg(tempstring, 0);
-          func_string_marker = false;
-          string_marker = false;
-          chr = false;
-        }
-        else if (chr == true)
-        {
-          outchar(int(e));
-          chr = false;                       //marker zurücksetzen
-          string_marker = false;
-        }
-        else if (tab_marker == true)         //TAB und SPC-Funktion
-        {
-          tab_marker = false;                //marker zurücksetzen
-        }
-        else {
-          printnum(e, Zahlenformat);         //Zahl
-        }
-    }
-
-
-  }//while(!k)
-
-  if (k == 2)
-    return 1;                               //Fehler - wieder von vorn
-
-  return 0;                                 // nächster Befehl
-}
-*/
 //#######################################################################################################################################
 //--------------------------------------------- Variablen - Eingabe ---------------------------------------------------------------------
 //#######################################################################################################################################
@@ -5220,22 +5078,13 @@ static int line_rec_circ(int circ_or_rect, int param)
       break;
 
     case 9:
-      //x=par[0]+par[3]*cos(par[2]*M_PI/180);                                  //Angle x,y,winkel,länge
-      //y=par[1]+par[3]*sin(par[2]*M_PI/180);
-      GFX.drawLine(par[0], par[1], par[0] + par[3]*cos(par[2]*M_PI / 180), par[1] + par[3]*sin(par[2]*M_PI / 180));
-      //GFX.waitCompletion();
+      GFX.drawLine(par[0], par[1], par[0] + par[3]*cos(par[2]*M_PI / 180), par[1] + par[3]*sin(par[2]*M_PI / 180)); //Angle x,y,winkel,länge
       break;
-    /*
-      case 10:
-      drawBar(par[0],par[1],par[2], par[3], par[4], par[5]);  //zeichnet Bargraph, Progressbar
-      break;
-    */
+
     default:
       GFX.drawLine(par[0], par[1], par[2], par[3]);                          //Line line x,y,xx,yy
-      //GFX.waitCompletion();
       break;
   }
-  //bcolor(Hintergrund);
   return 0;
 }
 
@@ -5376,77 +5225,7 @@ static int Sound(void) {
   short int  i, par[7];
   char c[30];
   String seq;
-  //if (Test_char('_')) return 1;                           //Klammer-auf vorhanden?
-  //c = *txtpos;
-  //expression_error = 0;
-  //txtpos++;
-  /*
-    switch (c) {
-    case 'N':
-      for (int i = 1; i < 5; i++)
-      {
-        expression_error = 0;
-        par[i] = int(get_value());
-        if (expression_error) return 1;
-        if (i < 4) {
-          if (Test_char(',')) return 1;
-        }
-      }
-      midiNoteOn(par[1], par[2], par[3]);
-      delay(par[4]);
-      midiNoteOff(par[1], par[2], par[3]);
-      break;
 
-    case 'C':
-      for (int i = 1; i < 4; i++)
-      {
-        expression_error = 0;
-        par[i] = int(get_value());
-        if (expression_error) return 1;
-        if (i < 3) {
-          if (Test_char(',')) return 1;
-        }
-      }
-      midiChannelMessage(par[1], par[2], par[3]);
-      break;
-
-    case 'I':
-      expression_error = 0;
-      par[1] = int(get_value());
-      if (Test_char(',')) return 1;
-      par[2] = int(get_value());
-      midiSetInstrument(par[1], par[2]);
-      break;
-
-    case 'R':
-      VS1053_MIDI.write(0xff);
-      break;
-
-    default:
-      break;
-
-    }
-  */
-  //Sound(Chan,note,vel,duration)
-  /*
-       Sequence:
-      SND(waveform,frequency,duration,volume)
-
-      Parameters:
-      waveform:
-          "0" = SINE
-          "1" = SQUARE
-          "2" = TRIANGLE
-          "3" = SAWTOOTH
-          "4" = NOISE
-          "5" = VIC NOISE
-      frequency:
-          frequency in Hertz
-      duration:
-          duration in milliseconds
-      volume:
-          volume (min is 0, max is 127)  snd(waveform,freq,duration,vol)
-  */
   if (Test_char('(')) return 1;                           //Klammer-auf vorhanden?
 
   for (i = 1; i < 5; i++)
@@ -5460,14 +5239,9 @@ static int Sound(void) {
     }
   }
 
-
-
   if (par[1] > 5)   par[1] = 5;
   if (par[4] > 127) par[4] = 127;
   par[2] = NoteToFreq(par[2]);
-  //Terminal.write("\e_S0;800;1000;100$");
-  //seq = "\e_S" + String(par[1], DEC) + ";" + String(par[2], DEC) + ";" + String(par[3], DEC) + ";" + String(par[4], DEC) + "$";
-  //seq.toCharArray(c, seq.length() + 1);
   Terminal.print("\e_S" + String(par[1], DEC) + ";" + String(par[2], DEC) + ";" + String(par[3], DEC) + ";" + String(par[4], DEC) + "$");
 
 
@@ -6169,12 +5943,6 @@ static int inchar()
           c = Terminal.read();          //Standard-Tasteneingabe
 
           switch (c) {
-            /*
-              case 0x1b:
-              c = Terminal.read();
-              if(c=='d') c = '1';
-              else if(c=='c') c='2';
-            */
 
             case 0x03:       // ctrl+c        -> BREAK
               current_line = 0;
@@ -6285,7 +6053,7 @@ static int initSD()
   int adr, i;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-  //SPI.setFrequency(40000000);
+  
   if (!SD.begin( kSD_CS, spiSD))
   {
     spiSD.end();
@@ -6319,7 +6087,7 @@ static int initSD()
     return 1;
   }
 
-  //printmsg("SD-Card OK", 1);
+  printmsg("SD-Card: OK", 0);
   sd_ende();                                               //unmount
   return 1;                                                //OK
 }
@@ -6330,7 +6098,7 @@ static int initSD()
 
 void sd_ende() {
   spiSD.end();                                              //SD-Card unmount
-  spi_fram.begin(3);                                         //FRAM aktivieren
+  spi_fram.begin(3);                                        //FRAM aktivieren
   string_marker == false;                                   //Stringmarker für Dateioperationen löschen
 }
 
@@ -6920,8 +6688,8 @@ static int isValidFnChar( char c )
 //--------------------------------------------- Timer-Interrupt für Akku-Überwachung ----------------------------------------------------
 //#######################################################################################################################################
 
-void IRAM_ATTR onTimer()
-{
+//void IRAM_ATTR onTimer()
+//{
   //----------------------- Akku-Überwachung -----------------------------------
   /*
     Batt>--+
@@ -6938,6 +6706,7 @@ void IRAM_ATTR onTimer()
       |          13517
     GND+-----GND
   */
+  /*
   float batterie = 3.3 / 4095 * analogRead(Batt_Pin);
   batterie = batterie / 0.753865; //10190/(10190+3327);               //zurückrechnen auf die ursprünglichen 4.2V (Uin/(R2/(r1+r2))
   if ( batterie < 3.4 )
@@ -6948,7 +6717,7 @@ void IRAM_ATTR onTimer()
     printmsg(" V", 0);
   }
 }
-
+*/
 
 //###############################################################################################################################################################################
 //################################################################# Versuch einer einheitlichen Tabellensuche (keywords, Functions,Option #######################################
@@ -6982,7 +6751,7 @@ int8_t findInTable(const char* table, const uint16_t* offsets, const uint8_t* id
       uint8_t table_byte = pgm_read_byte(&table[offset + i]);
       uint8_t table_char = table_byte & 0x7F;
       uint8_t input_char = (uint8_t)txtpos[i];
-      
+
       // Case-Insensitive (Optional, falls gewünscht)
       if (input_char >= 'a' && input_char <= 'z') input_char -= 32;
 
@@ -6994,7 +6763,7 @@ int8_t findInTable(const char* table, const uint16_t* offsets, const uint8_t* id
       if (table_byte & 0x80) { // Wortende in Tabelle erreicht
         // WORTGRENZEN-CHECK:
         // Wir akzeptieren das Wort nur, wenn danach KEIN Buchstabe folgt.
-        // (Damit 'IF' nicht in 'IFFA' matcht). 
+        // (Damit 'IF' nicht in 'IFFA' matcht).
         // Zahlen, Klammern, Kommas, Leerzeichen sind OK!
         char next_c = txtpos[i + 1];
         if (isalpha((uint8_t)next_c) || next_c == '_') {
@@ -7066,102 +6835,12 @@ int findCommandBinary() {
   // Rückgabe eines Fehlerwertes (z.B. KW_COUNT oder -1), wenn nichts gefunden wurde
   return KW_COUNT;
 }
-/*
-int findFunctionBinary() {
-  int low = 0;
-  int high = 59; // Index 0 bis 59
 
-  while (low <= high) {
-    int mid = (low + high) / 2;
-    uint16_t offset = func_offsets[mid];
-    int i = 0;
-    int res = 0;
-
-    // Vergleichsschleife
-    while (true) {
-      uint8_t table_byte = pgm_read_byte(&func_tab[offset + i]);
-      uint8_t table_char = table_byte & 0x7F;
-      uint8_t input_char = (uint8_t)txtpos[i];
-      if (input_char != table_char) {
-        res = input_char - table_char;
-        break;
-      }
-
-      // Ende des Tabellenwortes erreicht?
-      if (table_byte & 0x80) {
-        // Prüfen, ob in der Eingabe danach Schluss ist (Wortgrenze)
-        // Ausnahme: Sonderzeichen wie '!' brauchen keine Wortgrenze
-
-        char next_c = txtpos[i + 1];
-        if (isalpha(next_c) || next_c == '$' || next_c == '_') {
-          res = 1; // Eingabe ist länger
-          break;
-        }
-
-        // MATCH GEFUNDEN!
-        txtpos += (i + 1);
-        // Wir geben die echte ID aus deiner Map zurück
-        return pgm_read_byte(&func_id_map[mid]);
-      }
-      i++;
-    }
-
-    if (res < 0) high = mid - 1;
-    else low = mid + 1;
-  }
-  return FUNC_UNKNOWN; // Keine Funktion gefunden
-}
-
-
-int findOptionBinary() {
-  int8_t low = 0;
-  int8_t high = 7; // 8 Einträge
-
-  while (low <= high) {
-    int8_t mid = (low + high) >> 1;
-    uint16_t offset = opt_offsets[mid];
-    int i = 0;
-    int res = 0;
-
-    while (true) {
-      uint8_t table_byte = pgm_read_byte(&options_tab[offset + i]);
-      uint8_t table_char = table_byte & 0x7F;
-      uint8_t input_char = (uint8_t)txtpos[i];
-
-      if (input_char != table_char) {
-        res = input_char - table_char;
-        break;
-      }
-
-      // Ende des Wortes in der Tabelle erreicht?
-      if (table_byte & 0x80) {
-        // Wortgrenzen-Check (danach darf kein Buchstabe/Zahl kommen)
-        char next_c = txtpos[i + 1];
-        if (isalnum(next_c) || next_c == '_') {
-          res = 1; // Eingabe ist länger als Tabelleneintrag
-          break;
-        }
-        // MATCH!
-        txtpos += (i + 1);
-        return pgm_read_byte(&opt_id_map[mid]);
-      }
-      i++;
-    }
-
-    if (res < 0) high = mid - 1;
-    else low = mid + 1;
-  }
-  return OPT_COUNT;
-}
-*/
 void setupTableIndex(const char* table, uint16_t* offsets, int count) {
   uint16_t pos = 0;
   for (int i = 0; i < count; i++) {
     offsets[i] = pos;
-    while (!(pgm_read_byte(&table[pos++]) & 0x80)) {
-//      pos++;
-    }
-//    pos++;
+    while (!(pgm_read_byte(&table[pos++]) & 0x80)); 
   }
 }
 
@@ -7229,7 +6908,7 @@ void setup()
   pinMode(FRAM_CS, OUTPUT);
   digitalWrite(FRAM_CS, HIGH);
   digitalWrite(kSD_CS, HIGH);
-  
+
   SPI.begin();
   
   EEPROM. begin ( EEPROM_SIZE ) ;
@@ -7295,42 +6974,7 @@ void setup()
 #elif defined VGA64
 
   VGAController.begin();                                                                //VGA-Variante //64 Farben
-  //  byte vm = EEPROM.read(6);                                                             //Videomodus lesen
-  //  v_mode = vm;
-  //  switch ( vm ) {
-  //    case 0:
   VGAController.setResolution(QVGA_320x240_60Hz);                                    //Standard-Auflösung
-  //Theme_state = 2;
-  //      break;
-  /*    case 1:
-        VGAController.setResolution(VGA_320x200_60Hz);                                     //C64, CPC
-        //Theme_state = 0;
-        break;
-      case 2:
-        VGAController.setResolution(VGA_320x200_60Hz, 256, 192);                           //ZX-Spectrum, TI99
-        //Theme_state = 4;
-        break;
-      case 3:
-        VGAController.setResolution(VGA_400x300_60Hz, 320, 256);                           //KC85
-        //Theme_state = 6;
-        break;
-      case 4:
-        VGAController.setResolution(VGA_320x200_60Hz, 320, 192);                           //Atari 800XL
-        //Theme_state = 7;
-        break;
-      case 5:
-        VGAController.setResolution(VGA_400x300_60Hz);
-        break;
-
-      default:
-        VGAController.setResolution(QVGA_320x240_60Hz);                                    //Standard-Auflösung
-        //Theme_state = 2;
-        v_mode = 0;
-        break;
-    }
-  */
-
-
 #else                                                                                 //ILI9341
 
   VGAController.begin(TFT_SCK, TFT_MOSI, TFT_DC, TFT_RESET, TFT_CS, TFT_SPIBUS);
@@ -7349,16 +6993,11 @@ void setup()
 
   //Serial.begin(115200);
 
-  //set_font(fontsatz);                                                                  // Fontsatz laden (1 Byte)
   Terminal.enableCursor(true);
   fbcolor(Vordergrund, Hintergrund);
   tc.setCursorPos(1, 1);
   GFX.clear();
-  //set_theme(Theme_state);
   if (Theme_marker) set_theme(Theme_state, fontsatz);                                           //Theme setzen, wenn im EEprom gespeichert
-  //Terminal.println(user_font);
-
-
 
   PS2Controller.keyboard()-> onVirtualKey = [&](VirtualKey * vk, bool keyDown) {
     if (keyDown) {
@@ -7478,21 +7117,19 @@ void setup()
     yield();
   };
 
-
-  //SoundGenerator.play(true);
-  //Serial.begin(115200);                                                           // open serial port
-  
   // das I2C-Interface definieren
   myI2C.begin(SDA_RTC, SCL_RTC, 400000); //400kHz
   rtc.begin(&myI2C);
   getdatetime();                                              //ESP32-interne Uhr stellen für Datei-Zeitstempel
   //-------------------------------- Akku-Überwachung per Timer0-Interrupt --------------------------------------------
+/*
 #ifdef Akkualarm_enabled
 Akku_timer = timerBegin(0, 80, true);
 timerAttachInterrupt(Akku_timer, &onTimer, true);
 timerAlarmWrite(Akku_timer, 60000000, true);         //ca.60sek bis Interrupt ausgelöst wird
 timerAlarmEnable(Akku_timer);                        //Interrupt-Routine
 #endif
+*/
 //----------------------------------------------------------------------------------------------------------------------
 }
 
@@ -8125,7 +7762,7 @@ nochmal:
     //********************************************************** DIM-Befehl **************************************************************
     //#######################################################################################################################################
     int Array_Dim(void) {
-      
+
       while (1) {
         if (*txtpos >= 'A' && *txtpos <= 'Z') {
           uint32_t tmp;
@@ -8133,8 +7770,8 @@ nochmal:
           uint32_t grenze, ort;
           uint8_t p_data[6], len;
           bool str = false;
-          
-          
+
+
           // 1. Variablenname parsen (Unterstützt AA, AB...)
           tmp = (*txtpos - 'A');
           txtpos++;
@@ -8154,7 +7791,7 @@ nochmal:
           }
 
           // 3. Dimensionen parsen (X, Y, Z)
-          
+
           if (Test_char('(')) return 1;
           x = abs(get_value());
           if (*txtpos == ',') {
@@ -8165,7 +7802,7 @@ nochmal:
               z = abs(get_value());
             }
           }
-          
+
           if (Test_char(')')) return 1;
 
           // 4. Speicherbedarf berechnen (32-Bit für ESP32)
@@ -8208,22 +7845,13 @@ nochmal:
     //#######################################################################################################################################
     int Option(void) {
       byte p[6];
-      table_index = findOption();//Binary();
+      table_index = findOption();
       //scantable(options);                                                  //Optionstabelle lesen
       char fu = table_index;
       int i, adr;
 
       switch (fu) {
-        /*
-                case OPT_VMODE:                                                    //Festlegung Bildschirmauflösung 0=320x240, 1=320X200 2=400x300 EEPROM Platz 6
-                  p[0] = get_value();
-                  EEPROM.write(6, p[0]);                                                                //Platz 6
-                  EEPROM.commit () ;
-                  Terminal.println("For take effect now reboot!");
-                  delay(1000);
-                  ESP.restart();
-                  break;
-        */
+
         case OPT_FONT:
           p[0] = get_value();
           EEPROM.write(2, p[0]);          //Font-Nummer im Flash speichern                        Platz 2
@@ -8829,8 +8457,8 @@ nochmal:
 
       //Groesse auf Bildschirmauflösung skalieren
       if (xx >= vh && yy >= vv ) { //&& sc <= 1) {
-        xtmp = float(xx) / vh ;//* (1 / sc);
-        ytmp = float(yy) / vv ;//* (1 / sc);
+        xtmp = float(xx) / vh ;
+        ytmp = float(yy) / vv ;
         restx = xx % vh;
       }
       else {
@@ -9247,18 +8875,7 @@ nochmal:
       // Wenn du viele Punkte zeichnest, entlastet ein kurzes delay(0) den Watchdog
       delay(0);
     }
-    /*
-      void pixel_line(int x, int y, int xx, int yy, uint8_t pix) {
-      for (int a = x; a < xx + 1; a) {
-        for (int b = y; b < yy + 1; b) {
-          GFX.setPixel(a, b);
-          b += pix;
-        }
-        a += pix;
-      }
 
-      }
-    */
     //#######################################################################################################################################
 
     //#######################################################################################################################################
@@ -9794,27 +9411,47 @@ nochmal:
         int gotoPos = content.indexOf(" GOTO ");
         if (gotoPos == -1) gotoPos = content.indexOf(" GOSUB ");
         if (onPos != -1 && gotoPos > onPos) {
+          // Prüfen, ob an der Stelle GOSUB oder GOTO steht
+          int keyLen = 6; // Standard für " GOTO "
+          if (content.indexOf(" GOSUB ", gotoPos) != -1) {
+            keyLen = 7; // Falls GOSUB gefunden wurde
+          }
+
           // Alles vor der Nummernliste (z.B. "ON X GOTO ")
-          String prefix = content.substring(0, gotoPos + 7);
-          // Die Liste der Zielnummern (z.B. "100, 200, 300")
-          String list = content.substring(gotoPos + 7);
+          String prefix = content.substring(0, gotoPos + keyLen);
+
+          // Die Liste der Zielnummern ab dem korrekten Index
+          String list = content.substring(gotoPos + keyLen);
+
           content = prefix + processOnList(list);
           neuzeile = String(num_neu) + " " + content;
-
         }
         else {
-          // Standard GOTO/GOSUB (einzelnes Ziel)
-          String keys[] = {"GOTO ", "GOSUB "};
+          String keys[] = {"GOTO ", "GOSUB ", "RESTORE "};
           for (String k : keys) {
             int p = content.indexOf(k);
             if (p != -1) {
-              int oldT = content.substring(p + k.length()).toInt();
-              content = content.substring(0, p + k.length()) + String(getNewNum(oldT));
+              int startOfNum = p + k.length();
+
+              // 1. Ende der Zahl finden (scannt bis zum ersten Nicht-Ziffer-Zeichen)
+              int endOfNum = startOfNum;
+              while (endOfNum < content.length() && isDigit(content[endOfNum])) {
+                endOfNum++;
+              }
+
+              if (startOfNum < endOfNum) {
+                // 2. Die alte Nummer extrahieren
+                int oldT = content.substring(startOfNum, endOfNum).toInt();
+
+                // 3. String neu zusammenbauen:[Anfang bis GOTO ] + [Neue Nummer] + [Rest ab endOfNum (z.B. : PRINT)]
+                content = content.substring(0, startOfNum) + String(getNewNum(oldT)) + content.substring(endOfNum);
+              }
             }
           }
-          neuzeile = String(num_neu) + " " + content;         //neue geänderte Zeile mit neuer Zeilennummer in den Ram schreiben
+          neuzeile = String(num_neu) + " " + content;
+          
         }
-        write_zeile_fram(neuzeile);
+        write_zeile_fram(neuzeile);           //neue geänderte Zeile mit neuer Zeilennummer in den Ram schreiben
       }
 
 
@@ -9836,12 +9473,11 @@ nochmal:
       uint16_t line_num = (uint16_t)strtol(zeile.c_str(), &endPtr, 10);
 
       // 2. Den Rest der Zeile (nach der Nummer) finden
-      // Wir überspringen die Nummer und eventuelle Leerzeichen danach
+      // überspringe die Nummer und eventuelle Leerzeichen danach
       while (*endPtr == ' ') endPtr++;
       String content = String(endPtr);
 
       // 3. Länge berechnen: 2 Bytes (Nr) + 1 Byte (Längen-Byte) + Textlänge
-      // Wichtig: Die Länge im Längen-Byte inkludiert den Header selbst (3 Bytes)
       uint8_t payload_len = content.length();
       uint8_t total_line_len = payload_len + 3;
 
@@ -9851,8 +9487,7 @@ nochmal:
       header[1] = (line_num >> 8) & 0xFF;  // High Byte der Zeilennummer
       header[2] = total_line_len;          // Gesamtgröße dieser Zeile im FRAM
 
-      // 5. In den FRAM schreiben
-      // Erst den 3-Byte Header
+      // 5. In den FRAM schreiben - Erst den 3-Byte Header
       SPI_RAM_write(renum_addr + fram_ptr, header, 3);
       fram_ptr += 3;
 
@@ -9891,298 +9526,61 @@ nochmal:
       return line_num;
     }
 
-    // Verarbeitet die Nummernliste nach ON GOTO/GOSUB
     String processOnList(String list) {
       String result = "";
-      int start = 0;
-      int comma = list.indexOf(',');
+      String restCode = "";
 
-      while (comma != -1) {
-
-        int oldVal = list.substring(start, comma).toInt();
-        result += String(getNewNum(oldVal)) + ",";
-        start = comma + 1;
-        comma = list.indexOf(',', start);
+      // 1. Doppelpunkt abfangen
+      int colonPos = list.indexOf(':');
+      if (colonPos != -1) {
+        restCode = list.substring(colonPos);
+        list = list.substring(0, colonPos);
       }
-      result += String(getNewNum(list.substring(start).toInt()));
-      return result;
+
+      int start = 0;
+      int commaPos = list.indexOf(',');
+
+      // 2. Liste verarbeiten
+      while (commaPos != -1) {
+        String part = list.substring(start, commaPos);
+        part.trim();
+        if (part.length() > 0) {
+          int n = getNewNum(part.toInt());
+          // Wenn n == -1, schreibe ??? und die alte Nummer
+          result += (n != -1 ? String(n) : "???" + part) + ", ";
+        }
+        start = commaPos + 1;
+        commaPos = list.indexOf(',', start);
+      }
+
+      // 3. Letzte Nummer verarbeiten
+      String lastPart = list.substring(start);
+      lastPart.trim();
+      if (lastPart.length() > 0) {
+        int n = getNewNum(lastPart.toInt());
+        result += (n != -1 ? String(n) : "???" + lastPart);
+      }
+
+      return result + restCode;
     }
 
+
     int getNewNum(int oldTarget) {
-      int num_neu, num_alt;
+      int num_alt;
       unsigned int adr = 0x0;
 
-      for (int i = 0; i < zeilen_anzahl + 1; i++) {
-        num_alt = spi_fram.read8(adr) << 8;
-        num_alt = num_alt + spi_fram.read8(adr + 1);
-        if (num_alt == oldTarget)
-        {
-          num_neu = spi_fram.read8(adr + 2) << 8;
-          num_neu = num_neu + spi_fram.read8(adr + 3);
+      for (int i = 0; i < zeilen_anzahl; i++) { // zeilen_anzahl reicht meist aus
+        num_alt = (spi_fram.read8(adr) << 8) | spi_fram.read8(adr + 1);
+
+        if (num_alt == oldTarget) {
+          int num_neu = (spi_fram.read8(adr + 2) << 8) | spi_fram.read8(adr + 3);
+          return num_neu; // Sofort beenden, wenn gefunden
         }
         adr += 4;
       }
-      return num_neu;
+
+      return -1; // Rückgabe, wenn die Nummer NICHT im FRAM existiert
     }
 
     //#########################################################################################################################################################################
-
-
-
-    //########################################################################## Testbereich - Labels #########################################################################
-    /*
-      struct Label {
-      char name[12];    // Name des Labels (z.B. "loop:")
-      const char* pos;  // Pointer auf die Stelle im Quelltext
-      };
-
-      #define MAX_LABELS 50
-      Label label_table[MAX_LABELS];
-      int label_count = 0;
-
-      const char* findLabel(const char* name) {
-      for (int i = 0; i < label_count; i++) {
-        if (strcmp(label_table[i].name, name) == 0) {
-          return label_table[i].pos;
-        }
-      }
-      return NULL; // Fehler: Label nicht gefunden
-      }
-
-      //GOTO und GOSUB sollen jetzt statt zahlen strings verarbeiten
-      // Alt: lineno = get_value();
-      // Neu:
-      char lname[12];
-      get_label_name(lname); // Hilfsfunktion zum Einlesen des Namens
-      const char* new_pos = findLabel(lname);
-      if (new_pos) txtpos = new_pos;
-
-      //************************* PRESCAN-Funktion
-      #define MAX_LABELS 40
-      #define MAX_LABEL_LEN 12
-
-      struct Label {
-      char name[MAX_LABEL_LEN];
-      const char* address;
-      };
-
-      Label label_table[MAX_LABELS];
-      int label_count = 0;
-
-      void preScanLabels(const char* p_start) {
-      const char* p = p_start;
-      label_count = 0;
-
-      while (*p != 0 && label_count < MAX_LABELS) {
-        // 1. Führende Leerzeichen ignorieren
-        while (*p == ' ') p++;
-
-        // 2. Prüfen, ob hier ein Label steht (Wort gefolgt von :)
-        const char* start_of_word = p;
-        uint8_t len = 0;
-
-        while (isalnum((uint8_t)*p) || *p == '_') {
-          if (len < MAX_LABEL_LEN - 1) len++;
-          p++;
-        }
-
-        if (*p == ':' && len > 0) {
-          // Label gefunden! In Tabelle kopieren
-          strncpy(label_table[label_count].name, start_of_word, len);
-          label_table[label_count].name[len] = '\0'; // Null-Terminierung
-
-          p++; // Den Doppelpunkt überspringen
-          while (*p == ' ') p++; // Leerzeichen nach dem Label ignorieren
-
-          label_table[label_count].address = p; // Hier geht der Code nach dem GOTO weiter
-          label_count++;
-        }
-
-        // 3. Zum Ende der Zeile springen (bis \r oder \n)
-        while (*p != 0 && *p != '\n' && *p != '\r') p++;
-        if (*p == '\r') p++;
-        if (*p == '\n') p++;
-      }
-      }
-      //****************************** GOTO-Programmteil ************************************
-      void do_goto() {
-      char target[MAX_LABEL_LEN];
-      uint8_t len = 0;
-
-      skipSpaces();
-      // Labelname aus dem Quelltext lesen
-      while (isalnum((uint8_t)*txtpos) || *txtpos == '_') {
-        if (len < MAX_LABEL_LEN - 1) target[len++] = *txtpos;
-        txtpos++;
-      }
-      target[len] = '\0';
-
-      // In der Tabelle suchen
-      for (int i = 0; i < label_count; i++) {
-        if (strcasecmp(label_table[i].name, target) == 0) {
-          txtpos = label_table[i].address; // Sprung!
-          return;
-        }
-      }
-      // Fehler: Label nicht gefunden
-      expression_error = 1;
-      }
-      //**************************** GOSUB-Programmteil ************************************
-      #define GOSUB_STACK_SIZE 10
-      const char* gosub_stack[GOSUB_STACK_SIZE];
-      int8_t gosub_stack_ptr = 0;
-
-      void do_gosub() {
-      if (gosub_stack_ptr >= GOSUB_STACK_SIZE) {
-        // Fehler: Stack Überlauf (zu viele GOSUBs verschachtelt)
-        expression_error = ERROR_STACK_OVERFLOW;
-        return;
-      }
-
-      // 1. Label-Namen einlesen (wie bei GOTO)
-      char target[MAX_LABEL_LEN];
-      read_label_name(target); // Hilfsfunktion, die Namen extrahiert
-
-      // 2. In der label_table suchen
-      for (int i = 0; i < label_count; i++) {
-        if (strcmp(label_table[i].name, target) == 0) {
-          // 3. Rücksprungadresse speichern (STELLE HINTER DEM LABELNAMEN)
-          gosub_stack[gosub_stack_ptr++] = txtpos;
-
-          // 4. Sprung ausführen
-          txtpos = label_table[i].address;
-          return;
-        }
-      }
-      expression_error = ERROR_LABEL_NOT_FOUND;
-      }
-
-      void do_return() {
-      if (gosub_stack_ptr <= 0) {
-        // Fehler: RETURN ohne GOSUB
-        expression_error = ERROR_RETURN_WITHOUT_GOSUB;
-        return;
-      }
-
-      // Adresse vom Stack holen und dorthin springen
-      txtpos = gosub_stack[--gosub_stack_ptr];
-
-      // Optional: Nach dem Rücksprung zum Ende der Zeile oder nächsten Befehl
-      skip_to_next_statement();
-      }
-
-      //****************************************** Read-Label *********************************
-      void read_label_name(char* buffer) {
-      uint8_t len = 0;
-
-      // 1. Führende Leerzeichen überspringen
-      while (*txtpos == ' ' || *txtpos == '\t') txtpos++;
-
-      // 2. Zeichen lesen, solange sie gültig sind (A-Z, 0-9, _)
-      while (isalnum((uint8_t)*txtpos) || *txtpos == '_') {
-        if (len < MAX_LABEL_LEN - 1) {
-          buffer[len++] = *txtpos;
-        }
-        txtpos++;
-      }
-
-      // 3. Null-Terminierung (Wichtig für strcmp!)
-      buffer[len] = '\0';
-
-      // 4. Nachfolgende Leerzeichen überspringen, um direkt beim nächsten Token zu stehen
-      while (*txtpos == ' ' || *txtpos == '\t') txtpos++;
-      }
-      //****************************** GOTO-Programmteil mit Read_label_name ************************************
-      void do_goto() {
-        char target[MAX_LABEL_LEN];
-        read_label_name(target); // Name sicher extrahieren
-
-        if (target[0] == '\0') {
-            expression_error = ERROR_MISSING_LABEL;
-            return;
-        }
-
-        for (int i = 0; i < label_count; i++) {
-            if (strcmp(label_table[i].name, target) == 0) {
-                txtpos = label_table[i].address;
-                return;
-            }
-        }
-        expression_error = ERROR_LABEL_NOT_FOUND;
-      }
-
-      //***************************** Fehlerausgabe mit labels ***************************************************
-      uint16_t get_current_line(const char* p_start) {
-      uint16_t line = 1;
-      const char* p = p_start;
-
-      // Zähle alle Newlines bis zur aktuellen Position
-      while (p < txtpos && *p != 0) {
-        if (*p == '\n') line++;
-        p++;
-      }
-      return line;
-      }
-
-      void report_error(int error_code, const char* p_start) {
-      uint16_t line = get_current_line(p_start);
-
-      Terminal.print("\r\nError ");
-      Terminal.print(error_code);
-      Terminal.print(" in line ");
-      Terminal.println(line);
-
-      // Optional: Zeige die Zeile im Terminal an (Debugging-Hilfe)
-      show_error_context();
-      }
-
-      void show_error_context() {
-      const char* p = txtpos;
-
-      // 1. Gehe zum Anfang der aktuellen Zeile zurück
-      while (p > program_start && *(p-1) != '\n' && *(p-1) != '\r') p--;
-
-      // 2. Drucke die Zeile bis zum Umbruch
-      while (*p != 0 && *p != '\n' && *p != '\r') {
-        Terminal.write(*p++);
-      }
-      Terminal.println();
-
-      // 3. (Optional) Ein Pfeil an der Stelle von txtpos
-      // Das erfordert, dass du dir den Versatz von txtpos zum Zeilenanfang merkst.
-      }
-
-      //**************************************** LIST-Funktion *******************************************
-      void list_program() {
-      const char* p = program_start; // Dein Pointer auf den Anfang des BASIC-Speichers
-      uint16_t line_cnt = 1;
-
-      if (*p == 0) {
-        Terminal.println("Empty program.");
-        return;
-      }
-
-      while (*p != 0) {
-        // 1. Zeilennummer drucken (rechtsbündig formatiert für Ordnung)
-        if (line_cnt < 10) Terminal.write(' ');
-        if (line_cnt < 100) Terminal.write(' ');
-        Terminal.print(line_cnt);
-        Terminal.print(": ");
-
-        // 2. Die aktuelle Zeile bis zum Ende (\n oder \r) drucken
-        while (*p != 0 && *p != '\n' && *p != '\r') {
-          Terminal.write(*p++);
-        }
-
-        Terminal.println(); // Zeilenumbruch im Terminal
-        line_cnt++;
-
-        // 3. Steuerzeichen (\r\n) überspringen, um zum nächsten Zeilenanfang zu kommen
-        if (*p == '\r') p++;
-        if (*p == '\n') p++;
-
-        // Optional: Abbruch durch Tastendruck (z.B. ESC), falls das Programm sehr lang ist
-        if (Terminal.available() && Terminal.read() == 27) break;
-      }
-      }
-    */
+    //########################################################################## Testbereich - neue Funktionen #########################################################################

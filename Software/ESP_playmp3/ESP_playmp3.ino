@@ -9,9 +9,10 @@
   // created by R.Zielinski - Berlin
   // Nutzung auf eigene Gefahr!!! :-)
   // Playorder ist noch nicht korrekt -> :-(
+  // Displayname wird jetzt auf 40 Zeichen gekürzt, damit die Darstellung nicht zerstört wird
   // *******************************************************************************
 */
-#define Version "Vers1.2 - 02/2026"
+#define Version "Vers1.3 - 03/2026"
 
 #include <Arduino.h>
 
@@ -53,7 +54,7 @@ TerminalController      tc(&Terminal);
 TwoWire myI2C = TwoWire(0); //eigenen I2C-Bus erstellen
 RTC_DS3231 rtc;
 // dies ist die Standard-Konfiguration
-byte SDA_RTC = 3;
+byte SDA_RTC = 27;
 byte SCL_RTC = 1;
 
 unsigned int Datum[4];                   //Datums-Array
@@ -63,7 +64,7 @@ unsigned int tmp_zeit;                   //vergleichswert für Zeitaktualisierun
 #include <SD.h>
 #include <SPI.h>
 const char*  Radio_Pics[] PROGMEM = {"Radio1.bmp", "Radio2.bmp", "Radio3.bmp", "Radio4.bmp", "Radio5.bmp"};         //Pics
-char tempstring[40];                //String Zwischenspeicher
+char tempstring[100];                //String Zwischenspeicher
 int filenums = 5;
 //-------------------------------------- Verwendung der SD-Karte ----------------------------------------------------------------------------------
 //SPI CLASS FOR REDEFINED SPI PINS !
@@ -82,7 +83,7 @@ int Key_l = 0;
 int Key_r = 0;
 int Key_u = 0;
 int Key_d = 0;
-uint8_t curGain = 40;    //current loudness
+uint8_t curGain = 180;    //current loudness
 
 int title_length = 0;
 String currentFile;
@@ -184,7 +185,6 @@ void playNextTrack() {
         po.num = 1;
         file = files.openNextFile();
         break;
-        //file = files.openNextFile();
       }
       fileName = String(file.name());
       fileName.toCharArray(tempstring, fileName.length() + 1);
@@ -219,7 +219,6 @@ void MDCallback(void *cbData, const char *type, bool isUnicode, const char *stri
   (void)cbData;
   bool isTitle = String(type).equals("Title");
 
-  //bool isArtist = String(type).equals("Artist");
   if (isUnicode) {
     string += 2;
   }
@@ -241,8 +240,9 @@ void MDCallback(void *cbData, const char *type, bool isUnicode, const char *stri
   }
   else
   {
+    String kurzerText = Dateiname.substring(0, 40); 
     GFX.fillRectangle(59, 60, 307, 73);                    //Display-Ausschnitt
-    drawing_text(2, 60, 62, Dateiname);
+    drawing_text(2, 60, 62, kurzerText);
   }
   drawing_text(3, 285, 72, String(po.num));
 }
@@ -275,9 +275,6 @@ void getdatetime()
 
 void setup()
 {
-  //Serial.begin(115200);
-  Serial.print("Hallo MP3-Player");
-  // put your setup code here, to run once:
   Keyboard.begin(GPIO_NUM_33, GPIO_NUM_32);
   PS2Controller.keyboard() -> setLayout(&fabgl::GermanLayout);                //deutsche Tastatur
   delay(200);
@@ -403,18 +400,16 @@ VGAController.setOrientation(fabgl::TFTOrientation::Rotate270);  //Kontakte link
   {
     files = SD.open("/mp3");
     if(!files){
-      status_text("No /MP3 Directory   now Reboot..");
-      delay(5000);
-      ESP.restart();
+      status_text("No /MP3 Directory !!!");
+      while(1);//delay(5000);
+      //ESP.restart();
     }
-  
   startMP3();
   }
 }
 
 
 void startMP3() {
-  //
   File file;
   file = files.openNextFile();
   if(!file){
@@ -625,8 +620,6 @@ void drawing_text(int fnt, int x_text, int y_text, String txt)
       GFX.drawText(&fabgl::FONT_6x8, x_text, y_text, tempstring);
       break;
   }
-
-
 }
 
 //****************************************************** PIC_I(X,Y,Filename.bmp) ******************************************
@@ -637,7 +630,7 @@ int import_pic(int x, int y, char *file, float sc) {
   byte bmp_header[54];
   uint32_t stepx, stepy, restx, sx, sy;
   char k;
-  spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);             //SCK,MISO,MOSI,SS 13 //HSPI1
+  spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
   if ( !SD.begin( kSD_CS, spiSD )) {                        //SD-Card starten
     // mount-fehler
     spiSD.end();                                            //unmount
@@ -692,6 +685,7 @@ int import_pic(int x, int y, char *file, float sc) {
       }
       skipx +=  3;                                  //ist das Bild > Bildschirmbreite, Pixel*Skalierung überspringen
       files.seek(skipx);
+      yield();
     }
     if (restx) {                                           //bei ungeraden Formaten Restpixel überspringen
       rx = xx - dx;
@@ -700,6 +694,7 @@ int import_pic(int x, int y, char *file, float sc) {
     }
     skipx += (stepy - 1) * xx * 3;                         //nächste Bildzeile
     files.seek(skipx);
+    yield();
   }
 
   files.close();

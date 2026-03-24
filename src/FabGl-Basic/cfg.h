@@ -43,6 +43,3 @@
 //#endif
 //**************** Akku-Alarm *********************************************
 //#define Akkualarm_enabled
-
-//**************** Grösse des SPI-RAM'S festlegen *************************
-//#define SPI_RAM_SIZE 4 //SPI_RAM_SIZE * 128k -> 23LC1024 = 1 , FRAM 512k = 4, PSRAM 8MB = 64
