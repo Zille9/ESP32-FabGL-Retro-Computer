@@ -62,7 +62,8 @@
 //                            -RENUM-Befehl nochmals überarbeitet - es werden falsche Zielnummern identifiziert und der Rest der Zeile nach Goto oder Gosub (durch : getrennt) nicht abgeschnitten
 //                            -Fehler in der Behandlung der ersten Zeilennummer nach on x Goto/Gosub behoben, die erste Zahl wurde nicht erkannt
 //                            -Startbildschirm zeigt jetzt SD-Card-Status und FRAM-Größe an
-//                            -26433 Zeilen/sek. (Debug)
+//                            -PAUSE - Befehl geändert, jetzt kann ein Pausebefehl mit ESC auch abgebrochen werden
+//                            -27285 Zeilen/sek. (Debug)
 //
 // V2.13:07.03.2026           -Zeileneditor erweitert, ENTER führt jetzt zum Aufrufen der nächsten Zeile -> Abbruch der Eingabe mit ESC und danach ENTER
 //                            -Umstellung der scantable-funktion auf binäre Suche der Basic-Befehle und Funktionen, das hatte eine massive Steigerung der Geschwindigkeit
@@ -207,7 +208,7 @@ byte y_char[]      PROGMEM = {8, 8, 8, 14, 20, 14, 14, 16, 16, 14, 14, 14, 16, 1
 //------------------------------------------------------------- Soundgenerator ----------------------------------------------------------------------------
 unsigned int noteTable []  PROGMEM = {16350, 17320, 18350, 19450, 20600, 21830, 23120, 24500, 25960, 27500, 29140, 30870}; //Notentabelle für Soundausgabe
 //------------------------------------------------------------- Soundgenerator ----------------------------------------------------------------------------
-
+uint32_t startZeit;        // Variable für abbrechbaren Pause-Befehl
 //----------------------------------- Editor -Marker ----------------------------------------------------------------------------------------------
 bool Editor_ende = true;
 //-------------------------------------------------------------------------------------------------------------------------------------------------
@@ -3828,7 +3829,9 @@ fnkey:                                                               //Funktions
       case KW_PAUSE:                                       //PAUSE
         expression_error = 0;
         val = get_value();
-        delay( val );
+        startZeit = millis();
+        while ((millis() - startZeit < val) && (!break_marker)) yield();      // Wichtig, um den Watchdog-Timer zu beruhigen!
+        break_marker = false;
         break;
 
       case KW_END:
