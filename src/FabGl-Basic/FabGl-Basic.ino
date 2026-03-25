@@ -329,9 +329,10 @@ long load_adress      = 0x8000;     //ab hier kann ein Basicprogramm abgelegt we
 
 //---------------------------------------- Array-Parameter ----------------------------------------------------------------------------------------
 //Der Arraybereich befindet sich 0x0..0x7fff
-word Var_Neu_Platz =  0;            //Adresse nächstes Array-Feld Start bei 0x77e00
+word Var_Neu_Platz =  0;            //Adresse nächstes Array-Feld Start bei 0x0
 static word VAR_TBL = 0x7e00;       //Variablen-Array-Tabelle im SPI-RAM
 static word STR_TBL = 0x7f00;       //String-Array-Tabelle im SPI-RAM
+static word VAR_MAX = VAR_TBL - 1;  //Variablengrenze bei 0x7dff
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 //######################################### Ende Konfiguration SPI-RAM ############################################################################
 
@@ -7812,9 +7813,9 @@ nochmal:
           grenze = (uint32_t)(z + 1) * (y + 1) * (x + 1) * len;
 
           // ESP32 Limit: Hier kannst du deutlich höher gehen als 32256 (z.B. 512KB)
-          const uint32_t MAX_BASIC_RAM = 128 * 1024;
+          //const uint32_t MAX_BASIC_RAM = 128 * 1024;
 
-          if (Var_Neu_Platz + grenze > MAX_BASIC_RAM) {
+          if (Var_Neu_Platz + grenze > VAR_MAX) {
             syntaxerror(outofmemory);
             return 1;
           }
