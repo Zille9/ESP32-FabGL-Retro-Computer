@@ -741,12 +741,13 @@ void show_Function_Help(int was) {
       break;
     case FUNC_IIC:                                                      //IIC
       break;
+      /*
     case FUNC_BATT:
       Terminal.println("AKKU(Val)");
       Terminal.println("EXAMPLE: A=AKKU(0)");
       Terminal.println("Return the Akku-Value in V");
       Terminal.println("0=Volt, 1=Percent");
-      break;
+      break;*/
     case FUNC_AREAD:
       Terminal.println("AIN(PIN<,mode>)");
       Terminal.println("EXAMPLE: A=AIN(2,1)");

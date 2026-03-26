@@ -63,6 +63,9 @@
 //                            -Fehler in der Behandlung der ersten Zeilennummer nach on x Goto/Gosub behoben, die erste Zahl wurde nicht erkannt
 //                            -Startbildschirm zeigt jetzt SD-Card-Status und FRAM-Größe an
 //                            -PAUSE - Befehl geändert, jetzt kann ein Pausebefehl mit ESC auch abgebrochen werden
+//                            -Arraytabellenbereiche vergrößert, es konnte passieren, das sich Variablen gegenseitig überschreiben konnten, weil die Tabellen zu klein dimensioniert waren
+//                            -der Variablenbereich erstreckt sich im SPI-RAM von 0x0 - 0xbfff und die Tabellen von 0xc000 - 0xdfff (Zahlen) und 0xe000 - 0xffff
+//                            -dadurch ist die Anzahl der im SPI-RAM speicherbaren Bilder bei 512kb von 6 auf 5 geschrumpft (da jetzt 64kb für Variablen benutzt werden)
 //                            -27285 Zeilen/sek. (Debug)
 //
 // V2.13:07.03.2026           -Zeileneditor erweitert, ENTER führt jetzt zum Aufrufen der nächsten Zeile -> Abbruch der Eingabe mit ESC und danach ENTER
@@ -173,17 +176,17 @@ fabgl::Terminal         Terminal;
 fabgl::LineEditor       LineEditor(&Terminal);
 
 //---------------------------------------- die verschiedenen Grafiktreiber --------------------------------------------------------------------------
-#ifdef AVOUT
-fabgl::CVBS16Controller VGAController;    //AV-Variante
-#define VIDEOOUT_GPIO GPIO_NUM_26         //Ausgabe auf GPIO25 oder 26 möglich ACHTUNG!:Soundausgabe erfolgt auf GPIO25
-static const char * MODES_STD[]   = { "I-PAL-B", "P-PAL-B", "I-NTSC-M", "P-NTSC-M", "I-PAL-B-WIDE", "P-PAL-B-WIDE", "I-NTSC-M-WIDE", "P-NTSC-M-WIDE", "P-NTSC-M-EXT",};
+//#ifdef AVOUT
+//fabgl::CVBS16Controller VGAController;    //AV-Variante
+//#define VIDEOOUT_GPIO GPIO_NUM_26         //Ausgabe auf GPIO25 oder 26 möglich ACHTUNG!:Soundausgabe erfolgt auf GPIO25
+//static const char * MODES_STD[]   = { "I-PAL-B", "P-PAL-B", "I-NTSC-M", "P-NTSC-M", "I-PAL-B-WIDE", "P-PAL-B-WIDE", "I-NTSC-M-WIDE", "P-NTSC-M-WIDE", "P-NTSC-M-EXT",};
 
-#elif defined VGA64
+//#elif defined VGA64
 fabgl::VGAController    VGAController;      //VGA-Variante
 
-#else
-fabgl::ILI9341Controller VGAController;     //TFT-Display ILI9341
-#endif
+//#else
+//fabgl::ILI9341Controller VGAController;     //TFT-Display ILI9341
+//#endif
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 
@@ -318,21 +321,21 @@ byte FRAM_CS  = 0;                    //SPI-RAM CS-Pin
 
 Adafruit_FRAM_SPI spi_fram = Adafruit_FRAM_SPI(kSD_CLK, kSD_MISO, kSD_MOSI, FRAM_CS);
 uint32_t SPI_memSize;                 //ermittelte SPI-Ram-Grösse
-uint32_t renum_addr = 0x8004;         //Adresse ab der Renumber arbeitet
+uint32_t renum_addr = 0x10004;         //Adresse ab der Renumber arbeitet
 uint32_t fram_ptr;
 unsigned int zeilen_anzahl;
 
 //---------------------------------------- spezielle SPI-Ram-Adressen -----------------------------------------------------------------------------
-word FRAM_OFFSET      = 0x8000;     //Offset für Poke-Anweisungen, um zu verhindern, das in den Array-Bereich gepoked wird
+word FRAM_OFFSET      = 0x10000;     //Offset für Poke-Anweisungen, um zu verhindern, das in den Array-Bereich gepoked wird
 word FRAM_PIC_OFFSET  ;             //Platz pro Bildschirm im Speicher 320x240=76800 + 4Byte für die Dimension = 76804 --> siehe cfg.h
-long load_adress      = 0x8000;     //ab hier kann ein Basicprogramm abgelegt werden (Eingabe: LOAD oder SAVE ohne Parameter)
+long load_adress      = 0x10000;     //ab hier kann ein Basicprogramm abgelegt werden (Eingabe: LOAD oder SAVE ohne Parameter)
 
 //---------------------------------------- Array-Parameter ----------------------------------------------------------------------------------------
 //Der Arraybereich befindet sich 0x0..0x7fff
 word Var_Neu_Platz =  0;            //Adresse nächstes Array-Feld Start bei 0x0
-static word VAR_TBL = 0x7e00;       //Variablen-Array-Tabelle im SPI-RAM
-static word STR_TBL = 0x7f00;       //String-Array-Tabelle im SPI-RAM
-static word VAR_MAX = VAR_TBL - 1;  //Variablengrenze bei 0x7dff
+static word VAR_TBL = 0xC000;       //Variablen-Array-Tabelle im SPI-RAM
+static word STR_TBL = 0xE000;       //String-Array-Tabelle im SPI-RAM
+static word VAR_MAX = 0xBFFF;   //Variablengrenze bei 0x7dff
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 //######################################### Ende Konfiguration SPI-RAM ############################################################################
 
@@ -353,10 +356,12 @@ byte PATH_SET = 88;     //-steht 88 im EEPROM Platz 19, dann setze Arbeits-Pfad
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 //------------------------------------- Akku-Überwachung ------------------------------------------------------------------------------------------
+/*
 #ifdef Akkualarm_enabled            // Akku-Überwachung für batteriebetriebene Geräte
 hw_timer_t *Akku_timer = NULL;      //Interrupt-Routine Akku-Überwachung
 #endif
 #define Batt_Pin 39                 //Pin wird in jedem Fall definiert
+*/
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 //------------------------------------- Editor-Konfiguration --------------------------------------------------------------------------------------
 
@@ -449,11 +454,7 @@ short int Mode_state = 0;               //aktuelle Auflösung (im EEProm gespeic
 static bool break_marker = false;      //********** Test für CardKB *****************
 static bool function_key = false;
 
-uint8_t curGain = 100;                 //current loudness Audiolautstärke
-int Key_l = 0;                         //Tasten für MP3-Player
-int Key_r = 0;
-int Key_u = 0;
-int Key_d = 0;
+//uint8_t Cursor_key = 0;                 //puffer für Cursortasten
 
 //------------------------------ Grid-Parameter ---------------------------------------------------------------------------------------------------
 int Grid[15];  //0=x, 1=y, 2=xx, 3=yy, 4=zell_x, 5=zell_y, 6=pix_x, 7=pix_y, 8=frame-col, 9=grid_col
@@ -680,7 +681,7 @@ enum {
   KW_CLOSE,
   KW_CLS,
   KW_COL,
-  KW_COM,
+  KW_COM,       //10
   KW_COPY,
   KW_CUR,
   KW_DAC,
@@ -690,7 +691,7 @@ enum {
   KW_DIM,
   KW_DIR,
   KW_DMP,
-  KW_DOKE,
+  KW_DOKE,      //20
   KW_DOUT,
   KW_DRAW,
   KW_EDIT,
@@ -700,7 +701,7 @@ enum {
   KW_FONT,
   KW_FOR,
   KW_FPOKE,
-  KW_FRAME,
+  KW_FRAME,     //30
   KW_GOSUB,
   KW_GOTO,
   KW_GRID,
@@ -710,7 +711,7 @@ enum {
   KW_INPUT,
   KW_LCD,
   KW_LED,
-  KW_LINE,
+  KW_LINE,      //40
   KW_LIST,
   KW_LOAD,
   KW_MKD,
@@ -720,7 +721,7 @@ enum {
   KW_ON,
   KW_OPEN,
   KW_OPT,
-  KW_OR,
+  KW_OR,        //50
   KW_PATH,
   KW_PAUSE,
   KW_PEN,
@@ -730,7 +731,7 @@ enum {
   KW_PORT,
   KW_POS,
   KW_PRINT,
-  KW_PRZ,
+  KW_PRZ,       //60
   KW_PSET,
   KW_PULSE,
   KW_PWM,
@@ -740,7 +741,7 @@ enum {
   KW_RENAME,
   KW_RENUM,
   KW_RESTORE,
-  KW_RETURN,
+  KW_RETURN,    //70
   KW_RMD,
   KW_RTC,
   KW_RUN,
@@ -750,7 +751,7 @@ enum {
   KW_SPRT,
   KW_STYLE,
   KW_SWAP,
-  KW_TEXT,
+  KW_TEXT,      //80
   KW_THEME,
   KW_THEN,
   KW_TYPE,
@@ -847,18 +848,18 @@ const uint8_t kw_id_map[] PROGMEM = {
   KW_WINDOW    // 84: WINDOW
 
 };
-int KW_WORDS = KW_COUNT;
+int KW_WORDS = KW_COUNT;  //85
 
-
-
-
-//**************************** Basic-Funktionen *********************************
-
+//**************************** Basic-Funktionen **********************************************************************************************************************************************
+//****** HINWEIS: nicht benötigte Befehle können nicht einfach gelöscht oder deaktiviert werden (eher umbenennen), da die nachfolgenden Befehls-ID's sonst nicht mehr stimmen.****************
+//*************** umbenannte Befehle müssen in der Func_tab exakt in alphabetischer Reihenfolge eingefügt werden, können ihre ID behalten und müssen auch in der func_id_map *****************
+//*************** an der exakten (neuen) Position stehen, damit der Interpreter die richtige Funktion aufruft !!!                                                            *****************
+//*************** Neue Befehle werden ebenso behandelt - die Reihenfolge in der enum-Tabelle entspricht der ID in der func_id_map                                            *****************
+//********************************************************************************************************************************************************************************************
 const static char func_tab[] PROGMEM = {
   '!' + 0x80,                       // NOT (ID 41)
   'A', 'B', 'S' + 0x80,             // ABS (ID 1)
   'A', 'I', 'N' + 0x80,             // AREAD (ID 35)
-  'A', 'K', 'K', 'U' + 0x80,        // BATT (ID 34)
   'A', 'S', 'C' + 0x80,             // ASC (ID 17)
   'A', 'T', 'N' + 0x80,             // ATAN (ID 19)
   'B', 'I', 'N' + 0x80,             // BIN (ID 23)
@@ -870,6 +871,7 @@ const static char func_tab[] PROGMEM = {
   'C', 'O', 'S' + 0x80,             // COS (ID 4)
   'D', 'A', 'T', 'E' + 0x80,        // GDATE (ID 31)
   'D', 'E', 'E', 'K' + 0x80,        // DEEK (ID 51)
+  'D', 'E', 'G' + 0x80,             // DEG (ID 34)   //nicht benötigte Befehle müssen umbenannt werden da sonst die ID der nachfolgenden Befehle nicht mehr stimmt
   'D', 'H', 'T' + 0x80,             // DHT (ID 43)
   'D', 'I', 'N' + 0x80,             // DREAD (ID 36)
   'E', 'X', 'P' + 0x80,             // EXP (ID 12)
@@ -877,7 +879,6 @@ const static char func_tab[] PROGMEM = {
   'F', 'N' + 0x80,                  // FN (ID 46)
   'F', 'O', 'N', 'T' + 0x80,        // FONT (ID 16)
   'F', 'P', 'E', 'E', 'K' + 0x80,   // FPEEK (ID 52)
-  //  'G', 'C', 'O', 'L', 'L' + 0x80,   // GCOLL (ID 60)
   'G', 'E', 'T' + 0x80,             // GET (ID 13)
   'G', 'P', 'I', 'C' + 0x80,        // PIC (ID 54)
   'G', 'P', 'X' + 0x80,             // GPIX (ID 53)
@@ -922,8 +923,8 @@ const static char func_tab[] PROGMEM = {
 static uint16_t func_offsets[60]; // 60 Funktionen laut deinem Enum
 
 const uint8_t func_id_map[] PROGMEM = {
-  41, 1, 35, 34, 17, 19, 23, 45, 14, 44, 22, 56, 4, 31, 51, 43, 36, 12, 58, 46,
-  16, 52, /*60,*/ 13, 54, 53, 59, 24, 33, 15, 21, 9, 38, 25, 20, 50, 6, 55, 11, 40, 27,
+  41, 1, 35, 17, 19, 23, 45, 14, 44, 22, 56, 4, 31, 51, 34, 43, 36, 12, 58, 46,
+  16, 52, 13, 54, 53, 59, 24, 33, 15, 21, 9, 38, 25, 20, 50, 6, 55, 11, 40, 27,
   10, 0, 49, 48, 47, 26, 2, 7, 3, 29, 8, 30, 57, 28, 5, 42, 32, 18, 37, 39
 };
 
@@ -962,7 +963,7 @@ enum {
   FUNC_GDATE,
   FUNC_GTIME,
   FUNC_IIC,
-  FUNC_BATT,
+  FUNC_DEG,
   FUNC_AREAD,
   FUNC_DREAD,
   FUNC_UCASE,
@@ -988,8 +989,7 @@ enum {
   FUNC_STRING,
   FUNC_FILE,
   FUNC_GRID,
-  //FUNC_GCOLL,    //60
-  FUNC_UNKNOWN   //61
+  FUNC_UNKNOWN   //60
 };
 
 int FUNC_WORDS = FUNC_UNKNOWN;
@@ -1198,7 +1198,6 @@ static char skip_spaces() {
   }
 }
 
-
 //--------------------------------------------- Unterprogramm - Leerzeichen überspringen ----------------------------------------------------------
 //--------------------------------------------- erstes gültiges Zeichen zurückgeben ---------------------------------------------------------------
 
@@ -1264,14 +1263,13 @@ void printnum(float num, int modes) {
 static int Memory_Dump() {                       //DMP Speichertyp 0..2 <,Adresse>
   int ex = 0, c, was, tpm;
   int ln = (VGAController.getScreenHeight() / y_char[fontsatz]) - 3; //Anzahl Zeilen abhängig vom Fontsatz
-  //if (Frame_nr) win_set_cursor(0);               //sind Fenster gesetzt?, dann Hauptfenster setzen
   int x_weite = VGAController.getScreenWidth() / x_char[fontsatz];
-
+/*
 #ifdef ILI9341                                  //bei TFT x und y vertauscht
 x_weite = (VGAController.getScreenHeight() / x_char[fontsatz]) ;
 ln = VGAController.getScreenWidth() / y_char[fontsatz] - 3;    //Anzahl Zeilen abhängig vom Fontsatz
 #endif
-
+*/
   byte rdbyte[8];
 
   //word of = FRAM_OFFSET;
@@ -1397,10 +1395,10 @@ static uint16_t wait_key(bool modes) {
     // 2. Break-Marker Check (Logik korrigiert)
     if (break_marker) {
       break_marker = false; // Korrektur: = statt ==
-      return 3;             // ASCII ETX (Ctrl+C)
+      return 0x03;             // ASCII ESC
     }
     // 3. CPU-Entlastung
-    yield();
+    //yield();
   }
 }
 
@@ -1556,8 +1554,6 @@ int8_t peekRelop(const char* p, int &matched_len) {
         }
 
         if (c2 == 0) {
-          // Merken, dass ein 1-Zeichen Match möglich wäre, aber weitersuchen
-          // (vielleicht kommt noch ein 2-Zeichen Match in der Tabelle)
           matched_len = 1;
           found_id = pgm_read_byte(&relop_id[mid]);
         }
@@ -2238,7 +2234,7 @@ static float expr4()
         return int(!a);
         break;
 
-
+/*
       case FUNC_BATT:                               // Akku abfragen
         b = 3.3 / 4095 * analogRead(Batt_Pin);
         b = b / 0.753865;                           //(Umess/(R2/(R1+R2)) R1=3.327kohm R2=10.19kohm
@@ -2247,7 +2243,7 @@ static float expr4()
         if (a == 0) return b;                       //Spannungswert zurückgeben
         else return int(c);                         //Ladung in Prozent
         break;
-
+      */
       case FUNC_PEEK:
         if (a == 0)
           result = program[int(b)];                      //RAM
@@ -3474,8 +3470,6 @@ int insert_line() {
   return 0;
 }
 
-
-
 //********************************************* Main - Programm ***********************************************************************************
 
 void loop()
@@ -3604,14 +3598,14 @@ fnkey:                                                               //Funktions
         break;
 
       case KW_RUN:                                        // RUN
-        if (*txtpos != NL) {                              //RUN"/Filename" lädt und startet das Programm
+        if (*txtpos == '"') {                              //RUN"/Filename" lädt und startet das Programm
           if (load_file()) {
             continue;
           }
           string_marker = false;
           autorun = true;
         }
-        if (*txtpos == '*') {
+        else if (*txtpos == '*') {
           load_ram();
         }
         Var_Neu_Platz = 1;                                //auch Array-Ram auf jeden Fall löschen
@@ -3621,7 +3615,7 @@ fnkey:                                                               //Funktions
         sp = program + sizeof(program);
         goto execline;
         break;
-
+     
       case KW_SAVE:                                       // SAVE filename (/filename.bas)
         if (*txtpos == NL) {
           save_ram();
@@ -3827,12 +3821,13 @@ fnkey:                                                               //Funktions
         set_font(val);
         break;
 
-      case KW_PAUSE:                                       //PAUSE
+      case KW_PAUSE:                                       //PAUSE - kann mit ESC oder Ctrl+C unterbrochen werden (wie beim KC)
         expression_error = 0;
         val = get_value();
         startZeit = millis();
         while ((millis() - startZeit < val) && (!break_marker)) yield();      // Wichtig, um den Watchdog-Timer zu beruhigen!
         break_marker = false;
+        //delay(val);
         break;
 
       case KW_END:
@@ -4351,15 +4346,13 @@ forloop:
 
 
 next:
-    // Fnd the variable name
+    // Variable ermitteln
     spaces();
-    //Terminal.print(*txtpos);
     if (*txtpos < 'A' || *txtpos > 'Z')
     {
       printmsg(fornextmsg, 1);
       continue;
     }
-
     txtpos++;
     spaces();
 
@@ -4385,7 +4378,7 @@ gosub_return:
               goto execnextline;       //bei on gosub wird nach dem Return in die nächste Zeile gesprungen
             }
           }
-          // This is not the loop you are looking for... so Walk back up the stack
+          // Das ist nicht die Schleife, die wir suchen... also gehen wir den Stapel wieder nach oben.
           tempsp += sizeof(struct stack_gosub_frame);
           break;
         case STACK_FOR_FLAG:
@@ -4395,20 +4388,19 @@ gosub_return:
             struct stack_for_frame *f = (struct stack_for_frame *)tempsp;
             // Is the the variable we are looking for?
 
-            if (txtpos[-1] >= 'A' && txtpos[-1] <= 'Z') //== f->for_var)          //erster Variablenbuchstabe
+            if (txtpos[-1] >= 'A' && txtpos[-1] <= 'Z')                     //erster Variablenbuchstabe
             {
               int ef, xf;
               tmp = int(txtpos[-1] - 'A');
 
 
-              if (*txtpos >= 'A' && *txtpos <= 'Z') //txtpos[0] == f -> for_var)   //zweiter Variablenbuchstabe
+              if (*txtpos >= 'A' && *txtpos <= 'Z')                         //zweiter Variablenbuchstabe
               {
                 ef = int(*txtpos - 'A' + 1) * 26;
                 tmp = tmp + ef;
                 txtpos++;
               }
 
-              //Terminal.println(*txtpos,DEC);
               if (tmp == f->for_var)
               {
                 float *varaddr = ((float *)variables_begin) + tmp;//txtpos[-1] - 'A';
@@ -4417,12 +4409,12 @@ gosub_return:
                 // Use a different test depending on the sign of the step increment
                 if ((f->step > 0 && *varaddr <= f->to_var) || (f->step < 0 && *varaddr >= f->to_var))
                 {
-                  // We have to loop so don't pop the stack
+                  // Wir müssen eine Schleife durchlaufen, damit kein Element vom Stapel entfernt wird.
                   txtpos = f->txtpos;
                   current_line = f->current_line;
                   goto run_next_statement;
                 }
-                // We've run to the end of the loop. drop out of the loop, popping the stack
+                // Wir haben das Ende der Schleife erreicht. Wir verlassen die Schleife und entfernen das Element vom Stapel.
                 sp = tempsp + sizeof(struct stack_for_frame);
                 goto run_next_statement;
               }
@@ -4431,6 +4423,7 @@ gosub_return:
           // This is not the loop you are looking for... so Walk back up the stack
           tempsp += sizeof(struct stack_for_frame);
           break;
+          
         default:
           warmstart();
           continue;
@@ -4694,7 +4687,7 @@ float rw_array(int num, word table) {
     return 0;
   }
 
-  ort = table + (num * 8);                                         //1=num.Var-Position der Array-Dimension in Array-Tabelle (A=0, B=1, C=2 usw.)
+  ort = table + (num * 6);                                         //1=num.Var-Position der Array-Dimension in Array-Tabelle (A=0, B=1, C=2 usw.)
   if (table == VAR_TBL) len = sizeof (float);                        //Eintragslänge bei float 4
   else if (table == STR_TBL) {
     len = STR_LEN;
@@ -4733,13 +4726,11 @@ void clear_var()
     variables_begin[i] = 0;
   }
   memset(Stringtable, '\0', sizeof(Stringtable));
-  //for (int i = 0; i < 0x0fff; i += 4) SPI_RAM_write(i, bytes, 4);
   if (Var_Neu_Platz > 0) {                                          //SPI-Ram nur löschen, wenn Arrays definiert wurden
-    SPI_RAM_fill(0x0, 0x0fff, 0);                                   //die ersten 4kb Array-Variablen im Ram löschen
-    SPI_RAM_fill(0x7e00, 0x8000, 0);                                //Array-Tabellen löschen
+    SPI_RAM_fill(0x0, 0x1000, 0);                                   //die ersten 4kb Array-Variablen im Ram löschen
+    SPI_RAM_fill(VAR_TBL, 0x4000, 0);                               //Array-Tabellen löschen
   }
 
-  //for (int i = 0x7e00; i < 0x8000; i += 4) SPI_RAM_write(i, bytes, 4);
   Var_Neu_Platz = 0;                                               //Array-Zeiger zurücksetzen
   num_of_datalines = 0;                                            //Datazeilenzähler zurücksetzen
   del_window();                                                    //Fensterparameter löschen
@@ -5821,14 +5812,14 @@ void print_info()
 { int c, d, e, f;
   String built;
   char l, r;
-
+/*
 #ifdef ILI9341                                     //beim ILI9341 ist x und y vertauscht, da die Grundausrichtung Hochkant ist (240x320)
 int x_pos = VGAController.getScreenHeight() / x_char[fontsatz];
 int y_pos = VGAController.getScreenWidth() / y_char[fontsatz];
-#else
+#else */
 int y_pos = VGAController.getViewPortHeight() / y_char[fontsatz]; //VGAController.getScreenHeight() / y_char[fontsatz];
 int x_pos = VGAController.getViewPortWidth() / x_char[fontsatz];  //VGAController.getScreenWidth() / x_char[fontsatz];
-#endif
+/*#endif
 
 
 #ifdef Akkualarm_enabled
@@ -5837,6 +5828,7 @@ g = g / 0.753865;                                 //(Umess/(R2/(R1+R2)) R1=3.327
 int   h = 100 - ((4.2 - g) * 100);                //Akkuwert in Prozent
 if (h > 100) h = 100;
 #endif
+*/
 
   Terminal.enableCursor(false);
   GFX.clear();
@@ -5852,13 +5844,13 @@ if (h > 100) h = 100;
   Terminal.write(BasicVersion);
   Terminal.write(" Zille-Soft*");
 
-
+/*
 #ifdef Akkualarm_enabled                                  //Akku in Prozent anzeigen
 Terminal.write("  ");
 Terminal.print(int(h), DEC);
 Terminal.write("%");
 #endif
-
+*/
   tc.setCursorPos((x_pos - 16) / 2 , 4);
   // memory free
 
@@ -5948,7 +5940,7 @@ static int inchar()
 
           switch (c) {
 
-            case 0x03:       // ctrl+c        -> BREAK
+            case 0x03:       // ESC        -> BREAK
               current_line = 0;
               sp = program + sizeof(program);
               break;
@@ -6969,17 +6961,17 @@ void setup()
 
   //************************************************************ welcher Bildschirmtreiber? *********************************************************
   // 64 colors
-#ifdef AVOUT                                                                          //AV-Variante
+/*#ifdef AVOUT                                                                          //AV-Variante
 
   VGAController.begin(VIDEOOUT_GPIO);
   VGAController.setHorizontalRate(2);                                                   //320x240
   VGAController.setResolution(MODES_STD[7]);                                            //5 scheint optimal ist aber mit 384x240 nicht 100% kompatibel (3) (7-360x200)
-
-#elif defined VGA64
+*/
+//#elif defined VGA64
 
   VGAController.begin();                                                                //VGA-Variante //64 Farben
   VGAController.setResolution(QVGA_320x240_60Hz);                                    //Standard-Auflösung
-#else                                                                                 //ILI9341
+/*#else                                                                                 //ILI9341
 
   VGAController.begin(TFT_SCK, TFT_MOSI, TFT_DC, TFT_RESET, TFT_CS, TFT_SPIBUS);
   VGAController.setResolution(TFT_240x320);
@@ -6987,7 +6979,7 @@ void setup()
   //VGAController.setOrientation(fabgl::TFTOrientation::Rotate90);   //Kontakte rechts
 
 #endif
-
+*/
 
   //***************************************************************************************************************************************************
 
@@ -7007,12 +6999,13 @@ void setup()
     if (keyDown) {
 
       // Shift, Ctrl und Alt-Tasten ignorieren, sonst werden fehlzeichen im Editor ausgegeben
+     /*
       if (editor_mode) {
         if (*vk == VirtualKey::VK_LSHIFT || *vk == VirtualKey::VK_RSHIFT ||
             *vk == VirtualKey::VK_LCTRL  || *vk == VirtualKey::VK_RCTRL  ||
             *vk == VirtualKey::VK_LALT   || *vk == VirtualKey::VK_RALT) {
           return;
-        }
+        /
 
         ed_vk = *vk;
         ed_char = PS2Controller.keyboard()->virtualKeyToASCII(*vk);
@@ -7026,12 +7019,31 @@ void setup()
         *vk = VirtualKey::VK_NONE;
         return;
       }
+      */
 
       if (*vk == VirtualKey::VK_ESCAPE) {
         break_marker = true;                                                           //ESC abfangen und in Ctrl-C wandeln
         *vk = VirtualKey::VK_NONE;
       }
-
+/*      
+      else if (*vk == VirtualKey::VK_UP) {
+        Cursor_key = 5;                                                                 //Cursor_up
+        *vk = VirtualKey::VK_NONE;
+      }
+      
+      else if (*vk == VirtualKey::VK_DOWN) {
+        Cursor_key = 4;                                                                 //Cursor_down
+        *vk = VirtualKey::VK_NONE;
+      }
+      else if (*vk == VirtualKey::VK_LEFT) {
+        Cursor_key = 1;                                                                 //Cursor_left
+        *vk = VirtualKey::VK_NONE;
+      }
+      else if (*vk == VirtualKey::VK_RIGHT) {
+        Cursor_key = 2;                                                                 //Cursor_right
+        *vk = VirtualKey::VK_NONE;
+      }
+*/
       else if (*vk == VirtualKey::VK_F1) {                                               //Anzeige der Funktionstastenbelegung
         key_command = KW_LIST;
         show_function_key();
@@ -7116,7 +7128,7 @@ void setup()
         ESP.restart();
         *vk = VirtualKey::VK_NONE;
       }
-
+     yield();
     }
     yield();
   };
@@ -7821,8 +7833,8 @@ nochmal:
           }
 
           // 5. Adresse in der Symboltabelle berechnen
-          ort = (str ? STR_TBL : VAR_TBL) + (tmp * 8);
-
+          ort = (str ? STR_TBL : VAR_TBL) + (tmp * 6);
+          //Terminal.print(ort,HEX);
           // 6. Metadaten schreiben (Adresse im RAM, Dimensionen)
           p_data[0] = (Var_Neu_Platz >> 8) & 0xFF; // High
           p_data[1] = Var_Neu_Platz & 0xFF;        // Low
@@ -8185,7 +8197,11 @@ nochmal:
         case 'D':                                         //Grafik im FRAM auf dem Bildschirm ausgeben
           if (Test_char('(')) return 1;
           ad = get_value();
-          if (ad > (SPI_memSize / FRAM_PIC_OFFSET)) ad = SPI_memSize / FRAM_PIC_OFFSET;   //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab + 4 byte für die Dimension
+          if(ad > ((SPI_memSize - 0x10000) / FRAM_PIC_OFFSET) -1) {      //Anzahl Bilder hängt von der SPI-RAM-Größe ab
+            syntaxerror(outofmemory);
+            return 1;
+          }
+          //if (ad > ((SPI_memSize - 0x10000) / FRAM_PIC_OFFSET)) ad = (SPI_memSize - 0x10000) / FRAM_PIC_OFFSET;   //Anzahl der speicherbaren Bilder hängt vom installierten SPI-RAM ab + 4 byte für die Dimension
           ad = ad * FRAM_PIC_OFFSET;                      //Bildspeicherplatz (320x240)
           if (*txtpos == ',') {                           //Modus
             txtpos++;
@@ -9196,6 +9212,7 @@ nochmal:
 
         }
         delay(5);
+        yield();
       }
 
       // Abschlussmeldung
@@ -9326,7 +9343,7 @@ nochmal:
       schritt = 10;
       zeilen_anzahl = 0;                                                               //merker für die anzahl der Zeilen im SPI_RAM
 
-      SPI_RAM_fill(0x0, 0x8000, 0);                                                    //Bearbeitungsspeicher löschen sonst gibt's fehler
+      SPI_RAM_fill(0x10000, 0x18000, 0);                                                    //Bearbeitungsspeicher löschen sonst gibt's fehler
 
       if (*txtpos != NL) {                                                             //Parameter für Startnummer und Schrittweite
         startnum = int(get_value());
