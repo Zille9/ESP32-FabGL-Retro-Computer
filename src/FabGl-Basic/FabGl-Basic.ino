@@ -53,8 +53,8 @@
 //
 //
 //
-#define BasicVersion "2.14a"
-#define BuiltTime "23.03.2026"
+#define BasicVersion "2.14b"
+#define BuiltTime "26.03.2026"
 // siehe Logbuch.txt zum Entwicklungsverlauf
 // V2.14:21.03.2026           -Syntax-Hervorhebung integriert - das ist cool ;-)
 //                            -Hardwarefehler beim FRAM-Modul behoben - an der CS-Leitung ist zwingend ein Pullup-Widerstand (10k nach VDD) notwendig
@@ -1857,8 +1857,7 @@ static float expr4()
   //***************************************************** ein- oder zweibuchstabige variablen ***************************************************
   // Is it a function or variable reference?
   //--------------------------------------------------------------------------------------------------------------------------------------------------------------
-  //scantable(func_tab);                                                  //Funktionstabelle lesen
-  table_index = findFunction();//Binary();
+  table_index = findFunction();                                         //Funktionstabelle lesen
 
   if (table_index == FUNC_UNKNOWN)                                      //am ende angekommen, Funktion nicht gefunden
   {
@@ -2741,7 +2740,7 @@ static float get_value()
   // Check if we have an error
   if (expression_error)  return a;
 
-  table_index = findRelopBinary(); //scantable(relop_tab);
+  table_index = findRelopBinary();                //Operatortabelle scannen
   if (table_index == RELOP_UNKNOWN)
     return a;
 
@@ -3598,7 +3597,7 @@ fnkey:                                                               //Funktions
         break;
 
       case KW_RUN:                                        // RUN
-        if (*txtpos == '"') {                              //RUN"/Filename" lädt und startet das Programm
+        if (*txtpos != NL){                               //RUN"/Filename" / RUN X$ lädt und startet das Programm
           if (load_file()) {
             continue;
           }
@@ -7861,8 +7860,7 @@ nochmal:
     //#######################################################################################################################################
     int Option(void) {
       byte p[6];
-      table_index = findOption();
-      //scantable(options);                                                  //Optionstabelle lesen
+      table_index = findOption();         //Optionstabelle lesen
       char fu = table_index;
       int i, adr;
 
