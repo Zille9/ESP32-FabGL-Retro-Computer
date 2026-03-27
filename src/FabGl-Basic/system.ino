@@ -51,6 +51,7 @@
     }
 
 void show_function_key(void){
+  
       Terminal.println();
       Terminal.println("F1  - show this Help");
       Terminal.println("F2  - LIST");
@@ -66,4 +67,5 @@ void show_function_key(void){
       Terminal.println("F12 - Reboot");
       Terminal.println();
       printmsg("READY.", 1);
+  
 }

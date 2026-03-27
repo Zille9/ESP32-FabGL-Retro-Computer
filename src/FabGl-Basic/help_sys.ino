@@ -96,7 +96,7 @@ void show_help(void) {  //Unterprogramme des Helpsystems in help_sys
 void show_help_name(void) {                                             //Anzeige aller Befehle und Funktionen
   int kw, fu, op;
   tmptxtpos = txtpos;                                                   //txtpos merken
-  table_index = findCommandBinary();                                    //Befehlstabelle lesen
+  table_index = findCommand();//Binary();                                    //Befehlstabelle lesen
   txtpos = tmptxtpos;
   kw = table_index;
   table_index = findFunction();//Binary();                                   //Funktionstabelle lesen
@@ -563,9 +563,9 @@ void show_Command_Help(int was) {                                       //Anzeig
       Terminal.println("and length=l");
       break;
     case KW_PATH:
-      Terminal.println("PATH x,y,x1,y1...xn,yn - up to 32 points");
-      Terminal.println("draws a Path from x,y to x1,y1 to xn,yn");
-      Terminal.println("PATHF draws a filled Path");
+      Terminal.println("PATH x,y,x1,y1...xn,yn<,opt> max 32 points");
+      Terminal.println("draws a Path from x,y to xn,yn");
+      Terminal.println("opt -> 1 - filled");
       break;
     case KW_RENUM:
       Terminal.println("RENUM startline, step size");
