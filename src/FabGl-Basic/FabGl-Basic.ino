@@ -54,13 +54,13 @@
 //
 //
 #define BasicVersion "2.15"
-#define BuiltTime "27.03.2026"
+#define BuiltTime "28.03.2026"
 // siehe Logbuch.txt zum Entwicklungsverlauf
 // V2.15:27.03.2026           -Einige Codeänderungen mit KI-Hilfe, dadurch konnte nochmals die Geschwindigkeit gesteigert werden
 //                            -Umbau der Zahleneingabe (normal, exponentiell, hex und bin - einiges an Code-zeilen eingespart)
 //                            -Mandel.BAS braucht jetzt ca.5.5min (vorher 7.5min)
 //                            -PATH-Befehl geändert ->PATH x,y,...xn,yn,1 zeichnet einen gefüllten Path
-//                            -43674 Zeilen/sek. 
+//                            -43674 Zeilen/sek.
 //
 // V2.14:21.03.2026           -Syntax-Hervorhebung integriert - das ist cool ;-)
 //                            -Hardwarefehler beim FRAM-Modul behoben - an der CS-Leitung ist zwingend ein Pullup-Widerstand (10k nach VDD) notwendig
@@ -236,9 +236,9 @@ File fp;
 #include <Update.h>
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
-#define MAX_HIST 128
-char history[MAX_HIST]; // Speicher für die letzte Zeile
-bool hist_exists = false;
+//#define MAX_HIST 128
+//char history[MAX_HIST]; // Speicher für die letzte Zeile
+//bool hist_exists = false;
 
 
 //------------------------------------- ESP32-Time-Lib fuer Datei-zeitstempel ---------------------------------------------------------------------
@@ -271,6 +271,7 @@ uint32_t delayMS;
 Adafruit_BMP085 bmp;
 // Store the current sea level pressure at your location in Pascals.
 float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA;
+bool bmp_ready = false;
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 // -------------------------- EEPROM Routinen für Parameter-Speicherung ---------------------------------------------------------------------------
@@ -281,7 +282,7 @@ float seaLevelPressure = SENSORS_PRESSURE_SEALEVELHPA;
 //---------------------------- EEPROM o.FRAM-Chip I2C-Adressen ------------------------------------------------------------------------------------
 
 //short int EEprom_ADDR = 0x50; //-> Adresse 0x50 ist der EEPROM auf dem Board
-short int EEprom_ADDR = 0x57; //-> Adresse 0x57 ist der EEPROM auf dem RTC3231 Board
+short int EEprom_ADDR = 0x57;   //-> Adresse 0x57 ist der EEPROM auf dem RTC3231 Board
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 
@@ -307,10 +308,10 @@ bool mcp_start_marker = false;
 TwoWire myI2C = TwoWire(0); //eigenen I2C-Bus erstellen
 RTC_DS3231 rtc;
 //diese Konstellation funktioniert mit ESP-Eigenboard und RTC-Modul oder 27 und 26 für die Freigabe des Seriellports
-byte IIC_SET = 55;      // -steht 55 im EEprom-Platz 13, dann sind die Werte im EEprom gültig
+byte IIC_SET = 55;          // -steht 55 im EEprom-Platz 13, dann sind die Werte im EEprom gültig
 // dies ist die Standard-Konfiguration
-byte SDA_RTC = 27;
-byte SCL_RTC = 1;
+byte SDA_RTC = 27;          //auf IO27 geändert
+byte SCL_RTC = 1;           //müsste auch noch geändert werden !!!
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 //-------------------------------------- LCD-Treiber ----------------------------------------------------------------------------------------------
@@ -329,21 +330,21 @@ byte FRAM_CS  = 0;                    //SPI-RAM CS-Pin
 
 Adafruit_FRAM_SPI spi_fram = Adafruit_FRAM_SPI(kSD_CLK, kSD_MISO, kSD_MOSI, FRAM_CS);
 uint32_t SPI_memSize;                 //ermittelte SPI-Ram-Grösse
-uint32_t renum_addr = 0x10004;         //Adresse ab der Renumber arbeitet
-uint32_t fram_ptr;
-unsigned int zeilen_anzahl;
+uint32_t renum_addr = 0x10004;        //Adresse ab der Renumber arbeitet
+uint32_t fram_ptr;                    //Pointer für Renumber
+unsigned int zeilen_anzahl;           //für Renumber
 
 //---------------------------------------- spezielle SPI-Ram-Adressen -----------------------------------------------------------------------------
 word FRAM_OFFSET      = 0x10000;     //Offset für Poke-Anweisungen, um zu verhindern, das in den Array-Bereich gepoked wird
-word FRAM_PIC_OFFSET  ;             //Platz pro Bildschirm im Speicher 320x240=76800 + 4Byte für die Dimension = 76804 --> siehe cfg.h
+word FRAM_PIC_OFFSET  ;              //Platz pro Bildschirm im Speicher 320x240=76800 + 4Byte für die Dimension = 76804 --> siehe Memory_RW
 long load_adress      = 0x10000;     //ab hier kann ein Basicprogramm abgelegt werden (Eingabe: LOAD oder SAVE ohne Parameter)
 
 //---------------------------------------- Array-Parameter ----------------------------------------------------------------------------------------
 //Der Arraybereich befindet sich 0x0..0x7fff
 word Var_Neu_Platz =  0;            //Adresse nächstes Array-Feld Start bei 0x0
-static word VAR_TBL = 0xC000;       //Variablen-Array-Tabelle im SPI-RAM
-static word STR_TBL = 0xE000;       //String-Array-Tabelle im SPI-RAM
-static word VAR_MAX = 0xBFFF;   //Variablengrenze bei 0x7dff
+static word VAR_TBL = 0xC000;       //Variablen-Array-Tabelle im SPI-RAM 4kb
+static word STR_TBL = 0xE000;       //String-Array-Tabelle im SPI-RAM 4kb
+static word VAR_MAX = 0xBFFF;       //Variablengrenze bei 0xBFFF 49kb
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 //######################################### Ende Konfiguration SPI-RAM ############################################################################
 
@@ -401,10 +402,10 @@ struct abuf {
 };
 
 
-volatile bool editor_mode = false;
-volatile VirtualKey ed_vk = VirtualKey::VK_NONE;
-volatile char ed_char = 0;
-volatile bool ed_newKey = false;
+//volatile bool editor_mode = false;        //Editpr-Marker
+//volatile VirtualKey ed_vk = VirtualKey::VK_NONE;
+//volatile char ed_char = 0;
+//volatile bool ed_newKey = false;
 
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------
@@ -459,13 +460,11 @@ short int Theme_state = 0;              //aktuelle Theme Nummer (im EEPROM gespe
 static bool Theme_marker = false;       //Theme-Marker, falls Farben geändert
 short int Mode_state = 0;               //aktuelle Auflösung (im EEProm gespeichert)
 
-static bool break_marker = false;      //********** Test für CardKB *****************
-static bool function_key = false;
-
-//uint8_t Cursor_key = 0;                 //puffer für Cursortasten
+static bool break_marker = false;       //Abbruch-Marker
+static bool function_key = false;       //Funktionstasten-Marker
 
 //------------------------------ Grid-Parameter ---------------------------------------------------------------------------------------------------
-int Grid[15];  //0=x, 1=y, 2=xx, 3=yy, 4=zell_x, 5=zell_y, 6=pix_x, 7=pix_y, 8=frame-col, 9=grid_col
+int Grid[15];                          //0=x, 1=y, 2=xx, 3=yy, 4=zell_x, 5=zell_y, 6=pix_x, 7=pix_y, 8=frame-col, 9=grid_col
 int Grid_point_x, Grid_point_y;
 
 //------------------------------ Window-Parameter -------------------------------------------------------------------------------------------------
@@ -494,15 +493,15 @@ short int onoff = 1;          //Cursor status
 
 
 
-// these will select, at runtime, where IO happens through for load/save
+// Ausgabe-Stream Terminal, Datei, Seriell oder FRAM
 enum {
   kStreamTerminal = 0,
   kStreamFile,
   kStreamSerial,
   kStreamFram
 };
-static char inStream = kStreamTerminal;
-static char outStream = kStreamTerminal;
+static char inStream = kStreamTerminal;    //Eingabe an Terminal senden
+static char outStream = kStreamTerminal;   //Ausgabe an Terminal senden
 
 static char program[kRamSize];            //Basic-Programmspeicher
 static char Stringtable[STR_SIZE];        //Stringvariablen mit 1 Buchstaben -> 26*40 = 1040 Bytes
@@ -512,8 +511,7 @@ static char Stringtable[STR_SIZE];        //Stringvariablen mit 1 Buchstaben -> 
 static char Fntable[26][FN_SIZE];         // bytes 40 String = 40*26 ->1040 bytes ->Funktionsstring-Array
 int Fnvar = 0;                            //Operatorenzähler
 int Fnoperator[27 * 5];                   //DEFN A(a,b,c,d,e,f,g,h)-> Name 0-26,0-26=Operator1,0-26=operator2,0-26=Operator3,0-26=Operator4 + 1 Anzahl
-bool fn_marker = false;
-
+bool fn_marker = false;                   //Funktions-Marker
 //------------------------------------ Editor -----------------------------------------------------------------------------------------------------
 char const * Edit_line = nullptr;        //Editor-Zeile
 long editpos;                            //Position innerhalb des Programs
@@ -569,13 +567,13 @@ int logic_ergebnis[10];
 //-> bis zu 5 AND oder OR Vergleiche können in einer Zeile vorkommen
 
 struct stack_for_frame {
-  char frame_type;    //1byte
-  int for_var;        //2byte
-  float to_var;       //4byte
-  float step;         //4byte
-  char *current_line; //1byte
-  char *txtpos;       //1byte
-};
+  char frame_type;    // 1 Byte (wird vom Compiler oft auf 4 Byte aufgefüllt/Padding)
+  int for_var;        // 4 Byte (Index der Variable A-Z)
+  float to_var;       // 4 Byte (Zielwert)
+  float step;         // 4 Byte (Schrittweite)
+  char *current_line; // 4 Byte (Pointer auf den Zeilenanfang)
+  char *txtpos;       // 4 Byte (Pointer auf die Position nach dem FOR)
+}; // Gesamtgröße: ca. 24 Byte pro Frame
 
 struct stack_gosub_frame {
   char frame_type;
@@ -861,9 +859,9 @@ const uint8_t kw_id_map[] PROGMEM = {
 
 //**************************** Basic-Funktionen **********************************************************************************************************************************************
 //****** HINWEIS: nicht benötigte Befehle können nicht einfach gelöscht oder deaktiviert werden (eher umbenennen), da die nachfolgenden Befehls-ID's sonst nicht mehr stimmen.****************
-//*************** umbenannte Befehle müssen in allen Func_tabellen exakt in der gleichen alphabetischen Reihenfolge eingefügt werden,                                        *****************
-//*************** damit der Interpreter die richtige Funktion aufruft !!!                                                                                                    *****************
-//*************** Neue Befehle werden ebenso behandelt - die Reihenfolge in der enum-Tabelle entspricht der ID in der func_id_map                                            *****************
+//*************** umbenannte Befehle müssen in allen Func_tabellen exakt in der gleichen alphabetischen Reihenfolge eingefügt werden,                                         ****************
+//*************** damit der Interpreter die richtige Funktion aufruft !!!                                                                                                     ****************
+//*************** Neue Befehle werden ebenso behandelt - die Reihenfolge in der enum-Tabelle entspricht der ID in der id_map                                                  ****************
 //********************************************************************************************************************************************************************************************
 const static char func_tab[] PROGMEM = {
   '!' + 0x80,                       // NOT (0)
@@ -1056,74 +1054,6 @@ const uint8_t func_id_map[] PROGMEM = {
   FUNC_VAL,       // VAL
 };
 
-
-/*
-  enum {
-  FUNC_PEEK = 0,
-  FUNC_ABS,
-  FUNC_RND,
-  FUNC_SIN,
-  FUNC_COS,
-  FUNC_TAN,
-  FUNC_LOG,
-  FUNC_SGN,
-  FUNC_SQR,
-  FUNC_INT,
-  FUNC_MIN,     //10
-  FUNC_MAX,
-  FUNC_EXP,
-  FUNC_GET,
-  FUNC_CHR,
-  FUNC_INKEY,
-  FUNC_FONT,
-  FUNC_ASC,
-  FUNC_TIMER,
-  FUNC_ATAN,
-  FUNC_LEN,       //20
-  FUNC_INSTR,
-  FUNC_COMPARE,
-  FUNC_BIN,
-  FUNC_HEX,
-  FUNC_LEFT,
-  FUNC_RIGHT,
-  FUNC_MID,
-  FUNC_TAB,
-  FUNC_SPC,
-  FUNC_STR,       //30
-  FUNC_GDATE,
-  FUNC_GTIME,
-  FUNC_IIC,
-  FUNC_DEG,
-  FUNC_AREAD,
-  FUNC_DREAD,
-  FUNC_UCASE,
-  FUNC_LCASE,
-  FUNC_VAL,
-  FUNC_MEM,      //40
-  FUNC_NOT,
-  FUNC_TEMP,
-  FUNC_DHT,
-  FUNC_GETCOL,
-  FUNC_BMPREAD,  //ungetestet BMP180 Drucksensor
-  FUNC_FN,
-  FUNC_PORT,
-  FUNC_PIN,
-  FUNC_PI,
-  FUNC_LN,       //50
-  FUNC_DEEK,
-  FUNC_FPEEK,
-  FUNC_GPIX,
-  FUNC_PIC,
-  FUNC_MAP,
-  FUNC_CONSTRAIN,
-  FUNC_STRING,
-  FUNC_FILE,
-  FUNC_GRID,
-  FUNC_UNKNOWN   //60
-  };
-*/
-
-
 //------------------------------- OPTION-Tabelle - alle Optionen, die dauerhaft gespeichert werden sollen -----------------------------------------
 static uint16_t opt_offsets[6]; // RAM-Speicher für die Startpositionen
 
@@ -1154,9 +1084,6 @@ const uint8_t opt_id_map[] PROGMEM = {
   OPT_PATH,
   OPT_THEME,
 };
-
-
-
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -1210,15 +1137,21 @@ const uint8_t relop_id[] PROGMEM = {
 };
 
 #define STACK_SIZE (sizeof(struct stack_for_frame)*26)   // 26 verschachtelte For-Next-Schleifen erlaubt (32bytes pro frame) 
+
+uint8_t stack_memory[STACK_SIZE];                        // Der eigentliche Speicherblock für den Stack
+char *stack_top = (char *)(stack_memory + STACK_SIZE);   // Zeiger auf das Ende des Blocks (da der Stack nach UNTEN wächst)
+char *stack_limit = (char *)stack_memory;                // Die untere Grenze (darf nicht unterschritten werden)
+char *sp = stack_top;                                    // Der aktuelle Stackpointer startet ganz oben
+
 #define VAR_SIZE sizeof(float)                           // Variablengrösse für float 4Bytes
-static char *stack_limit;
+//static char *stack_limit;
 static char *program_start;
 static char *program_end;
 static char *stack; // Software stack for things that should go on the CPU stack
 static char *variables_begin;
 static char *current_line;
 static char *data_line;
-static char *sp;
+//static char *sp;
 #define STACK_GOSUB_FLAG 'G'
 #define STACK_FOR_FLAG 'F'
 static char table_index;
@@ -1332,7 +1265,6 @@ static char skip_spaces() {
 //--------------------------------------------- erstes gültiges Zeichen zurückgeben ---------------------------------------------------------------
 
 static char spaces() {
-  // Direkt in der Bedingung prüfen und Pointer inkrementieren
   while (*txtpos == SPACE || *txtpos == TAB) {
     txtpos++;
   }
@@ -1501,7 +1433,7 @@ static uint16_t testnum() {
 
 void printmsg(const char *msg, int nl) {
 
-  while (*msg) {    // Kürzere Schreibweise für *msg != '\0'
+  while (*msg) {
     outchar(*msg++);
   }
 
@@ -1533,8 +1465,6 @@ static uint16_t wait_key(bool modes) {
 }
 
 //--------------------------------------------- Unterprogramm - Zeile eingeben --------------------------------------------------------------------
-
-//----------- Original -------------
 static void getln(int m)
 { int chpos = -1;
   if (m)
@@ -1609,16 +1539,13 @@ static char *findline()
   char *line = program_start;
   while (line != program_end)
   {
-
     if (((LINENUM *)line)[0] >= linenum)
       return line;
-
     // Add the line length onto the current address, to get to the next line;
     line += line[sizeof(LINENUM)];
   }
   return line;
 }
-
 
 //--------------------------------------------- Unterprogramm - Data-zeile finden -----------------------------------------------------------------
 
@@ -1629,7 +1556,7 @@ static char *find_data_line()
   {
 
     dataline = line + sizeof(LINENUM) + sizeof(char);         //Programmzeile übergeben
-
+    //Terminal.println(dataline);
     if (dataline[0] == 'D' && dataline[1] == 'A' && dataline[2] == 'T' && dataline[3] == 'A')
     {
       data_numbers[num_of_datalines++] = *((LINENUM *)line);
@@ -1652,88 +1579,10 @@ static void toUppercaseBuffer()
   }
 }
 
-//--------------------------------------------- Unterprogramm - Zeile ausgeben (Bildschirm oder Datei) --------------------------------------------
-int8_t peekRelop(const char* p, int &matched_len) {
-  int8_t low = 0;
-  int8_t high = 12;
-  char r1 = *p;
-  char r2 = *(p + 1);
+//##################################################################################################################################################
+//################################## Programmzeile ausgeben auf dem Bildschirm in Farbe, auf SD-Karte ohne Farbe ###################################
+//##################################################################################################################################################
 
-  while (low <= high) {
-    int8_t mid = (low + high) >> 1;
-    char c1 = pgm_read_byte(&relop_tab[mid << 1]);
-
-    if (c1 == r1) {
-      // Zum Anfang der Gruppe mit diesem Startzeichen springen
-      while (mid > 0 && pgm_read_byte(&relop_tab[(mid - 1) << 1]) == r1) mid--;
-
-      int8_t found_id = -1;
-      matched_len = 0;
-
-      // Die Gruppe durchsuchen
-      while (mid <= 12 && pgm_read_byte(&relop_tab[mid << 1]) == r1) {
-        char c2 = pgm_read_byte(&relop_tab[(mid << 1) + 1]);
-
-        if (c2 != 0 && c2 == r2) {
-          // Volltreffer 2-Zeichen (z.B. "<=") -> Sofort fertig!
-          matched_len = 2;
-          return pgm_read_byte(&relop_id[mid]);
-        }
-
-        if (c2 == 0) {
-          matched_len = 1;
-          found_id = pgm_read_byte(&relop_id[mid]);
-        }
-        mid++;
-      }
-      return found_id; // Wenn kein 2-Zeichen Match kam, nimm das 1-Zeichen Match
-    }
-    if (c1 < r1) low = mid + 1;
-    else high = mid - 1;
-  }
-  return -1;
-}
-
-// Eine Kopie von findInTable, die txtpos NICHT verändert
-int8_t peekInTable(const char* start_p, const char* table, const uint8_t* id_map, const uint16_t* offsets, uint8_t count, int &matched_len) {
-  int8_t low = 0;
-  int8_t high = count - 1;
-
-  while (low <= high) {
-    int8_t mid = (low + high) >> 1;
-    uint16_t offset = offsets[mid];
-    int8_t i = 0;
-    int8_t res = 0;
-
-    while (true) {
-      uint8_t t_byte = pgm_read_byte(&table[offset + i]);
-      uint8_t t_char = t_byte & 0x7F;
-      uint8_t i_char = (uint8_t)start_p[i];
-
-      if (i_char != t_char) {
-        res = i_char - t_char;
-        break;
-      }
-
-      if (t_byte & 0x80) { // Wortende in der Tabelle
-        char next = start_p[i + 1];
-        if (isalnum(next) || next == '_' || next == '$') {
-          res = 1;
-        } else {
-          matched_len = i + 1; // Wie viele Zeichen hat das Wort?
-          return pgm_read_byte(&id_map[mid]);
-        }
-        break;
-      }
-      i++;
-    }
-    if (res < 0) high = mid - 1;
-    else low = mid + 1;
-  }
-  return -1;
-}
-
-//####################################################### Programmzeile ausgeben auf dem Bildschirm in Farbe, auf SD-Karte ohne Farbe ###################################
 void setSyntaxColor(const char* ansiCode) {
   if (useColor) {
     Terminal.print(ansiCode);
@@ -1799,8 +1648,6 @@ int printline() {
         for (int k = 0; k < matched_len; k++) outchar(*list_line++);
         setSyntaxColor("\e[0m");
       }
-
-
       // 3. Sonst Variable (Grün)
       else {
         setSyntaxColor("\e[32m");
@@ -1846,12 +1693,12 @@ static int hexDigit(char c)
 }
 
 
-/*************************************************************************************************************************************************/
+//#################################################################################################################################################
 //--------------------------------------------- Start - Werteausgabe ------------------------------------------------------------------------------
 //--------------------------------------------- Zahlen,Variablen oder Strings auslesen ------------------------------------------------------------
 //--------------------------------------------- logische Abhängigkeiten auswerten -----------------------------------------------------------------
 //--------------------------------------------- mathematische Funtionen ausführen -----------------------------------------------------------------
-/*************************************************************************************************************************************************/
+//#################################################################################################################################################
 
 
 static float expr4()
@@ -1932,7 +1779,7 @@ static float expr4()
     return t;
   }
   //***************************************************** ein- oder zweibuchstabige variablen ***************************************************
-  // Is it a function or variable reference?
+  // Funktion oder Variable
   //--------------------------------------------------------------------------------------------------------------------------------------------------------------
   table_index = findFunction();                                         //Funktionstabelle lesen
 
@@ -1977,7 +1824,7 @@ static float expr4()
           if (expression_error) goto expr4_error;
         }
 
-        // String-Lese-Logik
+        // String-Lesen
         i = 0;
         while (i < STR_LEN - 1) {
           char c;
@@ -2002,8 +1849,8 @@ static float expr4()
         if (expression_error) goto expr4_error;
         spi_fram.read(v_adr, buf, 4);
 
-        //a = *((float *)buf);                                            //byte-array des Wertes nach float konvertieren
-        memcpy(&a, buf, 4);
+        //a = *((float *)buf);
+        memcpy(&a, buf, 4);                                             //byte-array des Wertes nach float konvertieren
         string_marker = false;                                          //kein String dann string_marker immer zurücksetzen
         chr = false;                                                    //Char Marker ebenfalls zurücksetzen
 
@@ -2087,7 +1934,6 @@ static float expr4()
       string_marker = true;
       quota = true;
     }
-
 
     else if ( fu == FUNC_PI )                    //PI benötigt nur die Klammern PI()
       a = M_PI;
@@ -2286,7 +2132,7 @@ static float expr4()
         return a;
         break;
 
-      case FUNC_NOT:                                          //NOT-Funktion
+      case FUNC_NOT:                                //NOT-Funktion
         return int(!a);
         break;
 
@@ -2302,42 +2148,42 @@ static float expr4()
       */
       case FUNC_PEEK:
         if (a == 0)
-          result = program[int(b)];                      //RAM
+          result = program[int(b)];                           //RAM
         else if (a == 1)
-          result = spi_fram.read8(b);                     //FRAM
+          result = spi_fram.read8(b);                         //FRAM
         else
-          result = readEEPROM(EEprom_ADDR, b );          //EEPROM
+          result = readEEPROM(EEprom_ADDR, b );               //EEPROM
         return result;
         break;
 
       case FUNC_DEEK:
         if (a == 0) {
-          result = (program[int(b)]) << 8;               //RAM
+          result = (program[int(b)]) << 8;                    //RAM
           result = result + program[int(b + 1)];
         }
         else if (a == 1)
-        { result = spi_fram.read8(b) << 8;        //FRAM
-          result = result + spi_fram.read8(b + 1);; //FRAM
+        { result = spi_fram.read8(b) << 8;                    //FRAM
+          result = result + spi_fram.read8(b + 1);;           //FRAM
         }
         else
         {
-          result = readEEPROM(EEprom_ADDR, b ) << 8;     //EEPROM
-          result = result + readEEPROM(EEprom_ADDR, b + 1); //EEPROM
+          result = readEEPROM(EEprom_ADDR, b ) << 8;          //EEPROM
+          result = result + readEEPROM(EEprom_ADDR, b + 1);   //EEPROM
         }
         return result;
         break;
 
       case FUNC_FPEEK:
-        if (a == 0) {                                     //RAM float
+        if (a == 0) {                                         //RAM float
           buf[0] = program[int(b)];
           buf[1] = program[int(b) + 1];
           buf[2] = program[int(b) + 2];
           buf[3] = program[int(b) + 3];
         }
         else if (a == 1) {
-          spi_fram.read(b, buf, 4);         //FRAM float
+          spi_fram.read(b, buf, 4);                           //FRAM float
         }
-        else {//if (a == 2) {                                //EEPROM float
+        else {                                                //EEPROM float
           readBuffer(EEprom_ADDR, b, 4, buf);
         }
         return *(float*)buf;
@@ -2353,44 +2199,44 @@ static float expr4()
         else return int(tc.getCursorCol());                    //get(1)=y
         break;
 
-      case FUNC_VAL:                                     //VAL("numerische Zeichenkette")
+      case FUNC_VAL:                                           //VAL("numerische Zeichenkette")
         //dbuf = String(tempstring);
         a = atof(cbuf.c_str());//cbuf.toFloat();
         string_marker = false;
         return a;
         break;
 
-      case FUNC_ABS:                                    //ABS(x)
+      case FUNC_ABS:                                          //ABS(x)
         if (a < 0)
           return -a;
         return a;
         break;
 
-      case FUNC_CHR:                                    //CHR$(x)
-        chr = true;                                     //merker für chr setzen (für Print-Befehl)
-        tempstring[0] = int(a);                         //Char-Zeichen übergeben
+      case FUNC_CHR:                                          //CHR$(x)
+        chr = true;                                           //merker für chr setzen (für Print-Befehl)
+        tempstring[0] = int(a);                               //Char-Zeichen übergeben
         tempstring[1] = 0;
-        string_marker = true;                           //String-marker setzen
+        string_marker = true;                                 //String-marker setzen
         return int(a);
         break;
 
-      case FUNC_SIN:                                    //SIN(x)
+      case FUNC_SIN:                                          //SIN(x)
         return sinf(a);
         break;
 
-      case FUNC_COS:                                    //COS(x)
+      case FUNC_COS:                                          //COS(x)
         return cosf(a);
         break;
 
-      case FUNC_TAN:                                    //TAN(x)
+      case FUNC_TAN:                                          //TAN(x)
         return tanf(a);
         break;
 
-      case FUNC_ATAN:                                   //ATN(x)
+      case FUNC_ATAN:                                         //ATN(x)
         return atanf(a);
         break;
 
-      case FUNC_LOG:                                    //LOG(x) Logarithmus zur Basis 10 (X>0)
+      case FUNC_LOG:                                          //LOG(x) Logarithmus zur Basis 10 (X>0)
         if (a < 0)
         {
           printmsg(mathmsg, 1);
@@ -2399,7 +2245,7 @@ static float expr4()
         return log10f(a);
         break;
 
-      case FUNC_LN:                                     //LN(x) natürlicher Logarithmus (X>0)
+      case FUNC_LN:                                           //LN(x) natürlicher Logarithmus (X>0)
         if (a < 0)
         {
           printmsg(mathmsg, 1);
@@ -2408,41 +2254,42 @@ static float expr4()
         return logf(a);
         break;
 
-      case FUNC_LEN:                                    //LEN(a$) -> Rückgabe Stringlänge
+      case FUNC_LEN:                                          //LEN(a$) -> Rückgabe Stringlänge
         //cbuf = String(tempstring);
         //a = cbuf.length();
         a = (float)strlen(tempstring);
-        string_marker = false;                          //String-Marker zurücksetzen, für korrekte Printausgabe/Werteübergabe
+        string_marker = false;                                //String-Marker zurücksetzen, für korrekte Printausgabe/Werteübergabe
         return a;
         break;
 
       case FUNC_UCASE:
         dbuf = String(tempstring);
-        dbuf.toUpperCase();                               //String in Grossbuchstaben umwandeln
-        dbuf.toCharArray(tempstring, dbuf.length() + 1);  //und nach tempstring zurückschreiben
+        dbuf.toUpperCase();                                   //String in Grossbuchstaben umwandeln
+        dbuf.toCharArray(tempstring, dbuf.length() + 1);      //und nach tempstring zurückschreiben
         return a;
         break;
 
       case FUNC_LCASE:
         dbuf = String(tempstring);
-        dbuf.toLowerCase();                              //String in Kleinbuchstaben umwandeln
-        dbuf.toCharArray(tempstring, dbuf.length() + 1); //und nach tempstring zurückschreiben
+        dbuf.toLowerCase();                                  //String in Kleinbuchstaben umwandeln
+        dbuf.toCharArray(tempstring, dbuf.length() + 1);     //und nach tempstring zurückschreiben
         return a;
         break;
 
-      case FUNC_SGN:                  //SGN(x)
-        if (a < 0) return -1.0;
-        else if (a == 0) return 0.0;
-        else if (a > 0) return 1.0;
+      case FUNC_SGN:                                         //SGN(x)
+        return (a > 0) - (a < 0);
+        //if (a < 0) return -1.0;
+        //else if (a == 0) return 0.0;
+        //else if (a > 0) return 1.0;
         break;
 
-      case FUNC_SQR:                  //SQR(x)
+      case FUNC_SQR:                                        //SQR(x)
         if (a < 0) {
           printmsg(mathmsg, 1);
           return (a);
         }
-        if (b == 0) return sqrtf(a);   //Quadratwurzel aus a
-        else return powf(a, 1 / b);    //N'te Wurzel aus a
+        if (b == 0) return sqrtf(a);                        //Quadratwurzel aus a
+        else return powf(a, 1 / b);                         //N'te Wurzel aus a
         break;
 
       case FUNC_MIN:                  //MIN(x,y)
@@ -2458,7 +2305,7 @@ static float expr4()
         break;
 
       case FUNC_INT:                  //INT()
-        return int(a);
+        return (int)a;  
         break;
 
       case FUNC_RND:                  //Random-Funktion RND(x)
@@ -2479,18 +2326,11 @@ static float expr4()
         break;
 
       case FUNC_COMPARE:              // COMP(zeichenkette1,zeichenkette2)
-        {
-          int res = strcmp(cbuf.c_str(), dbuf.c_str());
-          string_marker = false;        // Ergebnis ist eine Zahl
-          if (res < 0) return -1.0f;    // string1 ist kleiner als string2
-          if (res > 0) return 1.0f;     // string1 ist größer als string2
-          return 0.0f;                  // beide sind identisch
-        }
-        //a = cbuf.compareTo(dbuf);
-        //string_marker = false;        //String-Marker zurücksetzen, für korrekte Printausgabe/Werteübergabe
-        //if (a < 0) return -1;         //zeichenkette a kleiner b
-        //if (a > 1) return 1;          //zeichenkette a grösser b
-        //return a;                     //zeichenkette a gleich  b
+        a = cbuf.compareTo(dbuf);
+        string_marker = false;        //String-Marker zurücksetzen, für korrekte Printausgabe/Werteübergabe
+        if (a < 0) return -1;         //zeichenkette a kleiner b
+        if (a > 1) return 1;          //zeichenkette a grösser b
+        return a;                     //zeichenkette a gleich  b
         break;
 
       case FUNC_BIN:                  //Ausgabe als Binärwert
@@ -2529,10 +2369,11 @@ static float expr4()
       case FUNC_AREAD:                     //Analog Read IO-Pin 2,12,26,27,34,35,36,39
         if ((a == 2) || (a == 12) || (a == 26)  || (a == 27)  || (a == 34) || (a == 35) || (a == 36) || (a == 39)) //nur diese Pins sind erlaubt
         {
-          if ((a == 2) || (a == 12)  || (a == 26) || (a == 26)) pinMode(a, INPUT_PULLUP); //Pin2,12,26,27 als Eingang falls vorher als Ausgang
+          if ((a == 2) || (a == 12)  || (a == 26) || (a == 27)) pinMode(a, INPUT_PULLUP); //Pin2,12,26,27 als Eingang falls vorher als Ausgang
           switch (int(b)) {
             case 1:
-              return 3.3 / 4096 * analogRead(a);              //Ausgabe als Spannungs-Wert
+              return 0.0008056640625f * analogRead(a);
+              //return 3.3 / 4096 * analogRead(a);              //Ausgabe als Spannungs-Wert
               break;
             case 2:
               return HCSR04(a);                               //Ausgabe Ultraschallsensor HC-SR04 Entfernung in cm
@@ -2551,7 +2392,9 @@ static float expr4()
       case FUNC_DREAD:                     //Digital Read IO-Pin 2,12,26,27,34,35,36
         if ((a == 2) || (a == 12) || (a == 26) || (a == 27) || (a == 34) || (a == 35) || (a == 36)) //nur diese Pins sind erlaubt
         {
-          if ((a == 2) || (a == 12) || (a == 26) || (a == 27)) pinMode(a, INPUT_PULLUP); //Pin2,26 als Eingang falls vorher als Ausgang
+          if (a < 34) {                                         //((a == 2) || (a == 12) || (a == 26) || (a == 27)) pinMode(a, INPUT_PULLUP); //Pin2,26 als Eingang falls vorher als Ausgang
+            pinMode(a, INPUT_PULLUP);
+          }
           return digitalRead(a);
         }
         else
@@ -2562,17 +2405,16 @@ static float expr4()
 
 
       case FUNC_SPC:
-        for (int i = 0; i < a; i++) {
-          outchar(' ');
+        if (a > 0) {
+          for (int i = 0; i < int(a) ; i++) {
+            outchar(' ');
+          }
+          tab_marker = true;
         }
-        tab_marker = true;
         return a;
         break;
 
       case FUNC_STR:
-        //cbuf = String(a, b);
-        //cbuf.trim();
-        //cbuf.toCharArray(tempstring, cbuf.length() + 1);
         dtostrf(a, 0, (int)b, tempstring);
         string_marker = true;
         return a;
@@ -2596,10 +2438,7 @@ static float expr4()
       case FUNC_TEMP:
         if ((a == 2) || (a == 26))        //nur diese Pins sind erlaubt
           return init_temp(a, b);         //temp(port,kanal)->Ausgabe Temperatur Dallas DS18S20
-        else
-        {
-          printmsg(portmsg, 1);
-        }
+        else printmsg(portmsg, 1);
         break;
 
       case FUNC_DHT:
@@ -2613,23 +2452,26 @@ static float expr4()
         break;
 
       case FUNC_BMPREAD:
-
-        if (!bmp.begin(BMP085_ULTRAHIGHRES, &myI2C))
-        {
+        /*
+          if (!bmp.begin(BMP085_ULTRAHIGHRES, &myI2C))
+          {
           printmsg("no BMP-Sensor connected!", 0);
           return -1;
+          }*/
+        if (!bmp_ready) {
+          if (bmp.begin(BMP085_ULTRAHIGHRES, &myI2C)) {
+            bmp_ready = true;
+          } else {
+            printmsg("no BMP-Sensor!", 0);
+            return -1;
+          }
         }
         else
         {
-
           if (a < 0 || a > 2) a = 0;                      //0=Druck in Pa, 1=Höhe in m 2=Temp in C - Werte <0 und grösser 2 ergeben den Druck
-
           if (a == 0) return bmp.readPressure();
-
           else if (a == 1) return bmp.readAltitude();
-
           else return bmp.readTemperature();
-
         }
         break;
 
@@ -2868,7 +2710,7 @@ static float get_value()
 
 
 //#######################################################################################################################################
-//--------------------------------------------- SDT - Befehl "SDT Tag,Monat,Jahr,Stunde,Minute,Sekunde"----------------------------------
+//--------------------------------------------- RTC - Befehl "RTC Tag,Monat,Jahr,Stunde,Minute,Sekunde"----------------------------------
 //#######################################################################################################################################
 
 static int set_TimeDate()
@@ -3078,7 +2920,6 @@ static int input()
 
     if (c == ',')
     {
-      //Terminal.println(c);
       nr++;
       txtpos++;
       continue;
@@ -3388,6 +3229,7 @@ data_expr_error:
 static char Data_String_quoted_read()
 {
   char c;
+
   data_spaces();
   c = *dataline;
   if (c != '"')
@@ -3424,7 +3266,6 @@ static char Data_String_quoted_read()
   }
   return 0;
 }
-
 
 //#######################################################################################################################################
 //---------------------------------------- Zeile ans Ende des Speichers verschieben -----------------------------------------------------
@@ -4329,8 +4170,6 @@ execline:
 
 forloop:
     {
-
-      //char var, c, d;
       float initial, step, to_var;
       int var, c, d, z;
       z = 0;
@@ -4365,6 +4204,8 @@ forloop:
       to_var = get_value();
       if (expression_error) continue;
 
+      //if (initial > to_var) goto run_next_statement;
+      
       if (txtpos[0] == 'S' && txtpos[1] == 'T' && txtpos[2] == 'E' && txtpos[3] == 'P')//if (isStep())//table_index == 0)
       {
         txtpos += 4;
@@ -4382,16 +4223,14 @@ forloop:
       }
 
       if (!expression_error && (*txtpos == NL || *txtpos == ':'))
-      {
+      {     
         string_marker = false;
         struct stack_for_frame *f;
         if (sp + sizeof(struct stack_for_frame) < stack_limit) {
-          printmsg(fornextmsg, 1);
-          printnum(linenum, 0);
-
-          //if(ser_marker) Serial1.print(linenum,DEC);
-          warmstart();
-          continue;
+        printmsg(fornextmsg, 1);
+        printnum(linenum, 0);
+        warmstart();
+        continue;
         }
 
         sp -= sizeof(struct stack_for_frame);
@@ -4405,8 +4244,8 @@ forloop:
         f->txtpos   = txtpos;
         f->current_line = current_line;
         goto run_next_statement;
-      }
-
+        }
+      
     }
 
 
@@ -4422,7 +4261,7 @@ next:
     spaces();
 
 gosub_return:
-    // Now walk up the stack frames and find the frame we want, if present
+    // Nun durchlaufen wir die Frame-Stapel und suchen den gewünschten Frame, falls vorhanden.
     tempsp = sp;
     while (tempsp < program + sizeof(program) - 1)
     {
@@ -4446,6 +4285,7 @@ gosub_return:
           // Das ist nicht die Schleife, die wir suchen... also gehen wir den Stapel wieder nach oben.
           tempsp += sizeof(struct stack_gosub_frame);
           break;
+
         case STACK_FOR_FLAG:
           // Flag, Var, Final, Step
           if (table_index == KW_NEXT)
@@ -4458,7 +4298,6 @@ gosub_return:
               int ef, xf;
               tmp = int(txtpos[-1] - 'A');
 
-
               if (*txtpos >= 'A' && *txtpos <= 'Z')                         //zweiter Variablenbuchstabe
               {
                 ef = int(*txtpos - 'A' + 1) * 26;
@@ -4466,12 +4305,11 @@ gosub_return:
                 txtpos++;
               }
 
-              if (tmp == f->for_var)
+              if (tmp <= f->for_var)
               {
-                float *varaddr = ((float *)variables_begin) + tmp;//txtpos[-1] - 'A';
-
+                float *varaddr = ((float *)variables_begin) + tmp;
                 *varaddr = *varaddr + f->step;
-                // Use a different test depending on the sign of the step increment
+                //benutze unterschiedliche tests abhängig vom Vorzeichen für STEP
                 if ((f->step > 0 && *varaddr <= f->to_var) || (f->step < 0 && *varaddr >= f->to_var))
                 {
                   // Wir müssen eine Schleife durchlaufen, damit kein Element vom Stapel entfernt wird.
@@ -4485,7 +4323,7 @@ gosub_return:
               }
             }
           }
-          // This is not the loop you are looking for... so Walk back up the stack
+          // Das ist nicht die Schleife, die wir suchen... also gehen wir den Stapel wieder nach oben.
           tempsp += sizeof(struct stack_for_frame);
           break;
 
@@ -4566,7 +4404,7 @@ static int command_Print(void)
           semicolon = true;
           break;
         }
-        // Falls kein AT, falle in default (Ausdruck/Variable beginnend mit A)
+        // Falls kein AT, falle gehe zu default (Ausdruck/Variable beginnend mit A)
         [[fallthrough]];
 
       default:
@@ -4777,65 +4615,16 @@ float rw_array(int num, word table) {
   return (float)ort; // Rückgabe der berechneten Speicheradresse im FRAM
 }
 
-/*
-  float rw_array(int num, word table) {
-  int x, y, z, xx, yy, zz;    //Dimensionswerte aus der Klammer lesen
-  word vadresse, ort;
-  byte p_data[8], len;        //Dimensionswerte im FRAM
-  x = y = z = 0;
 
-  x = get_value();            //erste Dimension
-  if (*txtpos == ',') {
-    txtpos++;
-    y = get_value();          //eventuelle zweite Dimension
-  }
-  if (*txtpos == ',') {
-    txtpos++;
-    z = get_value();          //eventuelle dritte Dimension
-  }
-  if (Test_char(')')) {
-    expression_error = 1;
-    return 0;
-  }
-
-  ort = table + (num * 6);                                         //1=num.Var-Position der Array-Dimension in Array-Tabelle (A=0, B=1, C=2 usw.)
-  if (table == VAR_TBL) len = sizeof (float);                        //Eintragslänge bei float 4
-  else if (table == STR_TBL) {
-    len = STR_LEN;
-
-  }
-
-  //Dimensionswerte aus dem FRAM lesen und mit Eingabe vergleichen
-  spi_fram.read(ort, p_data, 6);
-  //readBuffer(FRam_ADDR, ort, 6, p_data);
-
-  vadresse = word(p_data[0], p_data[1]);                                //word(h, l) //vadresse = p_data[0] << 8; vadresse += p_data[1]; Variablen-Feldadresse - Adresse bei dem das Array-Feld beginnt
-  xx = word (p_data[2], p_data[3]);                                     //1.Dimension
-  yy = p_data[4];                                                       //2.Dimension
-  zz = p_data[5];                                                       //3.Dimension
-
-  if (x > xx || y > yy || z > zz) {                                     //Dimensionsfehler entdeckt
-    expression_error = 1;
-    syntaxerror(dimmsg);
-    return 0;
-  }
-  ort = vadresse + ((xx + 1) * y * len) + (x * len) + ((xx + 1) * (yy + 1) * len * z);
-  return ort;
-  }
-*/
-//--------------------------------------------- Variablen löschen ---------------------------------------------------------------------------------
+//#######################################################################################################################################
+//----------------------------------------------------- CLEAR-Befehl --------------------------------------------------------------------
+//#######################################################################################################################################
 
 void clear_var()
 {
-  long w_ert = 0;
-  byte* bytes = (byte*)&w_ert;
-
   memset(tempstring, '\0', sizeof(tempstring));
-
-  for (int i = 0; i < VAR_SIZE * 26 * 27; i++)                     //Variablen löschen
-  {
-    variables_begin[i] = 0;
-  }
+  int var_bereich_groesse = 26 * 27 * VAR_SIZE;
+  memset(variables_begin, 0, var_bereich_groesse);
   memset(Stringtable, '\0', sizeof(Stringtable));
   if (Var_Neu_Platz > 0) {                                          //SPI-Ram nur löschen, wenn Arrays definiert wurden
     SPI_RAM_fill(0x0, 0x1000, 0);                                   //die ersten 4kb Array-Variablen im Ram löschen
@@ -4853,8 +4642,6 @@ void clear_var()
 //--------------------------------------------- NEW-Befehl ------------------------------------------------------------------------------
 //#######################################################################################################################################
 void cmd_new() {
-  long w_ert = 0;
-  byte* bytes = (byte*)&w_ert;
   program_start = program;
   program_end = program_start;
   sp = program + sizeof(program);                                     // Needed for printnum
@@ -4964,7 +4751,6 @@ static int set_theme(int value, int fnt)
 
 static int Test_char(char az)
 {
-
   // check for char az
   if (*txtpos != az)
   {
@@ -5194,20 +4980,15 @@ static int line_rec_circ(int circ_or_rect, int param)
   return 0;
 }
 
+//#######################################################################################################################################
+//----------------------------------------------------- PATH-Befehl ---------------------------------------------------------------------
+//#######################################################################################################################################
 
 static int draw_path() {
   // FabGL nutzt den Typ 'Point' (enthält int16_t X und Y)
   Point points[16];
   uint8_t ptCount = 0;
   bool fill = false;
-  /*
-  Terminal.println(*txtpos);
-  if(*txtpos == '_' && *txtpos+1 == 'F'){
-  //if (*txtpos == 'F') {
-    fill = true;
-    txtpos+=2;
-  }
-  */
   // Parameter einsammeln
   while (ptCount < 16) {
     expression_error = 0;
@@ -5226,14 +5007,14 @@ static int draw_path() {
     // Check für das nächste Paar
     if (*txtpos == ',') txtpos++;
     else break;
-    
+
     // oder auf FILL
-    if(*txtpos == '1') {                            //das Ende von Fill_Path wird mit einer 1 gekennzeichnet
+    if (*txtpos == '1') {                           //das Ende von Fill_Path wird mit einer 1 gekennzeichnet
       fill = true;
       txtpos++;
       break;
     }
-    
+
   }
 
   // Zeichnen mit FabGL
@@ -5315,19 +5096,15 @@ static int sprite(char cm) {
 
   switch (cm) {
     case 'C':
-      //myString = "\e_GSPRITECOUNT" + String(cnt, DEC) + "$";
       Terminal.print("\e_GSPRITECOUNT" + String(cnt, DEC) + "$");
-      //Terminal.print(String(cnt, DEC) + "$");
       break;
     case 'D':
       abuf = String(tempstring);                          //Stringkopie für D-Befehl nach abuf kopieren
       abuf.trim();
       Terminal.print("\e_GSPRITEDEF" + String(nr, DEC) + ";" + String(par[1], DEC) + ";" + String(par[2], DEC) + ";M;" + String(par[4], DEC) + ";" + String(par[5], DEC) + ";" + String(par[6], DEC) + ";" + abuf + "$"); //sprtd(n,"H;W;R;G;B;Data")
-      //Terminal.print(abuf);
       break;
     case 'S':
       Terminal.print("\e_GSPRITESET" + String(nr, DEC) + ";" + tempstring + ";0;" + String(par[1], DEC) + ";" + String(par[2], DEC) + "$"); //sprts(n,"V..H;Frame;x;y");
-      //Terminal.print(String(nr, DEC) + ";" + tempstring + ";0;" + String(par[1], DEC) + ";" + String(par[2], DEC) + "$"); //sprts(n,"V..H;Frame;x;y");
       break;
   }
 
@@ -6811,8 +6588,9 @@ static int isValidFnChar( char c )
   }
 */
 
-//###############################################################################################################################################################################
-//################################################################# Versuch einer einheitlichen Tabellensuche (keywords, Functions,Option #######################################
+//#######################################################################################################################################
+//############################################### Tabellensuche Befehle,Funkt. u.Optionen ###############################################
+//#######################################################################################################################################
 // Für Befehle
 int findCommand() {
   return findInTable(keywords, kw_offsets, kw_id_map, KW_COUNT, KW_COUNT);
@@ -6857,7 +6635,7 @@ int8_t findInTable(const char* table, const uint16_t* offsets, const uint8_t* id
           break;
         }
 
-        // MATCH GEFUNDEN!
+        // Wort gefunden!
         txtpos += (i + 1); // Zeiger vorrücken
         spaces();                                                               //eingefügt nach Umstellung auf findcommand()
         return pgm_read_byte(&id_map[mid]);
@@ -6871,58 +6649,91 @@ int8_t findInTable(const char* table, const uint16_t* offsets, const uint8_t* id
   return error_val;
 }
 
-/*
-  // Hilfsfunktion zum Vergleichen von txtpos mit einem Wort im Flash
-  int compareInputWithFlash(const char* input, int kw_index, int &matched_len) {
-  uint16_t offset = kw_offsets[kw_index];
-  int i = 0;
-
-  while (true) {
-    uint8_t table_byte = pgm_read_byte(&keywords[offset + i]);
-    uint8_t table_char = table_byte & 0x7F;
-    uint8_t input_char = (uint8_t)input[i];
-
-    // Case-insensitive Vergleich (optional: toupper nutzen)
-    if (input_char != table_char) {
-      return input_char - table_char;
-    }
-
-    // Wenn Zeichen passt und Wortende in Tabelle erreicht ist
-    if (table_byte & 0x80) {
-      matched_len = i + 1; // Merken, wie lang das Wort war
-      return 0; // Exakter Match!
-    }
-    i++;
-  }
-  }
-*/
-/*
-  int findCommandBinary() {
-  int low = 0;
-  int high = KW_COUNT - 1;
-  int matched_len = 0;
+//#######################################################################################################################################
+//############################################### Hilfsprogramme für die Syntaxhervorhebung #############################################
+//#######################################################################################################################################
+int8_t peekRelop(const char* p, int &matched_len) {
+  int8_t low = 0;
+  int8_t high = 12;
+  char r1 = *p;
+  char r2 = *(p + 1);
 
   while (low <= high) {
-    int mid = (low + high) / 2;
-    int res = compareInputWithFlash(txtpos, mid, matched_len);
+    int8_t mid = (low + high) >> 1;
+    char c1 = pgm_read_byte(&relop_tab[mid << 1]);
 
-    if (res == 0) {
-      // Wort in der alphabetischen Liste gefunden!
-      txtpos += matched_len;
-      spaces();
+    if (c1 == r1) {
+      // Zum Anfang der Gruppe mit diesem Startzeichen springen
+      while (mid > 0 && pgm_read_byte(&relop_tab[(mid - 1) << 1]) == r1) mid--;
 
-      // Nutze mid als Index, um die echte Enum-ID aus der Map zu holen
-      return pgm_read_byte(&kw_id_map[mid]);
+      int8_t found_id = -1;
+      matched_len = 0;
+
+      // Die Gruppe durchsuchen
+      while (mid <= 12 && pgm_read_byte(&relop_tab[mid << 1]) == r1) {
+        char c2 = pgm_read_byte(&relop_tab[(mid << 1) + 1]);
+
+        if (c2 != 0 && c2 == r2) {
+          // Volltreffer 2-Zeichen (z.B. "<=") -> Sofort fertig!
+          matched_len = 2;
+          return pgm_read_byte(&relop_id[mid]);
+        }
+
+        if (c2 == 0) {
+          matched_len = 1;
+          found_id = pgm_read_byte(&relop_id[mid]);
+        }
+        mid++;
+      }
+      return found_id; // Wenn kein 2-Zeichen Match kam, nimm das 1-Zeichen Match
     }
+    if (c1 < r1) low = mid + 1;
+    else high = mid - 1;
+  }
+  return -1;
+}
 
+int8_t peekInTable(const char* start_p, const char* table, const uint8_t* id_map, const uint16_t* offsets, uint8_t count, int &matched_len) {
+  int8_t low = 0;
+  int8_t high = count - 1;
+
+  while (low <= high) {
+    int8_t mid = (low + high) >> 1;
+    uint16_t offset = offsets[mid];
+    int8_t i = 0;
+    int8_t res = 0;
+
+    while (true) {
+      uint8_t t_byte = pgm_read_byte(&table[offset + i]);
+      uint8_t t_char = t_byte & 0x7F;
+      uint8_t i_char = (uint8_t)start_p[i];
+
+      if (i_char != t_char) {
+        res = i_char - t_char;
+        break;
+      }
+
+      if (t_byte & 0x80) { // Wortende in der Tabelle
+        char next = start_p[i + 1];
+        if (isalnum(next) || next == '_' || next == '$') {
+          res = 1;
+        } else {
+          matched_len = i + 1; // Wie viele Zeichen hat das Wort?
+          return pgm_read_byte(&id_map[mid]);
+        }
+        break;
+      }
+      i++;
+    }
     if (res < 0) high = mid - 1;
     else low = mid + 1;
   }
+  return -1;
+}
 
-  // Rückgabe eines Fehlerwertes (z.B. KW_COUNT oder -1), wenn nichts gefunden wurde
-  return KW_COUNT;
-  }
-*/
+//#######################################################################################################################################
+//############################################### Indextabellen für die div.Befehlstabellen erstellen ###################################
+//#######################################################################################################################################
 void setupTableIndex(const char* table, uint16_t* offsets, int count) {
   uint16_t pos = 0;
   for (int i = 0; i < count; i++) {
@@ -6931,7 +6742,9 @@ void setupTableIndex(const char* table, uint16_t* offsets, int count) {
   }
 }
 
-
+//#######################################################################################################################################
+//############################################### Operatortabelle lesen #################################################################
+//#######################################################################################################################################
 int findRelopBinary() {
   int8_t low = 0;
   int8_t high = 12;
@@ -6976,7 +6789,6 @@ int findRelopBinary() {
   return RELOP_UNKNOWN;
 }
 
-//##############################################################################################################################################################################
 
 //#######################################################################################################################################
 //--------------------------------------------- SETUP -----------------------------------------------------------------------------------
@@ -7259,7 +7071,7 @@ long HCSR04(int p) {
 }
 
 //#######################################################################################################################################
-//############################################### Testbereich Dallas Temp-Sensor ########################################################
+//############################################### Dallas Temp-Sensor ####################################################################
 //#######################################################################################################################################
 float init_temp(int p, int kanal) {
 
@@ -7308,7 +7120,6 @@ break;
       { dht.temperature().getEvent(&event);
         if (isnan(event.temperature))
         {
-          //Terminal.println("Error reading temperature!");
           return -1;
         }
 
@@ -7318,7 +7129,6 @@ break;
       { dht.humidity().getEvent(&event);
         if (isnan(event.relative_humidity))
         {
-          //Terminal.println("Error reading humidity!");
           return -1;
         }
 
@@ -7858,7 +7668,7 @@ nochmal:
   }
 
   //#######################################################################################################################################
-  //********************************************************** DIM-Befehl **************************************************************
+  //********************************************************** DIM-Befehl *****************************************************************
   //#######################################################################################################################################
   int Array_Dim(void) {
     int res;
@@ -7903,17 +7713,12 @@ nochmal:
         }
 
         if (Test_char(')')) return 1;
-
         // 4. Speicherbedarf berechnen (32-Bit für ESP32)
         grenze = (uint32_t)(z + 1) * (y + 1) * (x + 1) * len;
 
-        // ESP32 Limit: Hier kannst du deutlich höher gehen als 32256 (z.B. 512KB)
-        //const uint32_t MAX_BASIC_RAM = 128 * 1024;
-
-        if (Var_Neu_Platz + grenze > VAR_MAX) {
+        if (Var_Neu_Platz + grenze > VAR_MAX) {                           //Überprüfung auf Variablen-Grenze
           syntaxerror(outofmemory);
           return 1;
-
         }
 
         // 5. Adresse in der Symboltabelle berechnen
@@ -8030,6 +7835,10 @@ nochmal:
     }
     return 0;
   }
+
+  //#######################################################################################################################################
+  //############################################### Tastatur - LAYOUT #####################################################################
+  //#######################################################################################################################################
 
   void Set_Layout(void) {
 
@@ -8226,7 +8035,6 @@ nochmal:
       return 1;
     txtpos++;
 
-
     while (txtpos[i] != quote)                                    // Checken, ob abschließendes Anführungszeichen vorhanden ist
     {
       if (txtpos[i] == NL) {
@@ -8247,7 +8055,7 @@ nochmal:
   }
 
   //#######################################################################################################################################
-  //********************************************************** PIC-Befehl ****************************************************
+  //********************************************************** PIC-Befehl *****************************************************************
   //#######################################################################################################################################
   int show_Pic(void) {
     long ad, n_bytes;
@@ -8748,12 +8556,9 @@ nochmal:
     }
     return 0;
   }
-  //#######################################################################################################################################
-
-
 
   //#######################################################################################################################################
-  //-----------------------------------------Befehl GRID_typ(x,y,x_zell,y_zell,x_pixel_step,y_pixelstep,frame_color,grid_color,pixel_raster,scale,arrow,frame) ----------------------
+  //------------Befehl GRID_typ(x,y,x_zell,y_zell,x_pixel_step,y_pixelstep,frame_color,grid_color,pixel_raster,scale,arrow,frame) ---------
   //#######################################################################################################################################
   int make_grid(void) {
     int x_grid, y_grid, x_zell, y_zell, x_stp, y_stp;
@@ -8977,9 +8782,8 @@ nochmal:
   }
 
   //#######################################################################################################################################
-
+  //############################################### Befehl TEXT ###########################################################################
   //#######################################################################################################################################
-  //-------------------------------------------- Befehl TEXT(x,y,font,String)--------------------------------------------------------------
   int draw_text(void) {
     int x_text, y_text, fnt;
 
@@ -9271,10 +9075,9 @@ nochmal:
   }
 
 
-  //##############################################################################################################################################
-  //----------------------------------------------------------- Utility-Funktionstasten ----------------------------------------------------------
-  //##############################################################################################################################################
-  //########################################################### ASCII-Zeichen ausgeben ###########################################################
+  //#######################################################################################################################################
+  //############################################### Char-Tabelle ausgeben F6,7 ############################################################
+  //#######################################################################################################################################
   void char_out(int lo, int hi) {
     int z = 0;
     char buf[16]; // Buffer für formattierte Ausgabe
@@ -9301,7 +9104,9 @@ nochmal:
     printmsg("READY.", 1);
   }
 
-  //########################################################### Farbcodes ausgeben ###########################################################
+  //#######################################################################################################################################
+  //############################################### Farbcodes ausgeben F8 #################################################################
+  //#######################################################################################################################################
 
   void color_out(void) {
     int z = 0;
@@ -9335,7 +9140,9 @@ nochmal:
   }
 
 
-  //########################################################### Funktion GPX ###########################################################
+  //#######################################################################################################################################
+  //############################################### Funktion GPX ##########################################################################
+  //#######################################################################################################################################
 
   //->modes=0 - test Pixel gesetzt(1) oder nicht(0); modes=1 gibt die Farbe des Pixels zurück
   int Test_pixel(int x, int y, bool modes) {
@@ -9365,7 +9172,9 @@ nochmal:
     return c; // Farbewert zurückgeben
   }
 
-  //########################################################### Befehl ARC ###########################################################
+  //#######################################################################################################################################
+  //############################################### ARC-Befehl ############################################################################
+  //#######################################################################################################################################
   void drawArc(int x, int y, int r_min, int r_max, int gr_start, int gr_end, int filled) {
     const int max_pnts = (gr_end - gr_start + 1) * 2;
     Point pnt[max_pnts]; // Auf dem ESP32 sind lokale Arrays dieser Größe ok (Stack ~8KB)
@@ -9407,7 +9216,9 @@ nochmal:
     GFX.waitCompletion();
   }
 
-  //########################################################### Befehl RENUM ########################################################################################
+  //#######################################################################################################################################
+  //############################################### Renum Befehl ##########################################################################
+  //#######################################################################################################################################
 
   void renum()
   {
@@ -9684,4 +9495,4 @@ nochmal:
   }
 
   //#########################################################################################################################################################################
-  //########################################################################## Testbereich - neue Funktionen #########################################################################
+  //########################################################################## Testbereich - neue Funktionen ################################################################
