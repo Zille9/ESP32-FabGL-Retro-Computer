@@ -53,14 +53,21 @@
 //
 //
 //
-#define BasicVersion "2.15"
-#define BuiltTime "28.03.2026"
+#define BasicVersion "2.16"
+#define BuiltTime "22.04.2026"
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// V2.16:22.04.2026           -Listout-Routine erweitert -> FOR-NEXT werden jetzt ein- und ausgerückt, das sieht übersichtlicher aus
+//                            -Mandel.bas 4.1 min Julia.bas 5.6min
+//                            -51486 Zeilen/sek. (keine)
+//
 // V2.15:27.03.2026           -Einige Codeänderungen mit KI-Hilfe, dadurch konnte nochmals die Geschwindigkeit gesteigert werden
 //                            -Umbau der Zahleneingabe (normal, exponentiell, hex und bin - einiges an Code-zeilen eingespart)
 //                            -Mandel.BAS braucht jetzt ca.5.5min (vorher 7.5min)
 //                            -PATH-Befehl geändert ->PATH x,y,...xn,yn,1 zeichnet einen gefüllten Path
-//                            -43674 Zeilen/sek.
+//                            -Fehler in der RUN-Funktion, die Variablen und Arrays werden nicht immer gelöscht ?! Ursache noch unbekann :-(
+//                            -weitere Optimierungen, wieder etwas schneller
+//                            -Julia.bas in 4.5 min - Mandel.bas 4.0min
+//                            -48513 Zeilen/sek. (keine)
 //
 // V2.14:21.03.2026           -Syntax-Hervorhebung integriert - das ist cool ;-)
 //                            -Hardwarefehler beim FRAM-Modul behoben - an der CS-Leitung ist zwingend ein Pullup-Widerstand (10k nach VDD) notwendig
@@ -364,6 +371,8 @@ byte THEME_SET = 77;    //-steht 77 im EEPROM Platz 17, dann setze das gespeiche
 byte PATH_SET = 88;     //-steht 88 im EEPROM Platz 19, dann setze Arbeits-Pfad
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
+int currentIndent = 0;        //Einrückungsmerker für For-Next
+
 //------------------------------------- Akku-Überwachung ------------------------------------------------------------------------------------------
 /*
   #ifdef Akkualarm_enabled            // Akku-Überwachung für batteriebetriebene Geräte
@@ -372,41 +381,6 @@ byte PATH_SET = 88;     //-steht 88 im EEPROM Platz 19, dann setze Arbeits-Pfad
   #define Batt_Pin 39                 //Pin wird in jedem Fall definiert
 */
 //-------------------------------------------------------------------------------------------------------------------------------------------------
-//------------------------------------- Editor-Konfiguration --------------------------------------------------------------------------------------
-
-typedef struct erow {
-  int size;
-  int rsize;
-  char *chars;
-  char *render;
-} erow;
-
-struct editorConfig {
-  int cx, cy;
-  int rx;
-  int rowoff;
-  int coloff;
-  int screenrows;
-  int screencols;
-  int dirty;
-  int numrows;
-  erow *row;
-  char *filename;
-  char statusmsg[80];
-  time_t statusmsg_time;
-}; struct editorConfig E;
-
-struct abuf {
-  char *b;
-  int len;
-};
-
-
-//volatile bool editor_mode = false;        //Editpr-Marker
-//volatile VirtualKey ed_vk = VirtualKey::VK_NONE;
-//volatile char ed_char = 0;
-//volatile bool ed_newKey = false;
-
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 #define COL_RESET  "\e[0m"
@@ -1144,7 +1118,7 @@ char *stack_limit = (char *)stack_memory;                // Die untere Grenze (d
 char *sp = stack_top;                                    // Der aktuelle Stackpointer startet ganz oben
 
 #define VAR_SIZE sizeof(float)                           // Variablengrösse für float 4Bytes
-//static char *stack_limit;
+
 static char *program_start;
 static char *program_end;
 static char *stack; // Software stack for things that should go on the CPU stack
@@ -1595,9 +1569,11 @@ int printline() {
   LINENUM line_num;
   memcpy(&line_num, list_line, sizeof(LINENUM));
   list_line += sizeof(LINENUM) + sizeof(char);
+  bool isStartOfLine = true;
 
   printnum((int)line_num, 0);
   outchar(' ');
+
 
   while (*list_line != NL && *list_line != '\0') {
     char c = *list_line;
@@ -1617,6 +1593,7 @@ int printline() {
           outchar(*list_line++);
         }
         setSyntaxColor("\e[0m");
+        isStartOfLine = false;
         continue; // Sofort zum nächsten Zeichen im Quelltext
       }
     }
@@ -1627,34 +1604,110 @@ int printline() {
       while (*list_line != '"' && *list_line != NL && *list_line != '\0') outchar(*list_line++);
       if (*list_line == '"') outchar(*list_line++);
       setSyntaxColor("\e[0m");
+      isStartOfLine = false;
     }
     // --- ZAHLEN (Magenta) ---
     else if (isdigit(c)) {
       setSyntaxColor("\e[35m");
       while (isdigit(*list_line)) outchar(*list_line++);
       setSyntaxColor("\e[0m");
+      isStartOfLine = false;
     }
     // --- WORTER (Befehle, Funktionen, Variablen) ---
     else if (isalpha(c)) {
-      // 1. Prüfen ob Keyword (Gelb)
-      if (peekInTable(list_line, keywords, kw_id_map, kw_offsets, KW_COUNT, matched_len) != -1) {
+      int kwort = peekInTable(list_line, keywords, kw_id_map, kw_offsets, KW_COUNT, matched_len);
+
+      // --- 1. EINRÜCKUNG (Gilt für ALLE Zeilenanfänge) ---
+      if (isStartOfLine) {
+        // Spezial-Logik: NEXT rückt sich selbst schon ein Stück zurück (Ausrückung)
+        int displayIndent = currentIndent;
+        if (kwort == KW_NEXT) {
+          displayIndent--;
+          if (displayIndent < 0) displayIndent = 0;
+        }
+
+        for (int i = 0; i < displayIndent; i++) outchar(' ');
+        isStartOfLine = false; // Flag für den Rest der Zeile löschen
+      }
+
+      // --- 2. TOKEN-UNTERSCHEIDUNG ---
+
+      // A) KEYWORD (Gelb)
+      if (kwort != -1) {
+        // Logik für den Zähler der folgenden Zeilen
+        if (kwort == KW_NEXT) {
+          currentIndent--;
+          if (currentIndent < 0) currentIndent = 0;
+        }
+
         setSyntaxColor("\e[33m");
         for (int k = 0; k < matched_len; k++) outchar(*list_line++);
         setSyntaxColor("\e[0m");
+
+        if (kwort == KW_FOR) {
+          currentIndent++;
+        }
       }
-      // 2. Prüfen ob Funktion (Cyan)
+      // B) FUNKTION (Cyan)
       else if (peekInTable(list_line, func_tab, func_id_map, func_offsets, 60, matched_len) != -1) {
         setSyntaxColor("\e[36m");
         for (int k = 0; k < matched_len; k++) outchar(*list_line++);
         setSyntaxColor("\e[0m");
       }
-      // 3. Sonst Variable (Grün)
+      // C) VARIABLE (Grün)
       else {
         setSyntaxColor("\e[32m");
-        while (isalnum(*list_line) || *list_line == '$' || *list_line == '_') outchar(*list_line++);
+        while (isalnum(*list_line) || *list_line == '$' || *list_line == '_') {
+          outchar(*list_line++);
+        }
         setSyntaxColor("\e[0m");
       }
     }
+
+    /*
+
+        else if (isalpha(c)) {
+          // 1. Prüfen ob Keyword (Gelb)
+          int kwort = peekInTable(list_line, keywords, kw_id_map, kw_offsets, KW_COUNT, matched_len);
+          if (kwort != -1)
+          {
+            if ((kwort == KW_FOR) || (kwort == KW_NEXT)) {
+
+              if (isStartOfLine) {                               // Zeileneinrückung und -ausrückung bei FOR-NEXT
+                if (kwort == KW_FOR) currentIndent ++;
+
+
+                for (int i = 0; i < currentIndent; i++) outchar(' ');
+
+                if (kwort == KW_NEXT) {
+                  currentIndent --;
+                  if (currentIndent < 0)
+                    currentIndent = 0;
+                }
+                isStartOfLine = false; // Danach für den Rest der Zeile sperren
+              }
+            }
+            setSyntaxColor("\e[33m");
+            for (int k = 0; k < matched_len; k++) outchar(*list_line++);
+            setSyntaxColor("\e[0m");
+          }
+
+
+          // 2. Prüfen ob Funktion (Cyan)
+          else if (peekInTable(list_line, func_tab, func_id_map, func_offsets, 60, matched_len) != -1) {
+            setSyntaxColor("\e[36m");
+            for (int k = 0; k < matched_len; k++) outchar(*list_line++);
+            setSyntaxColor("\e[0m");
+            isStartOfLine = false;
+          }
+          // 3. Sonst Variable (Grün)
+          else {
+            setSyntaxColor("\e[32m");
+            while (isalnum(*list_line) || *list_line == '$' || *list_line == '_') outchar(*list_line++);
+            setSyntaxColor("\e[0m");
+            isStartOfLine = false;
+          }
+        }*/
     // --- OPERATOREN & REST ---
     else {
       outchar(*list_line++);
@@ -2305,7 +2358,7 @@ static float expr4()
         break;
 
       case FUNC_INT:                  //INT()
-        return (int)a;  
+        return (int)a;
         break;
 
       case FUNC_RND:                  //Random-Funktion RND(x)
@@ -2765,6 +2818,7 @@ void list_out()
   int l = 0;
   int bis, num;
   bool b_bis = false;
+  currentIndent = 0;
 
   linenum = testnum();                                       // wenn nicht LIST-Taste, dann überprüfe Zeilennummer und gibt 0 zurück, wenn keine Zeilennummer angegeben wird
   if (program_start == program_end) return;
@@ -2828,9 +2882,9 @@ static int run_next() {
 //#######################################################################################################################################
 //--------------------------------------------- GOSUB - Befehl --------------------------------------------------------------------------
 //#######################################################################################################################################
-
-static int gosub()
-{
+/*
+  static int gosub()
+  {
   struct stack_gosub_frame *f;
   if (sp + sizeof(struct stack_gosub_frame) < stack_limit)
   {
@@ -2847,8 +2901,81 @@ static int gosub()
   current_line = findline();
   return 0;
 
-}
+  }
+*/
+// Stelle sicher, dass die Frame-Größe für den ESP32 optimiert ist
+#define GOSUB_FRAME_SIZE ((sizeof(struct stack_gosub_frame) + 3) & ~3)
 
+static int gosub()
+{
+  // 1. Sicherstellen, dass wir eine Zielzeile haben, BEVOR wir den Stack anfassen
+  char *next_line_ptr = findline();
+  if (next_line_ptr == NULL) {
+    // Fehler: Zeile nicht gefunden, wir brechen ab, bevor der Stack korrumpiert wird
+    return 1;
+  }
+
+  // 2. Stack-Berechnung (32-Bit Alignment erzwingen)
+  const size_t frame_size = (sizeof(struct stack_gosub_frame) + 3) & ~3;
+
+  // 3. Strengere Prüfung gegen den Array-Anfang
+  if ((char *)sp - frame_size < (char *)stack_limit)
+  {
+    printmsg(gosubmsg, 1);
+    warmstart();
+    return 1;
+  }
+
+  // 4. Den Stack-Pointer erst jetzt bewegen
+  sp = (char *)sp - frame_size;
+  struct stack_gosub_frame *f = (struct stack_gosub_frame *)sp;
+
+  // 5. Daten sichern
+  f->frame_type = STACK_GOSUB_FLAG;
+  f->txtpos = txtpos;           // Wo im Text wir gerade sind
+  f->current_line = current_line; // Pointer auf den Anfang der aktuellen Zeile
+
+  // 6. Den Interpreter auf die neue Zeile setzen
+  current_line = next_line_ptr;
+  txtpos = current_line; // Meistens muss txtpos an den Anfang der neuen Zeile
+
+  return 0;
+}
+/*
+  static int gosub()
+  {
+  struct stack_gosub_frame *f;
+
+  // 1. Korrekte Prüfung: Reicht der Platz nach unten?
+  if ((uintptr_t)sp - sizeof(struct stack_gosub_frame) < (uintptr_t)stack_limit)
+  {
+    printmsg(gosubmsg, 1);
+    warmstart();
+    return 1;
+  }
+
+  // 2. Stack-Pointer senken
+  sp -= sizeof(struct stack_gosub_frame);
+
+  // 3. Daten sichern
+  f = (struct stack_gosub_frame *)sp;
+  f->frame_type = STACK_GOSUB_FLAG;
+  f->txtpos = txtpos;
+  f->current_line = current_line;
+
+  // 4. Neue Zeile suchen
+  char *newline = findline();
+  if (newline == NULL) {
+      // Fehler: Zielzeile nicht gefunden!
+      // Stack wieder aufräumen oder Error ausgeben
+      sp += sizeof(struct stack_gosub_frame);
+      return 1;
+  }
+
+  current_line = newline;
+  return 0;
+  }
+*/
 //#######################################################################################################################################
 //--------------------------------------------- INPUT - Befehl --------------------------------------------------------------------------
 //#######################################################################################################################################
@@ -3375,6 +3502,13 @@ int insert_line() {
   return 0;
 }
 
+void reset_program() {
+  clear_var();
+  find_data_line();
+  sp = (char *)program + sizeof(program);
+  current_line = program_start;
+  txtpos = program_start;
+}
 //********************************************* Main - Programm ***********************************************************************************
 
 void loop()
@@ -3410,10 +3544,7 @@ void Basic_Interpreter()
 
     if ( triggerRun ) {                                 // AUTO-START-FUNKTION
       triggerRun = false;
-      clear_var();                                      //Variablen und Array-Tabelle löschen, Data-Zeiger zurücksetzen
-      find_data_line();                                 //Data-Zeilen finden
-      current_line = program_start;
-      sp = program + sizeof(program);
+      reset_program();
       goto execline;
     }
 
@@ -3504,21 +3635,15 @@ fnkey:                                                            //Funktionstas
         break;
 
       case KW_RUN:                                        // RUN
-        if (*txtpos != NL) {                              //RUN"/Filename" / RUN X$ lädt und startet das Programm
-          if (load_file()) {
-            continue;
-          }
+        if (*txtpos != NL && *txtpos != '*') {            //RUN"/Filename" / RUN X$ lädt und startet das Programm
+          if (load_file()) continue;
           string_marker = false;
           autorun = true;
         }
-        else if (*txtpos == '*') {
-          load_ram();
+        if (*txtpos == '*') {
+          load_ram();                                     //lädt und startet ein Programm aus dem SPI-RAM
         }
-        Var_Neu_Platz = 1;                                //auch Array-Ram auf jeden Fall löschen
-        clear_var();
-        find_data_line();                                 //Data-Zeilen finden
-        current_line = program_start;                     //beginn mit erster Zeile
-        sp = program + sizeof(program);
+        reset_program();
         goto execline;
         break;
 
@@ -3742,8 +3867,7 @@ fnkey:                                                            //Funktionstas
         break;
 
       case KW_CLEAR:
-        Var_Neu_Platz = 1;                                //auch Array-Ram auf jeden Fall löschen
-        clear_var();
+        clear_var();                                     //Variablen- und Array-Ram löschen
         break;
 
       case KW_THEN:                                      // THEN
@@ -4205,7 +4329,7 @@ forloop:
       if (expression_error) continue;
 
       //if (initial > to_var) goto run_next_statement;
-      
+
       if (txtpos[0] == 'S' && txtpos[1] == 'T' && txtpos[2] == 'E' && txtpos[3] == 'P')//if (isStep())//table_index == 0)
       {
         txtpos += 4;
@@ -4223,14 +4347,14 @@ forloop:
       }
 
       if (!expression_error && (*txtpos == NL || *txtpos == ':'))
-      {     
+      {
         string_marker = false;
         struct stack_for_frame *f;
         if (sp + sizeof(struct stack_for_frame) < stack_limit) {
-        printmsg(fornextmsg, 1);
-        printnum(linenum, 0);
-        warmstart();
-        continue;
+          printmsg(fornextmsg, 1);
+          printnum(linenum, 0);
+          warmstart();
+          continue;
         }
 
         sp -= sizeof(struct stack_for_frame);
@@ -4244,8 +4368,8 @@ forloop:
         f->txtpos   = txtpos;
         f->current_line = current_line;
         goto run_next_statement;
-        }
-      
+      }
+
     }
 
 
@@ -4623,14 +4747,15 @@ float rw_array(int num, word table) {
 void clear_var()
 {
   memset(tempstring, '\0', sizeof(tempstring));
-  int var_bereich_groesse = 26 * 27 * VAR_SIZE;
-  memset(variables_begin, 0, var_bereich_groesse);
+  for (int i = 0; i < VAR_SIZE * 26 * 27; i++)                     //Variablen löschen
+  {
+    variables_begin[i] = 0;
+  }
   memset(Stringtable, '\0', sizeof(Stringtable));
   if (Var_Neu_Platz > 0) {                                          //SPI-Ram nur löschen, wenn Arrays definiert wurden
     SPI_RAM_fill(0x0, 0x1000, 0);                                   //die ersten 4kb Array-Variablen im Ram löschen
     SPI_RAM_fill(VAR_TBL, 0x4000, 0);                               //Array-Tabellen löschen
   }
-
   Var_Neu_Platz = 0;                                               //Array-Zeiger zurücksetzen
   num_of_datalines = 0;                                            //Datazeilenzähler zurücksetzen
   del_window();                                                    //Fensterparameter löschen
@@ -4645,10 +4770,9 @@ void cmd_new() {
   program_start = program;
   program_end = program_start;
   sp = program + sizeof(program);                                     // Needed for printnum
-
   stack_limit = program + sizeof(program) - STACK_SIZE;               // - ARRAY_SIZE;
   variables_begin = stack_limit - (26 * 27 * VAR_SIZE) ;              //26*27 (2)Buchstaben als Variablen
-  memset(program, 0, 1000);                                           //die ersten 1000 Bytes des Speichers löschen
+  memset(program, 0, 0x8000);                                         //die 32kb des Speichers löschen
   clear_var();                                                        //Variablen und Array-Tabelle löschen
 }
 
@@ -5840,7 +5964,7 @@ static int inchar()
 
             case 0x03:       // ESC        -> BREAK
               current_line = 0;
-              sp = program + sizeof(program);
+              sp = (char *)stack_memory + STACK_SIZE; //sp = program + sizeof(program);
               break;
 
             default:
@@ -5856,12 +5980,13 @@ static int inchar()
           break_marker = false;
           triggerRun == false;
           current_line = 0;
-          sp = program + sizeof(program);
+          sp = (char *)stack_memory + STACK_SIZE;
+          //sp = program + sizeof(program);
           return 0x03;
         }
         if (function_key) {                     //Funktionsstaste - LIST, RUN etc.
           current_line = 0;
-          sp = program + sizeof(program);
+          sp = (char *)stack_memory + STACK_SIZE; //sp = program + sizeof(program);
           return CR;
         }
 
