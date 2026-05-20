@@ -53,9 +53,13 @@
 //
 //
 //
-#define BasicVersion "2.16"
-#define BuiltTime "22.04.2026"
+#define BasicVersion "2.17"
+#define BuiltTime "20.05.2026"
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// V2.17:22.04.2026           -DIR-Ausgabe überarbeitet, Ausgabe erfolgt jetzt sortiert, dauert allerdings etwas
+//                            -
+//                            -48726 Zeilen/sek. (keine)
+//
 // V2.16:22.04.2026           -Listout-Routine erweitert -> FOR-NEXT werden jetzt ein- und ausgerückt, das sieht übersichtlicher aus
 //                            -Mandel.bas 4.1 min Julia.bas 5.6min
 //                            -51486 Zeilen/sek. (keine)
@@ -237,6 +241,8 @@ bool Editor_ende = true;
 //SPI CLASS FOR REDEFINED SPI PINS !
 SPIClass spiSD(HSPI);
 File fp;
+#include <vector>
+#include <algorithm>
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 //------------------------------------- OTA-Update-Lib --------------------------------------------------------------------------------------------
@@ -604,6 +610,7 @@ const static char keywords[] PROGMEM = {
   'L', 'I', 'N', 'E' + 0x80,
   'L', 'I', 'S', 'T' + 0x80,
   'L', 'O', 'A', 'D' + 0x80,
+  'L', 'O', 'C', 'A', 'T', 'E' + 0x80,
   'M', 'K', 'D' + 0x80,
   'M', 'N', 'T' + 0x80,
   'N', 'E', 'W' + 0x80,
@@ -694,6 +701,7 @@ enum {
   KW_LINE,      //40
   KW_LIST,
   KW_LOAD,
+  KW_LOCATE,
   KW_MKD,
   KW_MNT,
   KW_NEW,
@@ -786,48 +794,49 @@ const uint8_t kw_id_map[] PROGMEM = {
   KW_LINE,     // 40: LINE
   KW_LIST,     // 41: LIST
   KW_LOAD,     // 42: LOAD
-  KW_MKD,      // 43: MKD
-  KW_MNT,      // 44: MNT
-  KW_NEW,      // 45: NEW
-  KW_NEXT,     // 46: NEXT
-  KW_ON,       // 47: ON
-  KW_OPEN,     // 48: OPEN
-  KW_OPT,      // 49: OPT
-  KW_OR,       // 50: OR
-  KW_PATH,     // 51: PATH
-  KW_PAUSE,    // 52: PAUSE
-  KW_PEN,      // 53: PEN
-  KW_PIC,      // 54: PIC
-  KW_PIN,      // 55: PIN
-  KW_POKE,     // 56: POKE
-  KW_PORT,     // 57: PORT
-  KW_POS,      // 58: POS
-  KW_PRINT,    // 59: PRINT
-  KW_PRZ,      // 60: PRZ
-  KW_PSET,     // 61: PSET
-  KW_PULSE,    // 62: PULSE
-  KW_PWM,      // 63: PWM
-  KW_READ,     // 64: READ
-  KW_RECT,     // 65: RECT
-  KW_REM,      // 66: REM
-  KW_RENAME,   // 67: RENAME
-  KW_RENUM,    // 68: RENUM
-  KW_RESTORE,  // 69: RESTORE
-  KW_RETURN,   // 70: RETURN
-  KW_RMD,      // 71: RMD
-  KW_RTC,      // 72: RTC
-  KW_RUN,      // 73: RUN
-  KW_SAVE,     // 74: SAVE
-  KW_SCROLL,   // 75: SCROLL
-  KW_SND,      // 76: SND
-  KW_SPRT,     // 77: SPRT
-  KW_STYLE,    // 78: STYLE
-  KW_SWAP,     // 79: SWAP
-  KW_TEXT,     // 80: TEXT
-  KW_THEME,    // 81: THEME
-  KW_THEN,     // 82: THEN
-  KW_TYPE,     // 83: TYPE
-  KW_WINDOW    // 84: WINDOW
+  KW_LOCATE,   // 43: LOCATE
+  KW_MKD,      // 44: MKD
+  KW_MNT,      // 45: MNT
+  KW_NEW,      // 46: NEW
+  KW_NEXT,     // 47: NEXT
+  KW_ON,       // 48: ON
+  KW_OPEN,     // 49: OPEN
+  KW_OPT,      // 50: OPT
+  KW_OR,       // 51: OR
+  KW_PATH,     // 52: PATH
+  KW_PAUSE,    // 53: PAUSE
+  KW_PEN,      // 54: PEN
+  KW_PIC,      // 55: PIC
+  KW_PIN,      // 56: PIN
+  KW_POKE,     // 57: POKE
+  KW_PORT,     // 58: PORT
+  KW_POS,      // 59: POS
+  KW_PRINT,    // 60: PRINT
+  KW_PRZ,      // 61: PRZ
+  KW_PSET,     // 62: PSET
+  KW_PULSE,    // 63: PULSE
+  KW_PWM,      // 64: PWM
+  KW_READ,     // 65: READ
+  KW_RECT,     // 66: RECT
+  KW_REM,      // 67: REM
+  KW_RENAME,   // 68: RENAME
+  KW_RENUM,    // 69: RENUM
+  KW_RESTORE,  // 70: RESTORE
+  KW_RETURN,   // 71: RETURN
+  KW_RMD,      // 72: RMD
+  KW_RTC,      // 73: RTC
+  KW_RUN,      // 74: RUN
+  KW_SAVE,     // 75: SAVE
+  KW_SCROLL,   // 76: SCROLL
+  KW_SND,      // 77: SND
+  KW_SPRT,     // 78: SPRT
+  KW_STYLE,    // 79: STYLE
+  KW_SWAP,     // 80: SWAP
+  KW_TEXT,     // 81: TEXT
+  KW_THEME,    // 82: THEME
+  KW_THEN,     // 83: THEN
+  KW_TYPE,     // 84: TYPE
+  KW_WINDOW    // 85: WINDOW
 };
 
 
@@ -2308,8 +2317,6 @@ static float expr4()
         break;
 
       case FUNC_LEN:                                          //LEN(a$) -> Rückgabe Stringlänge
-        //cbuf = String(tempstring);
-        //a = cbuf.length();
         a = (float)strlen(tempstring);
         string_marker = false;                                //String-Marker zurücksetzen, für korrekte Printausgabe/Werteübergabe
         return a;
@@ -2331,9 +2338,6 @@ static float expr4()
 
       case FUNC_SGN:                                         //SGN(x)
         return (a > 0) - (a < 0);
-        //if (a < 0) return -1.0;
-        //else if (a == 0) return 0.0;
-        //else if (a > 0) return 1.0;
         break;
 
       case FUNC_SQR:                                        //SQR(x)
@@ -3775,7 +3779,7 @@ fnkey:                                                            //Funktionstas
         continue;
         break;
 
-      case KW_CLS:                                        // CLS
+      case KW_CLS:                                      // CLS
         if (Frame_nr) {
           win_cls(Frame_nr);
         }
@@ -3786,7 +3790,8 @@ fnkey:                                                            //Funktionstas
         }
         break;
 
-      case KW_POS:                                        // POS x,y
+      case KW_POS:                                      // POS x,y
+      case KW_LOCATE:                                   //LOCATE x,y
         if (set_pos())
           continue;
         break;
@@ -6495,7 +6500,7 @@ bool search_file(const char* names) {
   if (cbuf.indexOf(filestring) > -1) return true;
   else return false;
 }
-
+/*
 void cmd_Dir()
 { int ln = 1;
   int ex = 0;
@@ -6635,6 +6640,221 @@ void cmd_Dir()
 
   dir.close();
   sd_ende();                                             //SD-Card unmount
+}
+*/
+void cmd_Dir()
+{ 
+  int ln = 1;
+  int ex = 0;
+  String cbuf;
+  const char hi[] = "._";
+  int was;
+  int wd = GFX.getWidth() / x_char[fontsatz];
+  int Dateien = 0;
+  bool ext = false;       // Sucherweiterung?
+  bool found = false;
+  char c = *txtpos;
+
+  if (c == char(34)) {                                        // Anführungszeichen erkannt
+    expression_error = 0;
+    get_value();                                              // in tempstring steht die Dateinamens-Erweiterung
+    cbuf = String(tempstring);
+    cbuf.toUpperCase();                                       // String in Grossbuchstaben umwandeln
+    cbuf.toCharArray(filestring, cbuf.length() + 1);          // und nach filestring schreiben
+    if (expression_error) return;
+    ext = true;                                               // Ausgabe mit Sucherweiterung
+    Terminal.print("search for:");
+    Terminal.print(filestring);                               // Dateierweiterung anzeigen
+    Terminal.println();
+  }
+  Terminal.println("please wait...");
+  spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
+  delay(5);
+  if (!SD.begin(kSD_CS, spiSD)) {
+    syntaxerror(sderrormsg);
+    sd_ende();
+    return;
+  }
+
+  File dir = SD.open(String(sd_pfad));
+  dir.seek(0);                                                  // zum Verzeichnis-Anfang
+
+  // Zwei getrennte Listen für Ordner und Dateien
+  std::vector<String> folderList;
+  std::vector<String> fileList;
+  
+  int maxNameLength = 12; // Standard-Mindestbreite für die Namensspalte (z.B. 8.3 Format)
+
+  // Schritt 1: Alle Einträge trennen, sammeln und maximale Länge ermitteln
+  while (true) {
+    File entry = dir.openNextFile();
+    if (!entry) {
+      entry.close();
+      break;
+    }
+
+    cbuf = String(entry.name());
+    cbuf.toCharArray(tempstring, cbuf.length() + 1);
+
+    // Versteckte Dateien ausblenden
+    if (strstr(tempstring, hi)) {
+      entry.close();
+      continue;
+    }
+
+    // Sucherweiterung filtern
+    if (ext == true) {
+      found = search_file(entry.name());
+      if (!found) {
+        entry.close();
+        continue;
+      }
+    }
+
+    String nameStr = String(entry.name());
+    
+    // Ermittle die Länge für die dynamische Spaltenbreite
+    if (nameStr.length() > maxNameLength) {
+      maxNameLength = nameStr.length();
+    }
+
+    // Einsortieren je nachdem, ob es ein Verzeichnis oder eine Datei ist
+    if (entry.isDirectory()) {
+      folderList.push_back(nameStr);
+    } else {
+      fileList.push_back(nameStr);
+    }
+    
+    entry.close();
+    yield();
+  }
+
+  // Begrenzung der Spaltenbreite, damit bei riesigen Namen noch Platz für Daten bleibt
+  // Wenn die Terminalbreite (wd) z.B. 40 ist, sollte die Spalte nicht 35 Zeichen einnehmen
+  int maxAllowedWidth = wd - 23; 
+  if (maxAllowedWidth < 10) maxAllowedWidth = 10; // Untere Grenze absichern
+  if (maxNameLength > maxAllowedWidth) {
+    maxNameLength = maxAllowedWidth;
+  }
+
+  // Lambda-Funktion für case-insensitive alphabetische Sortierung
+  auto compCaseInsensitive = [](const String &a, const String &b) {
+    String a_upper = a; a_upper.toUpperCase();
+    String b_upper = b; b_upper.toUpperCase();
+    return a_upper < b_upper;
+  };
+
+  // Schritt 2: Beide Listen separat alphabetisch sortieren
+  std::sort(folderList.begin(), folderList.end(), compCaseInsensitive);
+  std::sort(fileList.begin(), fileList.end(), compCaseInsensitive);
+
+  // Schritt 3: Ordner-Liste mit Datei-Liste zusammenführen
+  std::vector<String> combinedList = std::move(folderList);
+  combinedList.insert(combinedList.end(), fileList.begin(), fileList.end());
+
+  // Schritt 4: Sortierte Gesamtliste formatiert ausgeben
+  for (const String& fileName : combinedList) {
+    if (ex) break;
+
+    String fullPath = String(sd_pfad);
+    if (!fullPath.endsWith("/")) fullPath += "/";
+    
+    if (fileName.startsWith("/")) {
+      fullPath += fileName.substring(1);
+    } else {
+      fullPath += fileName;
+    }
+    
+    File entry = SD.open(fullPath);
+    if (!entry) continue;
+
+    // 1. Ein einzelnes führendes Leerzeichen für den Zeilenanfang
+    outchar(' ');
+    
+    // 2. Namen vorbereiten und bei Überlänge kürzen
+    String displayName = entry.name();
+    if (displayName.length() > maxNameLength) {
+      displayName = displayName.substring(0, maxNameLength - 3) + "...";
+    }
+    printmsg(displayName.c_str(), 0);
+
+    // 3. Dynamischer Spaltenabstand (Ausrichtung der nachfolgenden Spalten)
+    int currentLen = displayName.length();
+    for (int i = currentLen; i < (maxNameLength); i++) {
+      outchar(' ');
+    }
+
+    //-------------------------------- Verzeichnis ----------------------------------------------------------------
+    if ( entry.isDirectory() ) {
+      printmsg(slashmsg, 0);      // Gibt das "/" hinter dem Ordnernamen aus
+      
+      // Festen Abstand bis zur "<DIR>"-Anzeige auffüllen
+      for ( int i = 1 ; i < 12 ; i++ ) { 
+        outchar(' ');
+      }
+      printmsg(dirextmsg, 0);     // Gibt "DIR" bzw. "<DIR>" aus
+    }
+    //-------------------------------- Datei ----------------------------------------------------------------------
+    else {
+      // WICHTIG: Die alte 17-Leerzeichen-Schleife wurde entfernt!
+      // Stattdessen richten wir die Dateigröße rechtsbündig in einer 10-Zeichen-Spalte aus
+      long fSize = entry.size();
+      itoa(fSize, tempstring, 10);
+      for ( int i = strlen(tempstring) ; i < 10 ; i++ ) {
+        outchar(' ');
+      }
+      printnum(int(fSize), Zahlenformat);
+      Dateien++;
+
+      // Kleiner Abstand vor dem Datum
+      outchar(' ');
+      //printmsg(spacemsg, 0);
+
+      // Datum und Uhrzeit ausgeben
+      time_t t = entry.getLastWrite();
+      struct tm * tmstruct = localtime(&t);
+      if (tmstruct->tm_mday < 10) outchar('0');
+      printnum(tmstruct->tm_mday, 0);
+      outchar('.');
+      if ((tmstruct->tm_mon + 1) < 10) outchar('0');
+      printnum(tmstruct->tm_mon + 1, 0);
+      outchar('.');
+      printnum(((tmstruct->tm_year) + 1900), 0);
+      if (wd > 40) {
+        outchar(' ');
+        if (tmstruct->tm_hour < 10) outchar('0');
+        printnum(tmstruct->tm_hour, 0);
+        outchar(':');
+        if (tmstruct->tm_min < 10) outchar('0');
+        printnum(tmstruct->tm_min, 0);
+      }
+    }
+
+    line_terminator();
+    entry.close();
+    ln++;
+
+    was = key_press(ln);
+    if (was == 0) ln = 1;
+    if (was == 1) ex = 1;
+
+    yield();
+  }
+
+  // Gesamtspeicher-Statistiken ausgeben
+  line_terminator();
+  printmsg(spacemsg, 0);
+  printnum(Dateien, Zahlenformat);
+  printmsg(" Files on SD-Card", 1);
+  printmsg("  Total space: ", 0);
+  printnum(SD.totalBytes() / (1024 * 1024), Zahlenformat);
+  printmsg("MB", 1);
+  printmsg("  Used  space: ", 0);
+  printnum(SD.usedBytes() / (1024 * 1024), Zahlenformat);
+  printmsg("MB", 1);
+
+  dir.close();
+  sd_ende();
 }
 
 //#######################################################################################################################################
