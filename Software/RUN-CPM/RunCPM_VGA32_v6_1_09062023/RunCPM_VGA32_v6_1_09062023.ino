@@ -8,32 +8,32 @@
 #include "globals.h"
 #include <SPI.h>
 #include <Update.h>
-
+#include <FS.h>
 // #define SDFAT_FILE_TYPE 1 // Uncomment for Due and Teensy
 
 // SD library - Greinman SdFat from Library Manager
 #include <SdFat.h>           // SD library - Greinman SdFat from Library Manager
+File fp;
+/* ATTENTION if you get errors on compile
+  SdFat library change
+  ====================
+  Since the SdFat-Library v2.0.2 you need to edit SdFatConfig.h of the SdFat-Library:
+  Edit SdFatConfig.h file (around line 78 as of version 2.0.2) changing:
+  #define SDFAT_FILE_TYPE 3
+  to
 
-/* ATTENTION if you get errors on compile 
-SdFat library change
-====================
-Since the SdFat-Library v2.0.2 you need to edit SdFatConfig.h of the SdFat-Library:
-Edit SdFatConfig.h file (around line 78 as of version 2.0.2) changing:
-#define SDFAT_FILE_TYPE 3
-to
+  #define SDFAT_FILE_TYPE 1
+  As file type 1 is required for most of the RunCPM ports.
+  To find your libraries folder, open the Preferences in Arduino IDE
+  and look at the Sketchbook location field.
 
-#define SDFAT_FILE_TYPE 1
-As file type 1 is required for most of the RunCPM ports.
-To find your libraries folder, open the Preferences in Arduino IDE 
-and look at the Sketchbook location field.
+  On Windows systems, SdFatConfig.h will be in Documents\Arduino\libraries\SdFat\src
 
-On Windows systems, SdFatConfig.h will be in Documents\Arduino\libraries\SdFat\src
+  BTW: This change has to be done also every time you update the SdFat-Library,
+  because it overwrites thsi change.
 
-BTW: This change has to be done also every time you update the SdFat-Library,
-because it overwrites thsi change.
-
-See also that this solved my issue since SdFat-Library v2.0.2:
-https://github.com/MockbaTheBorg/RunCPM/issues/143
+  See also that this solved my issue since SdFat-Library v2.0.2:
+  https://github.com/MockbaTheBorg/RunCPM/issues/143
 */
 
 
@@ -46,7 +46,7 @@ https://github.com/MockbaTheBorg/RunCPM/issues/143
 // TTGO VGA32 Hardware Definition File
 // =========================================================================================
 // Board definitions go into the "hardware" folder- Choose/change a file from there
-#include "hardware/esp32/ttgo_vga32_esp32.h"
+#include "hardware/esp32/ttgo_vga32_esp32.h"  //SD-Pin-Konfiguration
 
 // =========================================================================================
 // Olimex ESP32-SBC FabGL Hardware Definition File
@@ -138,6 +138,7 @@ File32 pun_dev;
 int pun_open = FALSE;
 #endif
 
+
 // =========================================================================================
 // LST: device configuration
 // =========================================================================================
@@ -171,13 +172,13 @@ void setup(void) {
   // disable the WatchDog-TimeOut of the ESP32 Cores
   disableCore0WDT();
   delay(100); // experienced crashes without this delay!
-  disableCore1WDT();  
+  disableCore1WDT();
 
   // more stack is required for the UI (used inside Terminal.onVirtualKey)
   // default value 2048
   Terminal.keyboardReaderTaskStackSize = 2048;
   // Terminal.keyboardReaderTaskStackSize = 3000;
-  
+
   // 2048 good to pass vttest
   // 1024 is default value
   //  512 is good value to save memory
@@ -192,21 +193,21 @@ void setup(void) {
   preferences.begin("RunCPM", false);
 
   ConfDialogApp::checkVersion();
-  
+
   Serial.begin(SERIALSPD);
   delay(500);  // avoid garbage into the UART
 
   PS2Controller.begin(PS2Preset::KeyboardPort0);
 
   DisplayController.begin(); //default
-    Serial.printf("Free DMA Memory            ->   \e[1m%d bytes\e[0m\r\n", heap_caps_get_free_size(MALLOC_CAP_DMA));
-    Serial.printf("Free Memory                ->   \e[1m%d bytes\e[0m\r\n", heap_caps_get_free_size(MALLOC_CAP_32BIT));
-//  DisplayController.setResolution(VGA_640x240_60Hz);
-  DisplayController.setResolution(VGA_640x480_60Hz);  
-//  DisplayController.shrinkScreen(0, -48);
-//  DisplayController.setResolution(VGA_640x480_73Hz);
-//  DisplayController.setResolution(VGA_640x480_60HzAlt1);  
-//  DisplayController.setResolution(VGA_640x480_60HzD);
+  Serial.printf("Free DMA Memory            ->   \e[1m%d bytes\e[0m\r\n", heap_caps_get_free_size(MALLOC_CAP_DMA));
+  Serial.printf("Free Memory                ->   \e[1m%d bytes\e[0m\r\n", heap_caps_get_free_size(MALLOC_CAP_32BIT));
+  //  DisplayController.setResolution(VGA_640x240_60Hz);
+  DisplayController.setResolution(VGA_640x480_60Hz);
+  //  DisplayController.shrinkScreen(0, -48);
+  //  DisplayController.setResolution(VGA_640x480_73Hz);
+  //  DisplayController.setResolution(VGA_640x480_60HzAlt1);
+  //  DisplayController.setResolution(VGA_640x480_60HzD);
 
   Terminal.begin(&DisplayController);
   Terminal.connectLocally();                  // to use Terminal.read(), available(), etc..
@@ -218,132 +219,160 @@ void setup(void) {
   // https://rgbcolorcode.com/color/amber
   // RGB(255,191,0)
 
-if (SETVGA8 == true)
-  { DisplayController.setPaletteItem(4, RGB888(255, 191, 0)); }
-  else   { DisplayController.setPaletteItem(9, RGB888(255, 191, 0)); }
+  if (SETVGA8 == true)
+  {
+    DisplayController.setPaletteItem(4, RGB888(255, 191, 0));
+  }
+  else   {
+    DisplayController.setPaletteItem(9, RGB888(255, 191, 0));
+  }
 
   ConfDialogApp::loadConfiguration();
 
-// =========================================================================================
-// If DEBUGLOG exists - delete it
-// =========================================================================================
+  // =========================================================================================
+  // If DEBUGLOG exists - delete it
+  // =========================================================================================
 #ifdef DEBUGLOG
   _sys_deletefile((uint8 *)LogName);
 #endif
 
-// =========================================================================================
-// Do the Boot-Sound
-// =========================================================================================
-     for (int i = 0; i <= 2; i++)   {
-         Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
-         Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
-         delay(100);
-                                    }
-// =========================================================================================
-// readout the Config-Menu screen color and create a string to output Escape-sequences
-// =========================================================================================
-// get colors for Back- and Foreground
-int BGCOL = preferences.getInt("BGColor", (int)Color::Black);
-int FGCOL = preferences.getInt("FGColor", (int)Color::BrightGreen);
+  // =========================================================================================
+  // Do the Boot-Sound
+  // =========================================================================================
+  for (int i = 0; i <= 2; i++)   {
+    Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
+    Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
+    delay(100);
+  }
+  // =========================================================================================
+  // readout the Config-Menu screen color and create a string to output Escape-sequences
+  // =========================================================================================
+  // get colors for Back- and Foreground
+  int BGCOL = preferences.getInt("BGColor", (int)Color::Black);
+  int FGCOL = preferences.getInt("FGColor", (int)Color::BrightGreen);
 
-// set Escape-Sequence Color for Background and Foreground
-if (BGCOL < 8) {BGCOL = BGCOL +40;} else {BGCOL = BGCOL +92;}
-if (FGCOL < 8) {FGCOL = FGCOL +30;} else {FGCOL = FGCOL +82;}                                    
+  // set Escape-Sequence Color for Background and Foreground
+  if (BGCOL < 8) {
+    BGCOL = BGCOL + 40;
+  } else {
+    BGCOL = BGCOL + 92;
+  }
+  if (FGCOL < 8) {
+    FGCOL = FGCOL + 30;
+  } else {
+    FGCOL = FGCOL + 82;
+  }
 
-// convert int values to string
-String SBGCOL = String(BGCOL);
-String SFGCOL = String(FGCOL);
+  // convert int values to string
+  String SBGCOL = String(BGCOL);
+  String SFGCOL = String(FGCOL);
 
 
 
 
-// =========================================================================================
-// set KeyClick to the value of the config-menu
-// =========================================================================================
-if (ConfDialogApp::getKeyClick() == KEYCLICK_ENABLED){KEYCLICK = true;}
-      else {KEYCLICK = false;}
+  // =========================================================================================
+  // set KeyClick to the value of the config-menu
+  // =========================================================================================
+  if (ConfDialogApp::getKeyClick() == KEYCLICK_ENABLED) {
+    KEYCLICK = true;
+  }
+  else {
+    KEYCLICK = false;
+  }
 
-// =========================================================================================
-// set USBSerialMirror to the value of the config-menu
-// =========================================================================================
-if (ConfDialogApp::getSerMir() == SERMIR_ENABLED){SERMIR = true;}
-      else {SERMIR = false;}
+  // =========================================================================================
+  // set USBSerialMirror to the value of the config-menu
+  // =========================================================================================
+  if (ConfDialogApp::getSerMir() == SERMIR_ENABLED) {
+    SERMIR = true;
+  }
+  else {
+    SERMIR = false;
+  }
 
-// =========================================================================================
-// set USBSerialControl to the value of the config-menu
-// =========================================================================================
-if (ConfDialogApp::getSerCtl() == SERCTL_ENABLED){SERCTL = true;}
-      else {SERCTL = false;}      
- 
-// =========================================================================================
-// set USBSerialFilter to the value of the config-menu
-// =========================================================================================
-if (ConfDialogApp::getSerFlt() == SERFLT_ENABLED){SERFLT = true;}
-      else {SERFLT = false;}
+  // =========================================================================================
+  // set USBSerialControl to the value of the config-menu
+  // =========================================================================================
+  if (ConfDialogApp::getSerCtl() == SERCTL_ENABLED) {
+    SERCTL = true;
+  }
+  else {
+    SERCTL = false;
+  }
 
-// =========================================================================================
-// Show Boot-Screen
-// =========================================================================================
-_clrscr();
+  // =========================================================================================
+  // set USBSerialFilter to the value of the config-menu
+  // =========================================================================================
+  if (ConfDialogApp::getSerFlt() == SERFLT_ENABLED) {
+    SERFLT = true;
+  }
+  else {
+    SERFLT = false;
+  }
 
-_puts("\e[0m");
-// puts("\r\n");
+  // =========================================================================================
+  // Show Boot-Screen
+  // =========================================================================================
+  _clrscr();
 
-//if (SETVGA8 == true)
-//                     { _puts(" \e[37m\e#6  RunCPM v" VERSION " VGA32 \e[0m \r\n"); } // RunCPM Double Wide Line -Esc 37m white
-//                     else
-//                     { _puts(" \e[97m\e#6  RunCPM v" VERSION " VGA32 \e[0m \r\n"); } // RunCPM Double Wide Line -Esc 97m bright-white 
-                    
-// _puts("[\e[1m\e#6\e#3 RunCPM v" VERSION "  VGA32 \e[0m]\r\n"); // top    half of RunCPM Double Height Line
-// _puts("[\e[1m\e#6\e#4 RunCPM v" VERSION "  VGA32 \e[0m]\r\n"); // bottom half of RunCPM Double Height Line
+  _puts("\e[0m");
+  // puts("\r\n");
 
-//_puts("______________________________________________\r\n");
+  //if (SETVGA8 == true)
+  //                     { _puts(" \e[37m\e#6  RunCPM v" VERSION " VGA32 \e[0m \r\n"); } // RunCPM Double Wide Line -Esc 37m white
+  //                     else
+  //                     { _puts(" \e[97m\e#6  RunCPM v" VERSION " VGA32 \e[0m \r\n"); } // RunCPM Double Wide Line -Esc 97m bright-white
 
-// Print "Z80" at column 48 of row 2
-Terminal.write("\e_F49;4$");
-Terminal.write("######## \e[1m #######    #####   \e[0m");
-Terminal.write("\e_F49;5$");
-Terminal.write("     ##  \e[1m##     ##  ##   ##  \e[0m");
-Terminal.write("\e_F49;6$");
-Terminal.write("    ##   \e[1m##     ## ##     ## \e[0m");
-Terminal.write("\e_F49;7$");
-Terminal.write("   ##    \e[1m #######  ##     ## \e[0m");
-Terminal.write("\e_F49;8$");
-Terminal.write("  ##     \e[1m##     ## ##     ## \e[0m");
-Terminal.write("\e_F49;9$");
-Terminal.write(" ##      \e[1m##     ##  ##   ##  \e[0m");
-Terminal.write("\e_F49;10$");
-Terminal.write("######## \e[1m #######    #####   \e[0m");
+  // _puts("[\e[1m\e#6\e#3 RunCPM v" VERSION "  VGA32 \e[0m]\r\n"); // top    half of RunCPM Double Height Line
+  // _puts("[\e[1m\e#6\e#4 RunCPM v" VERSION "  VGA32 \e[0m]\r\n"); // bottom half of RunCPM Double Height Line
 
-Terminal.write("\e_F1;3$");
-   
-_puts("______________________________________________\r\n");
-_puts("CP/M  Emulator \e[1mv");
-_puts(VERSION);
-_puts("\e[0m      by   [\e[1mMarcelo Dantas\e[0m]\r\n");
-_puts("using FabGL    Terminal  by   [  \e[1m@fdivitto\e[0m   ]\r\n");
-_puts("Revision                      [ \e[1m");
-_puts(GL_REV);
-_puts("\e[0m ]\r\n");
+  //_puts("______________________________________________\r\n");
 
-if (SETVGA8 == true)
-// VGA8 Colored Text
-              { 
-              _puts("\e[37m\e[41m V \e[30m\e[102m G \e[92m\e[104m A \e[30m\e[107m 8 \e[0m-\e[37m\e[44m Controller   \e[0m   [\e[47m \e[101m \e[41m \e[102m \e[42m \e[104m \e[44m \e[101m \e[41m \e[102m \e[42m \e[104m \e[44m \e[107m \e[0m]\r\n");
-              }
-            else
-// VGA16 Colored Text
-              {
-              _puts("\e[96m\e[101m V \e[30m\e[102m G \e[96m\e[104m A \e[30m\e[103m 16 \e[96m\e[45m Controller   \e[0m   [\e[101m \e[41m \e[102m \e[42m \e[104m \e[44m \e[103m \e[43m \e[105m \e[45m \e[106m \e[46m \e[107m \e[47m \e[0m]\r\n");
-              }
+  // Print "Z80" at column 48 of row 2
+  Terminal.write("\e_F49;4$");
+  Terminal.write("######## \e[1m #######    #####   \e[0m");
+  Terminal.write("\e_F49;5$");
+  Terminal.write("     ##  \e[1m##     ##  ##   ##  \e[0m");
+  Terminal.write("\e_F49;6$");
+  Terminal.write("    ##   \e[1m##     ## ##     ## \e[0m");
+  Terminal.write("\e_F49;7$");
+  Terminal.write("   ##    \e[1m #######  ##     ## \e[0m");
+  Terminal.write("\e_F49;8$");
+  Terminal.write("  ##     \e[1m##     ## ##     ## \e[0m");
+  Terminal.write("\e_F49;9$");
+  Terminal.write(" ##      \e[1m##     ##  ##   ##  \e[0m");
+  Terminal.write("\e_F49;10$");
+  Terminal.write("######## \e[1m #######    #####   \e[0m");
 
-// =========================================================================================
-// If Boot-Info is enabled show Boot-Info
-// =========================================================================================
+  Terminal.write("\e_F1;3$");
+
+  _puts("______________________________________________\r\n");
+  _puts("CP/M  Emulator \e[1mv");
+  _puts(VERSION);
+  _puts("\e[0m      by   [\e[1mMarcelo Dantas\e[0m]\r\n");
+  _puts("using FabGL    Terminal  by   [  \e[1m@fdivitto\e[0m   ]\r\n");
+  _puts("Revision                      [ \e[1m");
+  _puts(GL_REV);
+  _puts("\e[0m ]\r\n");
+
+  if (SETVGA8 == true)
+    // VGA8 Colored Text
+  {
+    _puts("\e[37m\e[41m V \e[30m\e[102m G \e[92m\e[104m A \e[30m\e[107m 8 \e[0m-\e[37m\e[44m Controller   \e[0m   [\e[47m \e[101m \e[41m \e[102m \e[42m \e[104m \e[44m \e[101m \e[41m \e[102m \e[42m \e[104m \e[44m \e[107m \e[0m]\r\n");
+  }
+  else
+    // VGA16 Colored Text
+  {
+    _puts("\e[96m\e[101m V \e[30m\e[102m G \e[96m\e[104m A \e[30m\e[103m 16 \e[96m\e[45m Controller   \e[0m   [\e[101m \e[41m \e[102m \e[42m \e[104m \e[44m \e[103m \e[43m \e[105m \e[45m \e[106m \e[46m \e[107m \e[47m \e[0m]\r\n");
+  }
+
+  // =========================================================================================
+  // If Boot-Info is enabled show Boot-Info
+  // =========================================================================================
   if (ConfDialogApp::getBootInfo() == BOOTINFO_ENABLED) {
     //Terminal.printf("Screen Size                ->  \e[1m%d x %d\e[0m\r\n", DisplayController.getScreenWidth(), DisplayController.getScreenHeight());
     Terminal.printf("Terminal Size              ->   \e[1m%d x %d\e[0m\r\n", Terminal.getColumns(), Terminal.getRows());
-    //Terminal.printf("Keyboard                   ->   \e[1m%s\e[0m\r\n", PS2Controller.keyboard()->isKeyboardAvailable() ? "OK" : "Error");    
+    //Terminal.printf("Keyboard                   ->   \e[1m%s\e[0m\r\n", PS2Controller.keyboard()->isKeyboardAvailable() ? "OK" : "Error");
     Terminal.printf("Keyboard Layout            ->   \e[1m%s\e[0m\r\n", PS2Controller.keyboard()->isKeyboardAvailable() ? SupportedLayouts::names()[ConfDialogApp::getKbdLayoutIndex()] : "No Keyboard");
     Terminal.printf("Terminal Type              ->   \e[1m%s\e[0m\r\n", SupportedTerminals::names()[(int)ConfDialogApp::getTermType()]);
     //Terminal.printf("Free DMA Memory            ->   \e[1m%d bytes\e[0m\r\n", heap_caps_get_free_size(MALLOC_CAP_DMA));
@@ -356,117 +385,129 @@ if (SETVGA8 == true)
 
   } else if (ConfDialogApp::getBootInfo() == BOOTINFO_TEMPDISABLED) {
     preferences.putInt("BootInfo", BOOTINFO_ENABLED);
-  }      
+  }
 
   if (ConfDialogApp::getBootInfo() != BOOTINFO_ENABLED) {
-                                                           //_puts("\r\n");
-                                                           _puts("______________________________________________\r\n");
-                                                        }
+    //_puts("\r\n");
+    _puts("______________________________________________\r\n");
+  }
 
-// =========================================================================================
-// # KeyClick-Output
-// =========================================================================================
-   _puts("SND   : KeyClick       [F5]   ");
-if (KEYCLICK == true)
-   {_puts("[    enabled   ]\r\n");}
-      else
-      {_puts("[   \e[91mdisabled\e[0m   ]\r\n");}
+  // =========================================================================================
+  // # KeyClick-Output
+  // =========================================================================================
+  _puts("SND   : KeyClick       [F5]   ");
+  if (KEYCLICK == true)
+  {
+    _puts("[    enabled   ]\r\n");
+  }
+  else
+  {
+    _puts("[   \e[91mdisabled\e[0m   ]\r\n");
+  }
 
-// =========================================================================================
-// # USBSerialMirror-Output
-// =========================================================================================
-   _puts("USB   : SerialMirror   [F6]   ");
-   if (SERMIR == true)
-   {_puts("[    enabled   ]\r\n");}
-      else
-      {_puts("[   \e[91mdisabled\e[0m   ]\r\n");}
+  // =========================================================================================
+  // # USBSerialMirror-Output
+  // =========================================================================================
+  _puts("USB   : SerialMirror   [F6]   ");
+  if (SERMIR == true)
+  {
+    _puts("[    enabled   ]\r\n");
+  }
+  else
+  {
+    _puts("[   \e[91mdisabled\e[0m   ]\r\n");
+  }
 
-// =========================================================================================
-// # USBSerialControl-Output
-// =========================================================================================
-   _puts("USB   : SerialControl  [F7]   ");
-   if (SERCTL == true)
-   {_puts("[    enabled   ]\r\n");}
-      else
-      {_puts("[   \e[91mdisabled\e[0m   ]\r\n");}
+  // =========================================================================================
+  // # USBSerialControl-Output
+  // =========================================================================================
+  _puts("USB   : SerialControl  [F7]   ");
+  if (SERCTL == true)
+  {
+    _puts("[    enabled   ]\r\n");
+  }
+  else
+  {
+    _puts("[   \e[91mdisabled\e[0m   ]\r\n");
+  }
 
-// =========================================================================================
-// # USBSerialFilter-Output
-// =========================================================================================
-/*
-   _puts("USB   : SerialFilter   [F8]   ");
-   if (SERFLT == true)
-   {_puts("[    enabled   ]\r\n");}
-      else
-      {_puts("[   \e[91mdisabled\e[0m   ]\r\n");}
-*/
-// =========================================================================================
-// # DebugMem-Output
-// =========================================================================================
-   _puts("Config: Terminal-Param.[F8]   ");
-// =========================================================================================
-// # DebugMem-Output
-// =========================================================================================
+  // =========================================================================================
+  // # USBSerialFilter-Output
+  // =========================================================================================
+  /*
+     _puts("USB   : SerialFilter   [F8]   ");
+     if (SERFLT == true)
+     {_puts("[    enabled   ]\r\n");}
+        else
+        {_puts("[   \e[91mdisabled\e[0m   ]\r\n");}
+  */
+  // =========================================================================================
+  // # DebugMem-Output
+  // =========================================================================================
+  _puts("Config: Terminal-Param.[F8]   ");
+  // =========================================================================================
+  // # DebugMem-Output
+  // =========================================================================================
 
-   if (DEBUGMEM == true)
-                        {
-                        Serial.print("\r\n");
-                        Serial.printf("DEBUG : Free DMA Memory     [ \e[91m%d Byte\e[0m   ]\r\n", heap_caps_get_free_size(MALLOC_CAP_DMA));
-                        Serial.printf("DEBUG : Free Memory         [ \e[91m%d Byte\e[0m   ]\r\n", heap_caps_get_free_size(MALLOC_CAP_32BIT));
-                       // Terminal.print("\r\n");
-                       // Terminal.printf("DEBUG : Free DMA Memory     [ \e[91m%d Byte\e[0m   ]\r\n", heap_caps_get_free_size(MALLOC_CAP_DMA));
-                       // Terminal.printf("DEBUG : Free Memory         [ \e[91m%d Byte\e[0m   ]\r\n", heap_caps_get_free_size(MALLOC_CAP_32BIT));
-                        }
+  if (DEBUGMEM == true)
+  {
+    Serial.print("\r\n");
+    Serial.printf("DEBUG : Free DMA Memory     [ \e[91m%d Byte\e[0m   ]\r\n", heap_caps_get_free_size(MALLOC_CAP_DMA));
+    Serial.printf("DEBUG : Free Memory         [ \e[91m%d Byte\e[0m   ]\r\n", heap_caps_get_free_size(MALLOC_CAP_32BIT));
+    // Terminal.print("\r\n");
+    // Terminal.printf("DEBUG : Free DMA Memory     [ \e[91m%d Byte\e[0m   ]\r\n", heap_caps_get_free_size(MALLOC_CAP_DMA));
+    // Terminal.printf("DEBUG : Free Memory         [ \e[91m%d Byte\e[0m   ]\r\n", heap_caps_get_free_size(MALLOC_CAP_32BIT));
+  }
 
-// =========================================================================================
-/*
-  _puts("\r\n");
+  // =========================================================================================
+  /*
+    _puts("\r\n");
 
-  _puts("BIOS  :                       [   \e[1m0x");
-  _puthex16(BIOSjmppage);
-//  _puts(" - ");
-  _puts("\e[0m     ]\r\n");
+    _puts("BIOS  :                       [   \e[1m0x");
+    _puthex16(BIOSjmppage);
+    //  _puts(" - ");
+    _puts("\e[0m     ]\r\n");
 
-  _puts("BDOS  :                       [   \e[1m0x");
-  _puthex16(BDOSjmppage);
-  _puts("\e[0m     ]\r\n");
+    _puts("BDOS  :                       [   \e[1m0x");
+    _puthex16(BDOSjmppage);
+    _puts("\e[0m     ]\r\n");
 
-  _puts("CCP   : " CCPname "         [   \e[1m0x");
-  _puthex16(CCPaddr);
-  _puts("\e[0m     ]\r\n");
+    _puts("CCP   : " CCPname "         [   \e[1m0x");
+    _puthex16(CCPaddr);
+    _puts("\e[0m     ]\r\n");
 
-  _puts("\r\n");  
+    _puts("\r\n");
 
-  _puts("DEBUG : ESP32 CPU Clock       [   \e[1m240Mhz \e[0m    ]\r\n");
-  _puts("DEBUG : ESP32 Core            [   \e[1mv2.0.5 \e[0m    ]\r\n");
-  _puts("DEBUG : SDFat Library         [   \e[1mv2.2.2 \e[0m    ]\r\n");   
+    _puts("DEBUG : ESP32 CPU Clock       [   \e[1m240Mhz \e[0m    ]\r\n");
+    _puts("DEBUG : ESP32 Core            [   \e[1mv2.0.5 \e[0m    ]\r\n");
+    _puts("DEBUG : SDFat Library         [   \e[1mv2.2.2 \e[0m    ]\r\n");
 
-  _puts("\r\n");  
+    _puts("\r\n");
 
-  #if BANKS > 1
-  _puts("Banked      Memory            [\e[1m");
-  _puthex8(BANKS);
-    _puts("\e[0m]banks\r\n");
-  #else
-  _puts("Banked      Memory            [\e[1m");
-  _puthex8(BANKS);
-  _puts("\e[0m]bank\r\n");
-  #endif
+    #if BANKS > 1
+    _puts("Banked      Memory            [\e[1m");
+    _puthex8(BANKS);
+      _puts("\e[0m]banks\r\n");
+    #else
+    _puts("Banked      Memory            [\e[1m");
+    _puthex8(BANKS);
+    _puts("\e[0m]bank\r\n");
+    #endif
 
-   nTerminal.printf("Free        Memory            [\e[1m%d bytes\e[0m]\r\n", heap_caps_get_free_size(MALLOC_CAP_32BIT));
-   Terminal.printf("Free    DMA Memory            [\e[1m%d bytes\e[0m]\r\n", heap_caps_get_free_size(MALLOC_CAP_DMA));
+     nTerminal.printf("Free        Memory            [\e[1m%d bytes\e[0m]\r\n", heap_caps_get_free_size(MALLOC_CAP_32BIT));
+     Terminal.printf("Free    DMA Memory            [\e[1m%d bytes\e[0m]\r\n", heap_caps_get_free_size(MALLOC_CAP_DMA));
 
-*/
-// =========================================================================================
-// Press F12 for Config-Menue & BREAK - START
-// =========================================================================================
+  */
+  // =========================================================================================
+  // Press F12 for Config-Menue & BREAK - START
+  // =========================================================================================
 
   // onVirtualKey is triggered whenever a key is pressed or released
-  Terminal.onVirtualKeyItem = [&](VirtualKeyItem * vkItem) 
+  Terminal.onVirtualKeyItem = [&](VirtualKeyItem * vkItem)
   {
     if (vkItem->vk == VirtualKey::VK_F8) {
-// =========================================================================================
-// -----------------------------------------------------------------------------------------      
+      // =========================================================================================
+      // -----------------------------------------------------------------------------------------
       if (vkItem->CTRL && (vkItem->LALT || vkItem->RALT)) {
         Terminal.deactivate();
         preferences.clear();
@@ -474,9 +515,9 @@ if (KEYCLICK == true)
         Terminal.write("\r\n[REBOOT]");
         delay(1000);
         ESP.restart();
-                                                          } 
-// -----------------------------------------------------------------------------------------                                                          
-        else if (!vkItem->CTRL && !vkItem->LALT && !vkItem->RALT && !vkItem->down) {        
+      }
+      // -----------------------------------------------------------------------------------------
+      else if (!vkItem->CTRL && !vkItem->LALT && !vkItem->RALT && !vkItem->down) {
         // releasing F12 key to open configuration dialog
         Terminal.deactivate();
         auto dlgApp = new ConfDialogApp;
@@ -485,160 +526,160 @@ if (KEYCLICK == true)
         Terminal.keyboard()->emptyVirtualKeyQueue();
         Terminal.activate();
 
-                                                                                    }
-        vkItem->vk = VirtualKey::VK_NONE;                                                                                    
-// -----------------------------------------------------------------------------------------
-// =========================================================================================                                                                                    
-                                          }
+      }
+      vkItem->vk = VirtualKey::VK_NONE;
+      // -----------------------------------------------------------------------------------------
+      // =========================================================================================
+    }
 
-// =========================================================================================
-// Press BREAK for reboot
-// =========================================================================================
+    // =========================================================================================
+    // Press BREAK for reboot
+    // =========================================================================================
     if (vkItem->vk == VirtualKey::VK_BREAK) {
       if (!vkItem->down) {
-                          // releasing BREAK key to reboot
-        
-                          // _reboot this is only available in the "internal" CCP :(
-                          _reboot();
-        
-                          // for any other CCP (like DR or Z80) we have to use the 
-                          // "fast" reboot :)
-                          // ESP.restart();
-                         } 
-                                            }
+        // releasing BREAK key to reboot
 
-// =========================================================================================
-// F5 Toggle KeyClick
-// =========================================================================================
+        // _reboot this is only available in the "internal" CCP :(
+        _reboot();
+
+        // for any other CCP (like DR or Z80) we have to use the
+        // "fast" reboot :)
+        // ESP.restart();
+      }
+    }
+
+    // =========================================================================================
+    // F5 Toggle KeyClick
+    // =========================================================================================
     if (vkItem->vk == VirtualKey::VK_F5) {
       if (!vkItem->CTRL && !vkItem->LALT && !vkItem->RALT && !vkItem->down) {
-          if (KEYCLICK == true)
-             {KEYCLICK = false; 
-             // Terminal.write("\r\nDEBUG: KEYCLICK disabled\r\n");
-             Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
-             Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
-             }
-             else
-             {KEYCLICK = true; 
-             // Terminal.write("\r\nDEBUG: KEYCLICK enabled\r\n");
-             Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
-             Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
-             }
-                                                                            }
-             // always convert to NONE, on both keydown an dup
-             vkItem->vk = VirtualKey::VK_NONE;
-                                         }
+        if (KEYCLICK == true)
+        { KEYCLICK = false;
+          // Terminal.write("\r\nDEBUG: KEYCLICK disabled\r\n");
+          Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
+          Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
+        }
+        else
+        { KEYCLICK = true;
+          // Terminal.write("\r\nDEBUG: KEYCLICK enabled\r\n");
+          Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
+          Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
+        }
+      }
+      // always convert to NONE, on both keydown an dup
+      vkItem->vk = VirtualKey::VK_NONE;
+    }
 
-// =========================================================================================
-// F6 Toggle SERMIR
-// =========================================================================================
+    // =========================================================================================
+    // F6 Toggle SERMIR
+    // =========================================================================================
     if (vkItem->vk == VirtualKey::VK_F6) {
       if (!vkItem->CTRL && !vkItem->LALT && !vkItem->RALT && !vkItem->down) {
-          if (SERMIR == true)
-             {SERMIR = false; 
-             // Terminal.write("\r\nDEBUG: SERMIR disabled\r\n");
-             Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
-             Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
-             }
-             else
-             {SERMIR = true; 
-             // Terminal.write("\r\nDEBUG: SERMIR enabled\r\n");
-             Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
-             Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
-             }
-                                                                            }
-             // always convert to NONE, on both keydown an dup
-             vkItem->vk = VirtualKey::VK_NONE;
-                                         }
+        if (SERMIR == true)
+        { SERMIR = false;
+          // Terminal.write("\r\nDEBUG: SERMIR disabled\r\n");
+          Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
+          Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
+        }
+        else
+        { SERMIR = true;
+          // Terminal.write("\r\nDEBUG: SERMIR enabled\r\n");
+          Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
+          Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
+        }
+      }
+      // always convert to NONE, on both keydown an dup
+      vkItem->vk = VirtualKey::VK_NONE;
+    }
 
-// =========================================================================================
-// F7 Toggle SERCTL
-// =========================================================================================
+    // =========================================================================================
+    // F7 Toggle SERCTL
+    // =========================================================================================
     if (vkItem->vk == VirtualKey::VK_F7) {
       if (!vkItem->CTRL && !vkItem->LALT && !vkItem->RALT && !vkItem->down) {
-          if (SERCTL == true)
-             {SERCTL = false; 
-             // Terminal.write("\r\nDEBUG: SERCTL disabled\r\n");
-             Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
-             Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
-             }
-             else
-             {SERCTL = true; 
-             // Terminal.write("\r\nDEBUG: SERCTL enabled\r\n");
-             Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
-             Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
-             }
-                                                                            }
-             // always convert to NONE, on both keydown an dup
-             vkItem->vk = VirtualKey::VK_NONE;
-                                         }
+        if (SERCTL == true)
+        { SERCTL = false;
+          // Terminal.write("\r\nDEBUG: SERCTL disabled\r\n");
+          Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
+          Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
+        }
+        else
+        { SERCTL = true;
+          // Terminal.write("\r\nDEBUG: SERCTL enabled\r\n");
+          Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
+          Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
+        }
+      }
+      // always convert to NONE, on both keydown an dup
+      vkItem->vk = VirtualKey::VK_NONE;
+    }
 
-// =========================================================================================
-// F8 Toggle SERFLT
-// =========================================================================================
-/*
-    if (vkItem->vk == VirtualKey::VK_F8) {
-      if (!vkItem->CTRL && !vkItem->LALT && !vkItem->RALT && !vkItem->down) {
-          if (SERFLT == true)
-             {SERFLT = false; 
-             // Terminal.write("\r\nDEBUG: SERFLT disabled\r\n");
-             Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
-             Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
-             }
-             else
-             {SERFLT = true; 
-             // Terminal.write("\r\nDEBUG: SERFLT enabled\r\n");
-             Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
-             Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
-             }
-                                                                            }
-             // always convert to NONE, on both keydown an dup
-             vkItem->vk = VirtualKey::VK_NONE;
-                                         }
-*/
-// =========================================================================================
-// KeyClick-Sound
-// =========================================================================================
+    // =========================================================================================
+    // F8 Toggle SERFLT
+    // =========================================================================================
+    /*
+        if (vkItem->vk == VirtualKey::VK_F8) {
+          if (!vkItem->CTRL && !vkItem->LALT && !vkItem->RALT && !vkItem->down) {
+              if (SERFLT == true)
+                 {SERFLT = false;
+                 // Terminal.write("\r\nDEBUG: SERFLT disabled\r\n");
+                 Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
+                 Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
+                 }
+                 else
+                 {SERFLT = true;
+                 // Terminal.write("\r\nDEBUG: SERFLT enabled\r\n");
+                 Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 800 , 50);
+                 Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), 1600 , 50);
+                 }
+                                                                                }
+                 // always convert to NONE, on both keydown an dup
+                 vkItem->vk = VirtualKey::VK_NONE;
+                                             }
+    */
+    // =========================================================================================
+    // KeyClick-Sound
+    // =========================================================================================
 
-        Terminal.onVirtualKey = [&](VirtualKey * vk, bool keyDown) 
-          { if (keyDown && KEYCLICK == true)  
-                Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), (*vk == VirtualKey::VK_RETURN ? 500 : 1000), 4);;
-          };
+    Terminal.onVirtualKey = [&](VirtualKey * vk, bool keyDown)
+    { if (keyDown && KEYCLICK == true)
+        Terminal.soundGenerator()->playSound(SquareWaveformGenerator(), (*vk == VirtualKey::VK_RETURN ? 500 : 1000), 4);;
+    };
 
 
-// =========================================================================================
-// Press F12 for Config-Menue & BREAK & KeyClick - END
-// =========================================================================================
+    // =========================================================================================
+    // Press F12 for Config-Menue & BREAK & KeyClick - END
+    // =========================================================================================
   };
 
 
-// =========================================================================================
-// Activate SPI & SDCard and load the ex- or internal CCP
-// =========================================================================================
+  // =========================================================================================
+  // Activate SPI & SDCard and load the ex- or internal CCP
+  // =========================================================================================
 #if defined board_esp32
-//  _puts("INIT  : SPI-Bus [");
-//  _puts(SPIINIT_TXT);
-//  _puts("]  ");
-    SPI.begin(SPIINIT);
-//  _puts("  ->  [ Done ]\r\n");
+  //  _puts("INIT  : SPI-Bus [");
+  //  _puts(SPIINIT_TXT);
+  //  _puts("]  ");
+  SPI.begin(SPIINIT);
+  //  _puts("  ->  [ Done ]\r\n");
 #endif
 
-// ----------------------------------------------------------------------------------------- 
-if (SD.begin(SDINIT)) {
-//   _puts("        MicroSD Card at ");
-//   _puts(SDMHZ_TXT);
-//   _puts("Mhz ");
-//   _puts("  ->  [ Done ]\r\n");
-   _puts("\r\n");
-   _puts("______________________________________________\r\n");
-   
+  // -----------------------------------------------------------------------------------------
+  if (SD.begin(SDINIT)) {
+    //   _puts("        MicroSD Card at ");
+    //   _puts(SDMHZ_TXT);
+    //   _puts("Mhz ");
+    //   _puts("  ->  [ Done ]\r\n");
+    _puts("\r\n");
+    _puts("______________________________________________\r\n");
+
     if (VersionCCP >= 0x10 || SD.exists(CCPname)) {
       while (true) {
-        _puts(CCPHEAD);      
+        _puts(CCPHEAD);
         _PatchCPM();
-  Status = 0;
+        Status = 0;
 
-// ----------------------------------------------------------------------------------------- 
+        // -----------------------------------------------------------------------------------------
 #ifndef CCP_INTERNAL
         // load the external CCP if defined from file
         if (!_RamLoad((char *)CCPname, CCPaddr)) {
@@ -655,8 +696,8 @@ if (SD.begin(SDINIT)) {
 #endif
         if (Status == 1)
           break;
-          
-// ----------------------------------------------------------------------------------------- 
+
+        // -----------------------------------------------------------------------------------------
 #ifdef USE_PUN
         if (pun_dev)
           _sys_fflush(pun_dev);
@@ -667,7 +708,7 @@ if (SD.begin(SDINIT)) {
           _sys_fflush(lst_dev);
 #endif
 
-// ----------------------------------------------------------------------------------------- 
+        // -----------------------------------------------------------------------------------------
       }
     } else {
       _puts("Unable to load CP/M CCP.\r\nCPU halted.\r\n");
@@ -675,10 +716,10 @@ if (SD.begin(SDINIT)) {
   } else {
     _puts("Unable to initialize SD card.\r\nCPU halted.\r\n");
   }
-                                                  
-// =========================================================================================
-// void setup - ENDE
-// =========================================================================================
+
+  // =========================================================================================
+  // void setup - ENDE
+  // =========================================================================================
 
 }
 
@@ -687,18 +728,20 @@ if (SD.begin(SDINIT)) {
 // =========================================================================================
 
 void loop(void) {
-                digitalWrite(LED, HIGH^LEDinv);
-                delay(DELAY);
-                digitalWrite(LED, LOW^LEDinv);
-                delay(DELAY);
-                digitalWrite(LED, HIGH^LEDinv);
-                delay(DELAY);
-                digitalWrite(LED, LOW^LEDinv);
-                delay(DELAY * 4);
-                if(Status == 1) load_binary();
-                while(1){
-                  
-                }
+  /*
+  digitalWrite(LED, HIGH ^ LEDinv);
+  delay(DELAY);
+  digitalWrite(LED, LOW ^ LEDinv);
+  delay(DELAY);
+  digitalWrite(LED, HIGH ^ LEDinv);
+  delay(DELAY);
+  digitalWrite(LED, LOW ^ LEDinv);
+  delay(DELAY * 4);
+  */
+  if (Status == 1) load_binary();
+  while (1) {
+
+  }
 }
 
 // =========================================================================================
@@ -708,55 +751,98 @@ void loop(void) {
 
 
 //------------------------------------- Testbereich SD-Update -----------------------------------------------------------------------------
-    void load_binary(void) {
+void load_binary(void) {
+      if (!SD.exists("/basic.bin")) {
+        return; 
+    }
 
-      File32 updateBin = SD.open("/run.bin");
+    File32 updateFile = SD.open("/basic.bin");
+    if (!updateFile) {
+        return;
+    }
 
-      if (updateBin) {
-        size_t updateSize = updateBin.size();
+    size_t updateSize = updateFile.size();
+    if (updateSize > 0) {
+        Terminal.println("Load Basic...");
+        
+        // Beginn des OTA-Prozesses für den Flash-Speicher
+        if (Update.begin(updateSize, U_FLASH)) {
+            size_t written = Update.writeStream(updateFile);
 
-        if (updateSize > 0) {
-          Terminal.println("load Starter "+ String(updateSize));
-          performUpdate(updateBin, updateSize);
+            if (written == updateSize) {
+                Terminal.println("Load finished");
+            } else {
+                Terminal.printf("Error: Only %d/%d Bytes written\n", written, updateSize);
+            }
+
+            if (Update.end()) {
+                if (Update.isFinished()) {
+                    Terminal.println("successfully completed. Now Rebooting.");
+                    updateFile.close();
+                    SD.remove("/basic_ttgo.bin"); // Wichtig: Verhindert eine Endlos-Update-Schleife!
+                    ESP.restart();
+                } else {
+                    Terminal.println("Update endete unerwartet.");
+                }
+            } else {
+                Terminal.printf("Fehler bei Update.end(): %s\n", Update.errorString());
+            }
+        } else {
+            Terminal.println("Nicht genügend Platz für das Update vorhanden.");
         }
-        else {
-          Terminal.println("Error, file is empty");
-        }
-        updateBin.close();
+    }
+    updateFile.close();
+ /*
+  File32 updateBin = SD.open("/cpc.bin");
+
+  if (updateBin) {
+    size_t updateSize = updateBin.size();
+
+    if (updateSize > 0) {
+      Terminal.println("load Basic " + String(updateSize));
+      performUpdate(updateBin, updateSize);
+    }
+    else {
+      Terminal.println("Error, file is empty");
+    }
+    updateBin.close();
+  }
+  else {
+    Terminal.println("Could not load Binary from sd");
+  }
+  */
+}
+
+// perform the actual update from a given stream
+void performUpdate(Stream &updateSource, size_t updateSize) {
+  if (Update.begin(updateSize, U_FLASH, 2, 1, " ")) {
+    Terminal.println("Writing File");
+    size_t written = Update.writeStream(updateSource);
+    Terminal.println(written);
+    if (written == updateSize) {
+      Terminal.println("Written : " + String(written) + " successfully");
+    }
+    else {
+      Terminal.println("Written only : " + String(written) + "/" + String(updateSize) + ". Retry?");
+    }
+    if (Update.end()) {
+      Terminal.println("OTA done!");
+      if (Update.isFinished()) {
+        Terminal.println("successfully completed. Now Rebooting.");
+        delay(1000);
+        ESP.restart();
       }
       else {
-        Terminal.println("Could not load Binary from sd");
+        Terminal.println("not finished? Something went wrong!");
       }
     }
-
-    // perform the actual update from a given stream
-    void performUpdate(Stream &updateSource, size_t updateSize) {
-      if (Update.begin(updateSize, U_FLASH, 2, 1, " ")) {
-        size_t written = Update.writeStream(updateSource);
-        if (written == updateSize) {
-          Terminal.println("Written : " + String(written) + " successfully");
-        }
-        else {
-          Terminal.println("Written only : " + String(written) + "/" + String(updateSize) + ". Retry?");
-        }
-        if (Update.end()) {
-          Terminal.println("OTA done!");
-          if (Update.isFinished()) {
-            Terminal.println("successfully completed. Now Rebooting.");
-            delay(1000);
-            ESP.restart();
-          }
-          else {
-            Terminal.println("not finished? Something went wrong!");
-          }
-        }
-        else {
-          Terminal.println("Error Occurred. Error #: " + String(Update.getError()));
-        }
-
-      }
-      else
-      {
-        Terminal.println("Not enough space to begin OTA");
-      }
+    else {
+      Terminal.println("Error Occurred. Error #: " + String(Update.getError()));
     }
+
+  }
+  else
+  {
+    Terminal.println("Not enough space to begin OTA");
+  }
+}

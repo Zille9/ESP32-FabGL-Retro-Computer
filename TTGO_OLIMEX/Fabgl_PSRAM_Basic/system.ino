@@ -12,11 +12,12 @@
       Terminal.write("=");
       Terminal.write(Keylayout[Keyboard_lang]);
       Terminal.println();
-      Terminal.write("Eeprom-Adr: #");
-      Terminal.print(EEPROM.read(11), HEX);
-      Terminal.println();
-      Terminal.write("SPI-RAM   : ");
+      Terminal.write("VAR-RAM   : ");
       Terminal.print(SPI_memSize/0x400);
+      Terminal.write(" kB");
+      Terminal.println();
+      Terminal.write("USER-RAM  : ");
+      Terminal.print(user_groesse/0x400);
       Terminal.write(" kB");
       Terminal.println();
       Terminal.write("Workpath  : ");
@@ -29,9 +30,6 @@
       Terminal.println();
       Terminal.write("Font      : ");
       Terminal.print(fontsatz);
-      Terminal.println();
-      Terminal.write("VMode     : ");
-      Terminal.print(v_mode);
       Terminal.println();
       Terminal.write("Video     : ");
       Terminal.print(VGAController.getViewPortWidth());
@@ -51,7 +49,6 @@
     }
 
 void show_function_key(void){
-  
       Terminal.println();
       Terminal.println("F1   - show this Help");
       Terminal.println("F2   - LIST");
@@ -65,8 +62,6 @@ void show_function_key(void){
       Terminal.println("F10  - Systeminfo");
       Terminal.println("F11  - Erase SPI-RAM");
       Terminal.println("F12  - Reboot");
-      Terminal.println("MENU - Show Variables");
-      Terminal.println();
-      printmsg("READY.", 1);
+      Terminal.println("MENU - show Variables");
   
 }

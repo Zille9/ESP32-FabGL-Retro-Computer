@@ -11,9 +11,9 @@ SdFat SD;
 
 // #define ENABLE_DEDICATED_SPI 1
 
-#define SDMHZ 19 // TTGO_T1,LOLIN32_Pro=25 ePaper,ESP32_DevKit=20
+#define SDMHZ 5 // TTGO_T1,LOLIN32_Pro=25 ePaper,ESP32_DevKit=20
 #define SDMHZ_TXT "19" // TTGO_T1,LOLIN32_Pro=25 ePaper,ESP32_DevKit=20
-#define LED 2 // TTGO_VGA32=32_NC 
+#define LED -1 // TTGO_VGA32=32_NC 
 #define LEDinv 1
 #define BOARD "TTGO VGA32"
 #define board_esp32

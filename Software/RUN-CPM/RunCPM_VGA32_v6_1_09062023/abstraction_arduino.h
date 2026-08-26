@@ -24,7 +24,7 @@ bool _RamLoad(char* filename, uint16 address) {
 	File32 f;
 	bool result = false;
 
-	if (f = SD.open(filename, FILE_READ)) {
+	if (f = SD.open(filename)) {
 		while (f.available())
 			_RamWrite(address++, f.read());
 		f.close();
@@ -84,13 +84,13 @@ int _sys_select(uint8* disk) {
 	uint8 result = FALSE;
 	File32 f;
 
-	digitalWrite(LED, HIGH ^ LEDinv);
+	////digitalWrite(LED, HIGH ^ LEDinv);
 	if (f = SD.open((char*)disk, O_READ)) {
 		if (f.isDirectory())
 			result = TRUE;
 		f.close();
 	}
-	digitalWrite(LED, LOW ^ LEDinv);
+	////digitalWrite(LED, LOW ^ LEDinv);
 	return(result);
 }
 
@@ -98,12 +98,12 @@ long _sys_filesize(uint8* filename) {
 	long l = -1;
 	File32 f;
 
-	digitalWrite(LED, HIGH ^ LEDinv);
+	////digitalWrite(LED, HIGH ^ LEDinv);
 	if (f = SD.open((char*)filename, O_RDONLY)) {
 		l = f.size();
 		f.close();
 	}
-	digitalWrite(LED, LOW ^ LEDinv);
+	////digitalWrite(LED, LOW ^ LEDinv);
 	return(l);
 }
 
@@ -111,14 +111,14 @@ int _sys_openfile(uint8* filename) {
 	File32 f;
 	int result = 0;
 
-	digitalWrite(LED, HIGH ^ LEDinv);
+	////digitalWrite(LED, HIGH ^ LEDinv);
 	f = SD.open((char*)filename, O_READ);
 	if (f) {
 		f.dirEntry(&fileDirEntry);
 		f.close();
 		result = 1;
 	}
-	digitalWrite(LED, LOW ^ LEDinv);
+	////digitalWrite(LED, LOW ^ LEDinv);
 	return(result);
 }
 
@@ -126,27 +126,27 @@ int _sys_makefile(uint8* filename) {
 	File32 f;
 	int result = 0;
 
-	digitalWrite(LED, HIGH ^ LEDinv);
+	////digitalWrite(LED, HIGH ^ LEDinv);
 	f = SD.open((char*)filename, O_CREAT | O_WRITE);
 	if (f) {
 		f.close();
 		result = 1;
 	}
-	digitalWrite(LED, LOW ^ LEDinv);
+	////digitalWrite(LED, LOW ^ LEDinv);
 	return(result);
 }
 
 int _sys_deletefile(uint8* filename) {
-	digitalWrite(LED, HIGH ^ LEDinv);
+	////digitalWrite(LED, HIGH ^ LEDinv);
 	return(SD.remove((char*)filename));
-	digitalWrite(LED, LOW ^ LEDinv);
+	////digitalWrite(LED, LOW ^ LEDinv);
 }
 
 int _sys_renamefile(uint8* filename, uint8* newname) {
 	File32 f;
 	int result = 0;
 
-	digitalWrite(LED, HIGH ^ LEDinv);
+	////digitalWrite(LED, HIGH ^ LEDinv);
 	f = SD.open((char*)filename, O_WRITE | O_APPEND);
 	if (f) {
     if (f.rename((char*)newname)) {
@@ -154,7 +154,7 @@ int _sys_renamefile(uint8* filename, uint8* newname) {
 			result = 1;
 		}
 	}
-	digitalWrite(LED, LOW ^ LEDinv);
+	////digitalWrite(LED, LOW ^ LEDinv);
 	return(result);
 }
 
@@ -182,7 +182,7 @@ bool _sys_extendfile(char* fn, unsigned long fpos)
 	File32 f;
 	unsigned long i;
 
-	digitalWrite(LED, HIGH ^ LEDinv);
+	////digitalWrite(LED, HIGH ^ LEDinv);
 	if (f = SD.open(fn, O_WRITE | O_APPEND)) {
 		if (fpos > f.size()) {
 			for (i = 0; i < f.size() - fpos; ++i) {
@@ -196,7 +196,7 @@ bool _sys_extendfile(char* fn, unsigned long fpos)
 	} else {
 		result = false;
 	}
-	digitalWrite(LED, LOW ^ LEDinv);
+	////digitalWrite(LED, LOW ^ LEDinv);
 	return(result);
 }
 
@@ -207,7 +207,7 @@ uint8 _sys_readseq(uint8* filename, long fpos) {
 	uint8 dmabuf[BlkSZ];
 	uint8 i;
 
-	digitalWrite(LED, HIGH ^ LEDinv);
+	////digitalWrite(LED, HIGH ^ LEDinv);
 	f = SD.open((char*)filename, O_READ);
 	if (f) {
 		if (f.seek(fpos)) {
@@ -226,7 +226,7 @@ uint8 _sys_readseq(uint8* filename, long fpos) {
 	} else {
 		result = 0x10;
 	}
-	digitalWrite(LED, LOW ^ LEDinv);
+	////digitalWrite(LED, LOW ^ LEDinv);
 	return(result);
 }
 
@@ -234,7 +234,7 @@ uint8 _sys_writeseq(uint8* filename, long fpos) {
 	uint8 result = 0xff;
 	File32 f;
 
-	digitalWrite(LED, HIGH ^ LEDinv);
+	////digitalWrite(LED, HIGH ^ LEDinv);
 	if (_sys_extendfile((char*)filename, fpos))
 		f = SD.open((char*)filename, O_RDWR);
 	if (f) {
@@ -248,7 +248,7 @@ uint8 _sys_writeseq(uint8* filename, long fpos) {
 	} else {
 		result = 0x10;
 	}
-	digitalWrite(LED, LOW ^ LEDinv);
+	////digitalWrite(LED, LOW ^ LEDinv);
 	return(result);
 }
 
@@ -260,7 +260,7 @@ uint8 _sys_readrand(uint8* filename, long fpos) {
 	uint8 i;
 	long extSize;
 
-	digitalWrite(LED, HIGH ^ LEDinv);
+	//digitalWrite(LED, HIGH ^ LEDinv);
 	f = SD.open((char*)filename, O_READ);
 	if (f) {
 		if (f.seek(fpos)) {
@@ -289,7 +289,7 @@ uint8 _sys_readrand(uint8* filename, long fpos) {
 	} else {
 		result = 0x10;
 	}
-	digitalWrite(LED, LOW ^ LEDinv);
+	//digitalWrite(LED, LOW ^ LEDinv);
 	return(result);
 }
 
@@ -297,7 +297,7 @@ uint8 _sys_writerand(uint8* filename, long fpos) {
 	uint8 result = 0xff;
 	File32 f;
 
-	digitalWrite(LED, HIGH ^ LEDinv);
+	//digitalWrite(LED, HIGH ^ LEDinv);
 	if (_sys_extendfile((char*)filename, fpos)) {
 		f = SD.open((char*)filename, O_RDWR);
 	}
@@ -312,7 +312,7 @@ uint8 _sys_writerand(uint8* filename, long fpos) {
 	} else {
 		result = 0x10;
 	}
-	digitalWrite(LED, LOW ^ LEDinv);
+	//digitalWrite(LED, LOW ^ LEDinv);
 	return(result);
 }
 
@@ -328,7 +328,7 @@ uint8 _findnext(uint8 isdir) {
 	bool isfile;
 	uint32 bytes;
 
-	digitalWrite(LED, HIGH ^ LEDinv);
+	//digitalWrite(LED, HIGH ^ LEDinv);
 	if (allExtents && fileRecords) {
 		_mockupDirEntry();
 		result = 0;
@@ -367,7 +367,7 @@ uint8 _findnext(uint8 isdir) {
 			}
 		}
 	}
-	digitalWrite(LED, LOW ^ LEDinv);
+	//digitalWrite(LED, LOW ^ LEDinv);
 	return(result);
 }
 
@@ -441,7 +441,7 @@ uint8 _Truncate(char* filename, uint8 rc) {
 	File32 f;
 	int result = 0;
 
-	digitalWrite(LED, HIGH ^ LEDinv);
+	////digitalWrite(LED, HIGH ^ LEDinv);
 	f = SD.open((char*)filename, O_WRITE | O_APPEND);
 	if (f) {
 		if (f.truncate(rc * BlkSZ)) {
@@ -449,7 +449,7 @@ uint8 _Truncate(char* filename, uint8 rc) {
 			result = 1;
 		}
 	}
-	digitalWrite(LED, LOW ^ LEDinv);
+	////digitalWrite(LED, LOW ^ LEDinv);
 	return(result);
 }
 
@@ -459,9 +459,9 @@ void _MakeUserDir() {
 
 	uint8 path[4] = { dFolder, FOLDERCHAR, uFolder, 0 };
 
-	digitalWrite(LED, HIGH ^ LEDinv);
+	////digitalWrite(LED, HIGH ^ LEDinv);
 	SD.mkdir((char*)path);
-	digitalWrite(LED, LOW ^ LEDinv);
+	////digitalWrite(LED, LOW ^ LEDinv);
 }
 
 uint8 _sys_makedisk(uint8 drive) {
@@ -471,14 +471,14 @@ uint8 _sys_makedisk(uint8 drive) {
 	} else {
 		uint8 dFolder = drive + '@';
 		uint8 disk[2] = { dFolder, 0 };
-		digitalWrite(LED, HIGH ^ LEDinv);
+		////digitalWrite(LED, HIGH ^ LEDinv);
 		if (!SD.mkdir((char*)disk)) {
 			result = 0xfe;
 		} else {
 			uint8 path[4] = { dFolder, FOLDERCHAR, '0', 0 };
 			SD.mkdir((char*)path);
 		}
-		digitalWrite(LED, LOW ^ LEDinv);
+		////digitalWrite(LED, LOW ^ LEDinv);
 	}
 
 	return(result);
