@@ -5638,7 +5638,8 @@ static int load_file(int modes)
     syntaxerror(sderrormsg);
     delay(3000);
   }
-
+  //Serial.println(String(sd_pfad) + String(tempstring));
+  
   if ( !SD.exists(String(sd_pfad) + String(tempstring)))    //Datei vorhanden?
   {
     syntaxerror(sdfilemsg);                                 //Datei nicht vorhanden -> Fehlerausgabe
@@ -6016,7 +6017,6 @@ void cmd_Dir()
   }
   zeichneGeruest();
 
-  //Terminal.println("please wait...");
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
   delay(5);
   if (!SD.begin(kSD_CS, spiSD)) {
@@ -6061,42 +6061,34 @@ void cmd_Dir()
     }
 
     String nameStr = String(entry.name());
-
     // Ermittle die Länge für die dynamische Spaltenbreite
     if (nameStr.length() > maxNameLength) {
       maxNameLength = nameStr.length();
     }
-
     // Einsortieren je nachdem, ob es ein Verzeichnis oder eine Datei ist
     if (entry.isDirectory()) {
       folderList.push_back(nameStr);
     } else {
       fileList.push_back(nameStr);
     }
-
     entry.close();
     yield();
   }
 
-  // Begrenzung der Spaltenbreite, damit bei riesigen Namen noch Platz für Daten bleibt
-  // Wenn die Terminalbreite (wd) z.B. 40 ist, sollte die Spalte nicht 35 Zeichen einnehmen
   int maxAllowedWidth = wd - 23;
   if (maxAllowedWidth < 10) maxAllowedWidth = 10; // Untere Grenze absichern
   if (maxNameLength > maxAllowedWidth) {
     maxNameLength = maxAllowedWidth;
   }
-
   // Lambda-Funktion für case-insensitive alphabetische Sortierung
   auto compCaseInsensitive = [](const String & a, const String & b) {
     String a_upper = a; a_upper.toUpperCase();
     String b_upper = b; b_upper.toUpperCase();
     return a_upper < b_upper;
   };
-
   // Schritt 2: Beide Listen separat alphabetisch sortieren
   std::sort(folderList.begin(), folderList.end(), compCaseInsensitive);
   std::sort(fileList.begin(), fileList.end(), compCaseInsensitive);
-
   // Schritt 3: Ordner-Liste mit Datei-Liste zusammenführen
   std::vector<String> combinedList = std::move(folderList);
   combinedList.insert(combinedList.end(), fileList.begin(), fileList.end());
@@ -6181,7 +6173,33 @@ bool starteGrafischenExplorer(char ext[]) {
     return false;
   }
 
+  // Diese Variablen müssen außerhalb des Verzeichnis-Ladens deklariert sein
+  std::vector<String> combinedList;
+  int aktuellerIndex = 0;
+  int maxSichtbar = 16;
+  int startSchnitt = 0;
+
+  // Haupt-Label für das (Neu-)Laden des aktuellen Arbeitsordners (sd_pfad)
+verzeichnis_laden:
+  GFX.drawText(160, 26, "...wait");
+  combinedList.clear();
+  aktuellerIndex = 0;
+  startSchnitt = 0;
+  letzterStartSchnitt = -1;
+  letzterAusgewaehlterIndex = -1;
+
+  // Öffne den aktuellen Arbeitsordner
   File dir = SD.open(String(sd_pfad));
+  if (!dir || !dir.isDirectory()) {
+    // Falls der Ordner nicht existiert, versuchen wir ins Root zu retten
+    strcpy(sd_pfad, "/");
+    dir = SD.open(String(sd_pfad));
+    if (!dir) {
+      syntaxerror(sdfilemsg);
+      sd_ende();
+      return false;
+    }
+  }
   dir.seek(0);
 
   std::vector<String> folderList;
@@ -6195,25 +6213,22 @@ bool starteGrafischenExplorer(char ext[]) {
     }
 
     cbuf = String(entry.name());
-    cbuf.toCharArray(tempstring, cbuf.length() + 1);
-
     if (cbuf.startsWith(".")) {
       entry.close();
       continue;
     }
 
-    String nameStr = String(entry.name());
+    String nameStr = cbuf;
     nameStr.toUpperCase();
 
+    // Ordner werden immer angezeigt, Dateien nach Sucherweiterung gefiltert
     if (!entry.isDirectory() && nameStr.indexOf(ext) == -1) {
       entry.close();
       continue;
     }
 
-    // ACHTUNG: Hier nameStr (Großbuchstaben) oder cbuf (Originalname)?
-    // Für die Anzeige im Explorer ist cbuf (Originalname) meist schöner.
     if (entry.isDirectory()) {
-      folderList.push_back(cbuf);
+      folderList.push_back("[" + cbuf + "]"); // Ordner optisch kennzeichnen
     } else {
       fileList.push_back(cbuf);
     }
@@ -6231,21 +6246,12 @@ bool starteGrafischenExplorer(char ext[]) {
   std::sort(folderList.begin(), folderList.end(), compCaseInsensitive);
   std::sort(fileList.begin(), fileList.end(), compCaseInsensitive);
 
-  std::vector<String> combinedList = std::move(folderList);
+  combinedList = std::move(folderList);
   combinedList.insert(combinedList.end(), fileList.begin(), fileList.end());
 
   dir.close();
 
-
-  // 🎮 GRAFISCHE STEUERUNGSSCHLEIFE (MODIFIZIERT FÜR KANTEN-SCROLLEN)
-  int aktuellerIndex = 0;
-  int maxSichtbar = 16;
-  int startSchnitt = 0;
-
-  // Wir setzen den globalen Zustand vor dem ersten Zeichnen zurück
-  letzterStartSchnitt = -1;
-  letzterAusgewaehlterIndex = -1;
-
+  // Erstes Zeichnen
   zeichneCustomExplorer(combinedList, aktuellerIndex, startSchnitt);
   GFX.drawText(160, 26, "       ");
 
@@ -6255,38 +6261,30 @@ bool starteGrafischenExplorer(char ext[]) {
     // PFEIL RUNTER
     if (c == 0x05 && aktuellerIndex < (int)combinedList.size() - 1) {
       aktuellerIndex++;
-
-      // Kanten-Schnitt: Wenn der Balken aus dem sichtbaren Bereich nach UNTEN herauswandert
       if (aktuellerIndex >= startSchnitt + maxSichtbar) {
-        startSchnitt = aktuellerIndex - maxSichtbar + 1; // Liste um 1 nach unten schieben
+        startSchnitt = aktuellerIndex - maxSichtbar + 1;
       }
-
       zeichneCustomExplorer(combinedList, aktuellerIndex, startSchnitt);
     }
 
     // PFEIL HOCH
     else if (c == 0x06 && aktuellerIndex > 0) {
       aktuellerIndex--;
-
-      // Kanten-Schnitt: Wenn der Balken aus dem sichtbaren Bereich nach OBEN herauswandert
       if (aktuellerIndex < startSchnitt) {
-        startSchnitt = aktuellerIndex; // Liste um 1 nach oben schieben
+        startSchnitt = aktuellerIndex;
       }
-
       zeichneCustomExplorer(combinedList, aktuellerIndex, startSchnitt);
     }
 
-    // PAGE DOWN (0x15) - Ganze Seite nach unten springen
+    // PAGE DOWN (0x15)
     else if (c == 0x15 && aktuellerIndex < (int)combinedList.size() - 1) {
       aktuellerIndex += maxSichtbar;
       if (aktuellerIndex >= (int)combinedList.size()) {
         aktuellerIndex = (int)combinedList.size() - 1;
       }
-      // Sichtfenster verschieben, sodass der Balken am unteren Rand bleibt oder mitzieht
       if (aktuellerIndex >= startSchnitt + maxSichtbar) {
         startSchnitt = aktuellerIndex - maxSichtbar + 1;
       }
-      // Begrenzen, damit das Sichtfenster am Ende nicht ins Leere scrollt
       if (startSchnitt + maxSichtbar > (int)combinedList.size()) {
         startSchnitt = (int)combinedList.size() - maxSichtbar;
         if (startSchnitt < 0) startSchnitt = 0;
@@ -6294,24 +6292,60 @@ bool starteGrafischenExplorer(char ext[]) {
       zeichneCustomExplorer(combinedList, aktuellerIndex, startSchnitt);
     }
 
-    // PAGE UP (0x14) - Ganze Seite nach oben springen
+    // PAGE UP (0x14)
     else if (c == 0x14 && aktuellerIndex > 0) {
       aktuellerIndex -= maxSichtbar;
       if (aktuellerIndex < 0) {
         aktuellerIndex = 0;
       }
-      // Sichtfenster verschieben, sodass der Balken im sichtbaren Bereich bleibt
       if (aktuellerIndex < startSchnitt) {
         startSchnitt = aktuellerIndex;
       }
       zeichneCustomExplorer(combinedList, aktuellerIndex, startSchnitt);
     }
 
-    // ENTER (Datei laden)
-    else if (c == 13 && !combinedList.empty()) {
-      erfolg = true;
-      break;
+    // BACKSPACE (0x7F=127) - Einen Ordner nach oben springen
+    else if (c == 0x7F) {
+      String pfadStr = String(sd_pfad);
+      if (pfadStr != "/" && pfadStr.length() > 1) {
+        if (pfadStr.endsWith("/")) {
+          pfadStr.remove(pfadStr.length() - 1);
+        }
+        int letzterSlash = pfadStr.lastIndexOf('/');
+        if (letzterSlash >= 0) {
+          pfadStr = pfadStr.substring(0, letzterSlash + 1);
+        }
+        // Aktualisiere den globalen Arbeitsordner
+        pfadStr.toCharArray(sd_pfad, pfadStr.length());
+        goto verzeichnis_laden;
+      }
     }
+
+    // ENTER (Datei laden ODER Ordner öffnen)
+    else if (c == 13 && !combinedList.empty()) {
+      String auswahl = combinedList[aktuellerIndex];
+      
+      if (auswahl.startsWith("[") && auswahl.endsWith("]")) {
+        // Ordnername extrahieren
+        String ordnerName = auswahl.substring(1, auswahl.length() - 1);
+        String neuerPfad = String(sd_pfad);
+        
+        if (!neuerPfad.endsWith("/")) {
+          neuerPfad += "/";
+        }
+        neuerPfad += ordnerName ;
+        // Aktualisiere den globalen Arbeitsordner
+        neuerPfad.toCharArray(sd_pfad, neuerPfad.length() + 1);        
+        goto verzeichnis_laden;
+      } 
+      else {
+        // Datei ausgewählt
+        
+        erfolg = true;
+        break;
+      }
+    }
+    
     // ESCAPE (Abbrechen)
     else if (c == 0x03) {
       sd_ende();
@@ -6319,29 +6353,33 @@ bool starteGrafischenExplorer(char ext[]) {
       GFX.clear();
       break;
     }
-    else {
-      continue;
-    }
     yield();
   }
 
   if (erfolg) {
+    // Kopiere den echten Dateinamen ohne Ordner-Klammern nach tempstring
     cbuf = String(combinedList[aktuellerIndex]);
-    cbuf.toCharArray(tempstring, cbuf.length() + 1);
-
-    //hier könnte je nach Dateiendung eine andere Aktion ausgelöst werden (BAS, BMP, BIN, PIC)
+    cbuf.toCharArray(tempstring, cbuf.length() + 1);    
+    // --- PFAD-REPARATUR FÜR DIE LADE-FUNKTIONEN ---
+    String vollerPfad = String(sd_pfad);
+    // Falls wir nicht im Root "/" sind, MUSS ein Slash zwischen Ordner und Datei
+    if (vollerPfad != "/") {
+      vollerPfad += "/";
+    }
+    vollerPfad += String(tempstring); // Jetzt steht hier z.B. "/ORDNER/DATEI.BAS"    
+    if (String(sd_pfad) != "/") {
+      // Wenn wir in einem Unterordner sind, fügen wir den Slash direkt vor dem Dateinamen ein
+      String dateiMitSlash = "/" + String(tempstring);
+      dateiMitSlash.toCharArray(tempstring, dateiMitSlash.length() + 1);
+    }
     load_file(1);
     string_marker = false;
     autorun = true;
   }
-
-  // Zustand für den nächsten Explorer-Aufruf sauber resetten
   letzterStartSchnitt = -1;
   letzterAusgewaehlterIndex = -1;
-
   return erfolg;
 }
-
 //#######################################################################################################################################
 //--------------------------------------------- RENAME - Befehl REN(Filename_old,Filename_new) ----------------------------------------------------
 //#######################################################################################################################################
