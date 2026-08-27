@@ -48,10 +48,13 @@
 //
 #define BasicVersion "2.22"
 #define BuiltTime "26.08.2026"
-// siehe Logbuch.txt zum Entwicklungsverlauf
 // V2.22:26.08.2026           -im Explorer sind jetzt BAS, BIN, BMP und PIC-Dateien ladbar
+//                            -TXT und LUA Dateien werden mit type_file angezeigt (als Text)
 //                            -dies erweitert auch die Load-funktion um dieses Feature, da alle Dateien über load_file anhand der
 //                            -Dateierweiterung identifiziert und geladen werden
+//                            -Verzeichniswechsel im Explorer eingebaut (ENTER=Verzeichnis runter, Backspace=Verzeichnis hoch)
+//                            -etwas Codebereinigung durchgeführt
+//                            -49669 Zeilen/sek.
 //
 // V2.21:21.08.2026           -Variablenanzeige mit MENU-Taste realisiert, zeigt die belegten Variablen und Strings im RAM an
 //                            -Arrays wären noch cool, aber das ist noch etwas aufwendig
@@ -913,42 +916,41 @@ static char key_command;
 static LINENUM linenum;
 
 //---------------------------------- Fehlermeldungen des Interpreters -----------------------------------------------------------------------------
-
-static const char syntaxmsg[]        PROGMEM = "Syntax Error! ";                //1
-static const char mathmsg[]          PROGMEM = "Math Error!";                   //2
-static const char gosubmsg[]         PROGMEM = "Gosub Error!";                  //3
-static const char fornextmsg[]       PROGMEM = "For-Next Error!";               //4
-static const char memorymsg[]        PROGMEM = " bytes free";
-static const char missing_then[]     PROGMEM = "Missing THEN!";                 //5
-static const char breakmsg[]         PROGMEM = "Break! in Line:";
-static const char breaks[]           PROGMEM = "Break!";
-static const char datamsg[]          PROGMEM = "Out of DATA!";                  //6
-static const char invalidmsg[]       PROGMEM = "Invalid comparison!";           //7
-static const char sderrormsg[]       PROGMEM = "SD card Error.";                //8
-static const char sdfilemsg[]        PROGMEM = "SD file Error.";                //9
-static const char dirextmsg[]        PROGMEM = "(dir)";
-static const char slashmsg[]         PROGMEM = "/";
-static const char spacemsg[]         PROGMEM = " ";
-static const char notexistmsg[]      PROGMEM = "File not exist!";               //10
-static const char portmsg[]          PROGMEM = "Wrong Port-Number!";            //11
-static const char valmsg[]           PROGMEM = "Invalid Value!";                //12
-static const char dirmsg[]           PROGMEM = "Dir not empty!";                //13
-static const char illegalmsg[]       PROGMEM = "Illegal quantity!";             //14
-static const char zeroerror[]        PROGMEM = "Div/0-Error!";                  //15
-static const char outofmemory[]      PROGMEM = "Out of Memory!";                //16
-static const char mountmsg[]         PROGMEM = "SD-Card mounted";               //17
-static const char notmount[]         PROGMEM = "SD-Card can't mount";           //18
-static const char dimmsg[]           PROGMEM = "Array-Dimension!";              //19
-static const char commsg[]           PROGMEM = "No COM-Port defined!";          //20
-static const char comsetmsg[]        PROGMEM = "Wrong COM-Port Definition!";    //21
-static const char bmpfilemsg[]       PROGMEM = "No BMP-File!";                  //22
-static const char no_prg_msg[]       PROGMEM = "No Program in Memory!";         //23
-static const char no_command_msg[]   PROGMEM = "Keyword not found!";            //24
-static const char not_openmsg[]      PROGMEM = "File not open!";                //25
-static const char dirnotfound[]      PROGMEM = "DIR not found !";               //26
-static const char extension_error[]  PROGMEM = "invalid File-Extension !";      //27
-static const char stringtolong[]     PROGMEM = "String to long!";               //28
-static const char wronglinenr[]      PROGMEM = "Wrong Line-Number!";            //29
+const char syntaxmsg[]        = "Syntax Error! ";                //1
+const char mathmsg[]          = "Math Error!";                   //2
+const char gosubmsg[]         = "Gosub Error!";                  //3
+const char fornextmsg[]       = "For-Next Error!";               //4
+const char memorymsg[]        = " bytes free";
+const char missing_then[]     = "Missing THEN!";                 //5
+const char breakmsg[]         = "Break! in Line:";
+const char breaks[]           = "Break!";
+const char datamsg[]          = "Out of DATA!";                  //6
+const char invalidmsg[]       = "Invalid comparison!";           //7
+const char sderrormsg[]       = "SD card Error.";                //8
+const char sdfilemsg[]        = "SD file Error.";                //9
+const char dirextmsg[]        = "(dir)";
+const char slashmsg[]         = "/";
+const char spacemsg[]         = " ";
+const char notexistmsg[]      = "File not exist!";               //10
+const char portmsg[]          = "Wrong Port-Number!";            //11
+const char valmsg[]           = "Invalid Value!";                //12
+const char dirmsg[]           = "Dir not empty!";                //13
+const char illegalmsg[]       = "Illegal quantity!";             //14
+const char zeroerror[]        = "Div/0-Error!";                  //15
+const char outofmemory[]      = "Out of Memory!";                //16
+const char mountmsg[]         = "SD-Card mounted";               //17
+const char notmount[]         = "SD-Card can't mount";           //18
+const char dimmsg[]           = "Array-Dimension!";              //19
+const char commsg[]           = "No COM-Port defined!";          //20
+const char comsetmsg[]        = "Wrong COM-Port Definition!";    //21
+const char bmpfilemsg[]       = "No BMP-File!";                  //22
+const char no_prg_msg[]       = "No Program in Memory!";         //23
+const char no_command_msg[]   = "Keyword not found!";            //24
+const char not_openmsg[]      = "File not open!";                //25
+const char dirnotfound[]      = "DIR not found !";               //26
+const char extension_error[]  = "invalid File-Extension !";      //27
+const char stringtolong[]     = "String to long!";               //28
+const char wronglinenr[]      = "Wrong Line-Number!";            //29
 
 //----------------------------------- Interpreter-Variablen ---------------------------------------------------------------------------------------
 char *pstart;
@@ -5638,7 +5640,6 @@ static int load_file(int modes)
     syntaxerror(sderrormsg);
     delay(3000);
   }
-  //Serial.println(String(sd_pfad) + String(tempstring));
   
   if ( !SD.exists(String(sd_pfad) + String(tempstring)))    //Datei vorhanden?
   {
@@ -5675,13 +5676,14 @@ static int load_file(int modes)
         }
         break;
       case 5:
-        type_file(0);                                           // TXT-Dateien -> fehlt noch
+        type_file(0);                                           // TXT-Dateien, LUA-Dateien 
         break;
 
       default:
         break;
     }
   }
+  string_marker = false;
   warmstart();
   return expression_error;
 }
@@ -5697,7 +5699,7 @@ int check_extension() {
   if (ext.equalsIgnoreCase(".BIN")) return 2;
   if (ext.equalsIgnoreCase(".BMP")) return 3;
   if (ext.equalsIgnoreCase(".PIC")) return 4;
-  if (ext.equalsIgnoreCase(".TXT")) return 5;
+  if (ext.equalsIgnoreCase(".TXT") || ext.equalsIgnoreCase(".LUA")) return 5;
   return 0;
 }
 
@@ -5961,48 +5963,11 @@ static int cmd_mkdir(int mod)
 }
 
 //#######################################################################################################################################
-//--------------------------------------------- DIR - Befehl ----------------------------------------------------------------------------
+//--------------------------------------------- DIR - Befehl - Datei-Explorer -----------------------------------------------------------
 //#######################################################################################################################################
-
-int key_press(int current_row) {
-
-  int screen_height = VGAController.getScreenHeight();
-
-  // 2. Berechne, wie viele Textzeilen auf den Schirm passen
-  // Die Höhe einer Zeile kommt aus y_char[fontsatz]
-  int max_rows = (screen_height / y_char[fontsatz]) - 3;
-
-  // 3. Prüfen, ob die aktuelle Zeile das Limit erreicht hat
-  if (current_row >= max_rows) {
-    if (wait_key(true) == 3) {
-      return 1; // Abbrechen (User will Exit)
-    }
-    return 0;   // Weiter (User hat Taste gedrückt)
-  }
-  return 2;     // Noch Platz auf dem Schirm, kein Warten nötig
-}
-
-
-bool search_file(const char* names) {
-  String cbuf;
-  cbuf = String(names);
-  cbuf.toUpperCase();                               //String in Grossbuchstaben umwandeln
-  if (cbuf.indexOf(filestring) > -1) return true;
-  else return false;
-}
-
 void cmd_Dir()
 {
-  int ln = 1;
-  int ex = 0;
   String cbuf;
-  const char hi[] = "._";
-  const char ho[] = ".";
-  int was;
-  int wd = GFX.getWidth() / x_char[fontsatz];
-  int Dateien = 0;
-  bool ext = false;       // Sucherweiterung?
-  bool found = false;
   char c = *txtpos;
   memset(filestring, 0, sizeof(filestring));                  //Puffer für Suchbegriff leeren
 
@@ -6013,102 +5978,23 @@ void cmd_Dir()
     cbuf.toUpperCase();                                       // String in Grossbuchstaben umwandeln
     cbuf.toCharArray(filestring, cbuf.length() + 1);          // und nach filestring schreiben
     if (expression_error) return;
-    ext = true;                                               // Ausgabe mit Sucherweiterung
   }
   zeichneGeruest();
-
-  spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
-  delay(5);
-  if (!SD.begin(kSD_CS, spiSD)) {
-    syntaxerror(sderrormsg);
-    sd_ende();
-    return;
-  }
-
-  File dir = SD.open(String(sd_pfad));
-  dir.seek(0);                                                  // zum Verzeichnis-Anfang
-
-  // Zwei getrennte Listen für Ordner und Dateien
-  std::vector<String> folderList;
-  std::vector<String> fileList;
-
-  int maxNameLength = 12; // Standard-Mindestbreite für die Namensspalte (z.B. 8.3 Format)
-
-  // Schritt 1: Alle Einträge trennen, sammeln und maximale Länge ermitteln
-  while (true) {
-    File entry = dir.openNextFile();
-    if (!entry) {
-      entry.close();
-      break;
-    }
-
-    cbuf = String(entry.name());
-    cbuf.toCharArray(tempstring, cbuf.length() + 1);
-
-    // Versteckte Dateien ausblenden
-    if (strstr(tempstring, ho)) { //strstr(tempstring, hi)||
-      entry.close();
-      continue;
-    }
-
-    // Sucherweiterung filtern
-    if (ext == true) {
-      found = search_file(entry.name());
-      if (!found) {
-        entry.close();
-        continue;
-      }
-    }
-
-    String nameStr = String(entry.name());
-    // Ermittle die Länge für die dynamische Spaltenbreite
-    if (nameStr.length() > maxNameLength) {
-      maxNameLength = nameStr.length();
-    }
-    // Einsortieren je nachdem, ob es ein Verzeichnis oder eine Datei ist
-    if (entry.isDirectory()) {
-      folderList.push_back(nameStr);
-    } else {
-      fileList.push_back(nameStr);
-    }
-    entry.close();
-    yield();
-  }
-
-  int maxAllowedWidth = wd - 23;
-  if (maxAllowedWidth < 10) maxAllowedWidth = 10; // Untere Grenze absichern
-  if (maxNameLength > maxAllowedWidth) {
-    maxNameLength = maxAllowedWidth;
-  }
-  // Lambda-Funktion für case-insensitive alphabetische Sortierung
-  auto compCaseInsensitive = [](const String & a, const String & b) {
-    String a_upper = a; a_upper.toUpperCase();
-    String b_upper = b; b_upper.toUpperCase();
-    return a_upper < b_upper;
-  };
-  // Schritt 2: Beide Listen separat alphabetisch sortieren
-  std::sort(folderList.begin(), folderList.end(), compCaseInsensitive);
-  std::sort(fileList.begin(), fileList.end(), compCaseInsensitive);
-  // Schritt 3: Ordner-Liste mit Datei-Liste zusammenführen
-  std::vector<String> combinedList = std::move(folderList);
-  combinedList.insert(combinedList.end(), fileList.begin(), fileList.end());
   starteGrafischenExplorer(filestring);
 }
 
 void zeichneGeruest() {
   bcolor(1);
   fcolor(63);
-
   GFX.fillRectangle(20, 20, 300, 220);  // Fensterfläche
   GFX.drawRectangle(20, 20, 300, 220);  // Fensterrahmen
-
   // 2. Titel-Trennlinie zeichnen
   fcolor(51);
   GFX.drawLine(21, 45, 299, 45);
-
-  fcolor(63);
+  fcolor(31);
   GFX.drawText(30, 26, "SD-Card EXPLORER");
-  GFX.drawText(160, 26, "...wait");
+  fcolor(63);
+  GFX.drawText(160, 26, "...please wait");
   if (filestring[0] != '\0') {
     GFX.drawText(&fabgl::FONT_6x8, 30, 35, "search for:");
     GFX.drawText(&fabgl::FONT_6x8, 99, 35, filestring);
@@ -6116,23 +6002,24 @@ void zeichneGeruest() {
   fcolor(60);
   GFX.drawLine(21, 202, 299, 202);
   GFX.drawText(&fabgl::FONT_6x8, 30, 206, "[Cursor/Page]=Scroll [Enter]=Run [ESC]=Break");
-
+  fcolor(63);
 }
 
 
 void zeichneCustomExplorer(const std::vector<String>& dateiListe, int ausgewaehlterIndex, int startSchnitt) {
   int maxSichtbar = 16;
-
+  
   // 1. Hintergrund löschen, wenn gescrollt wurde ODER der Explorer frisch geöffnet wurde
   if (startSchnitt != letzterStartSchnitt || letzterStartSchnitt == -1) {
     GFX.fillRectangle(22, 60, 298, 188);
     letzterStartSchnitt = startSchnitt;
     letzterAusgewaehlterIndex = -1; // Erzwingt das Neuzeichnen aller Zeilen
   }
-
+  
   if (dateiListe.empty()) {
     fcolor(48);
     GFX.drawText(35, 60, "Keine Dateien gefunden!");
+    
   } else {
     int zeile = 0;
     for (size_t i = startSchnitt; i < dateiListe.size() && zeile < maxSichtbar; i++) {
@@ -6154,17 +6041,14 @@ void zeichneCustomExplorer(const std::vector<String>& dateiListe, int ausgewaehl
       zeile++;
     }
   }
-
+  fcolor(63);
   letzterAusgewaehlterIndex = ausgewaehlterIndex;
-  GFX.swapBuffers();
 }
 
 bool starteGrafischenExplorer(char ext[]) {
   String cbuf;
-  const char hi[] = "._";
   bool erfolg = false;
 
-  // --- SD-Karten-Initialisierung ---
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
   delay(5);
   if (!SD.begin(kSD_CS, spiSD)) {
@@ -6173,25 +6057,22 @@ bool starteGrafischenExplorer(char ext[]) {
     return false;
   }
 
-  // Diese Variablen müssen außerhalb des Verzeichnis-Ladens deklariert sein
   std::vector<String> combinedList;
   int aktuellerIndex = 0;
   int maxSichtbar = 16;
   int startSchnitt = 0;
 
-  // Haupt-Label für das (Neu-)Laden des aktuellen Arbeitsordners (sd_pfad)
 verzeichnis_laden:
-  GFX.drawText(160, 26, "...wait");
+  GFX.drawText(160, 26, "...please wait");
   combinedList.clear();
   aktuellerIndex = 0;
   startSchnitt = 0;
   letzterStartSchnitt = -1;
   letzterAusgewaehlterIndex = -1;
 
-  // Öffne den aktuellen Arbeitsordner
   File dir = SD.open(String(sd_pfad));
   if (!dir || !dir.isDirectory()) {
-    // Falls der Ordner nicht existiert, versuchen wir ins Root zu retten
+    // Falls Ordner nicht existiert, dann Root
     strcpy(sd_pfad, "/");
     dir = SD.open(String(sd_pfad));
     if (!dir) {
@@ -6204,7 +6085,9 @@ verzeichnis_laden:
 
   std::vector<String> folderList;
   std::vector<String> fileList;
-
+  int anzahlOrdner = 0;
+  int anzahlDateien = 0;
+  
   while (true) {
     File entry = dir.openNextFile();
     if (!entry) {
@@ -6213,7 +6096,7 @@ verzeichnis_laden:
     }
 
     cbuf = String(entry.name());
-    if (cbuf.startsWith(".")) {
+    if (cbuf.startsWith(".")) {         //unsichtbare Dateien ausblenden
       entry.close();
       continue;
     }
@@ -6226,13 +6109,13 @@ verzeichnis_laden:
       entry.close();
       continue;
     }
-
     if (entry.isDirectory()) {
       folderList.push_back("[" + cbuf + "]"); // Ordner optisch kennzeichnen
+      anzahlOrdner++;
     } else {
       fileList.push_back(cbuf);
+      anzahlDateien++;
     }
-
     entry.close();
     yield();
   }
@@ -6245,16 +6128,16 @@ verzeichnis_laden:
 
   std::sort(folderList.begin(), folderList.end(), compCaseInsensitive);
   std::sort(fileList.begin(), fileList.end(), compCaseInsensitive);
-
   combinedList = std::move(folderList);
   combinedList.insert(combinedList.end(), fileList.begin(), fileList.end());
-
   dir.close();
 
   // Erstes Zeichnen
   zeichneCustomExplorer(combinedList, aktuellerIndex, startSchnitt);
-  GFX.drawText(160, 26, "       ");
-
+  GFX.drawText(160, 26, "              ");       // ...please wait löschen
+  GFX.drawText(&fabgl::FONT_6x8,268, 35,"   ");  //Zahlenbereich löschen
+  GFX.drawText(&fabgl::FONT_6x8,220, 35, ("Dateien:" + String(anzahlDateien)).c_str());
+  
   while (1) {
     char c = wait_key(0);
 
@@ -6326,21 +6209,16 @@ verzeichnis_laden:
       String auswahl = combinedList[aktuellerIndex];
       
       if (auswahl.startsWith("[") && auswahl.endsWith("]")) {
-        // Ordnername extrahieren
-        String ordnerName = auswahl.substring(1, auswahl.length() - 1);
+        String ordnerName = auswahl.substring(1, auswahl.length() - 1);  // Ordnername extrahieren
         String neuerPfad = String(sd_pfad);
-        
         if (!neuerPfad.endsWith("/")) {
           neuerPfad += "/";
         }
         neuerPfad += ordnerName ;
-        // Aktualisiere den globalen Arbeitsordner
-        neuerPfad.toCharArray(sd_pfad, neuerPfad.length() + 1);        
+        neuerPfad.toCharArray(sd_pfad, neuerPfad.length() + 1);          //neuer Pfad
         goto verzeichnis_laden;
       } 
       else {
-        // Datei ausgewählt
-        
         erfolg = true;
         break;
       }
@@ -6360,15 +6238,14 @@ verzeichnis_laden:
     // Kopiere den echten Dateinamen ohne Ordner-Klammern nach tempstring
     cbuf = String(combinedList[aktuellerIndex]);
     cbuf.toCharArray(tempstring, cbuf.length() + 1);    
-    // --- PFAD-REPARATUR FÜR DIE LADE-FUNKTIONEN ---
     String vollerPfad = String(sd_pfad);
-    // Falls wir nicht im Root "/" sind, MUSS ein Slash zwischen Ordner und Datei
+    // Falls nicht im Root "/" , Slash zwischen Ordner und Datei
     if (vollerPfad != "/") {
       vollerPfad += "/";
     }
-    vollerPfad += String(tempstring); // Jetzt steht hier z.B. "/ORDNER/DATEI.BAS"    
+    vollerPfad += String(tempstring); // Jetzt z.B. "/ORDNER/DATEI.BAS"    
     if (String(sd_pfad) != "/") {
-      // Wenn wir in einem Unterordner sind, fügen wir den Slash direkt vor dem Dateinamen ein
+      // Slash direkt vor dem Dateinamen einfügen
       String dateiMitSlash = "/" + String(tempstring);
       dateiMitSlash.toCharArray(tempstring, dateiMitSlash.length() + 1);
     }
@@ -6380,12 +6257,12 @@ verzeichnis_laden:
   letzterAusgewaehlterIndex = -1;
   return erfolg;
 }
+
 //#######################################################################################################################################
 //--------------------------------------------- RENAME - Befehl REN(Filename_old,Filename_new) ----------------------------------------------------
 //#######################################################################################################################################
 
 void renameFile(fs::FS &fs, const char * path1, const char * path2) {
-
   printmsg("Renaming file ", 0);
   printmsg(path1, 0);
   printmsg("to ", 0);
@@ -6403,7 +6280,6 @@ void renameFile(fs::FS &fs, const char * path1, const char * path2) {
   }
   sd_ende();                                             //SD-Card unmount
 }
-
 //----------------------------------------- Unterprogramm - Überprüfung auf gültige Zeichen -------------------------------------------------------
 
 // returns 1 if the character is valid in a filename
@@ -6420,7 +6296,6 @@ static int isValidFnChar( char c )
   if ( c == '~' ) return 1; // Window~1.txt
   return 0;
 }
-
 //#######################################################################################################################################
 //--------------------------------------------- Timer-Interrupt für Akku-Überwachung ----------------------------------------------------
 //#######################################################################################################################################

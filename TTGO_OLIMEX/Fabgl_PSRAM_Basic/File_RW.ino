@@ -231,7 +231,7 @@ void type_file(int m) {
 
   while (fp.available()) {
     c = fp.read();
-    if (c == NL) {
+    if (c == NL || c == CR) {
       Terminal.println();
       b++;
       continue;
