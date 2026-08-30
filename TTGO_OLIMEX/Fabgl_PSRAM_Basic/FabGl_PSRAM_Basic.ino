@@ -53,6 +53,7 @@
 //                            -dies erweitert auch die Load-funktion um dieses Feature, da alle Dateien über load_file anhand der
 //                            -Dateierweiterung identifiziert und geladen werden
 //                            -Verzeichniswechsel im Explorer eingebaut (ENTER=Verzeichnis runter, Backspace=Verzeichnis hoch)
+//                            -etwas optische Kosmetik im Datei-Explorer betrieben
 //                            -etwas Codebereinigung durchgeführt
 //                            -49669 Zeilen/sek.
 //
@@ -103,10 +104,6 @@ fabgl::Canvas           GFX(&VGAController);
 TerminalController      tc(&Terminal);
 fabgl::SoundGenerator SoundGenerator;
 
-const int MAX_DATEIEN = 30;
-EXT_RAM_ATTR char dateiListe[MAX_DATEIEN][32]; // Platz für 30 Dateinamen mit je 31 Zeichen
-int gesamtDateien = 0;
-int ausgewaehlterIndex = 0;
 int letzterStartSchnitt = -1;
 int letzterAusgewaehlterIndex = -1;
 
@@ -260,7 +257,6 @@ static bool semicolon = false;          //marker für semikolon (Print)
 static byte fstring = 0;                //Übergabewert für STRING$(n,"string")
 short int Theme_state = 0;              //aktuelle Theme Nummer (im EEPROM gespeichert)
 static bool Theme_marker = false;       //Theme-Marker, falls Farben geändert
-short int Mode_state = 0;               //aktuelle Auflösung (im EEProm gespeichert)
 
 static bool break_marker = false;       //Abbruch-Marker
 static bool function_key = false;       //Funktionstasten-Marker
@@ -273,7 +269,6 @@ static bool page_down    = false;
 //------------------------------ Grid-Parameter ---------------------------------------------------------------------------------------------------
 int Grid[15];                          //0=x, 1=y, 2=xx, 3=yy, 4=zell_x, 5=zell_y, 6=pix_x, 7=pix_y, 8=frame-col, 9=grid_col
 int Grid_point_x, Grid_point_y;
-
 //------------------------------ Window-Parameter -------------------------------------------------------------------------------------------------
 
 int Frame_nr;                 //5 Fenster können erstellt werden
@@ -293,9 +288,7 @@ bool Frame_title[6];          //Titeltext
 char Frame_ttext[6][STR_LEN]; //Fenster-Titel-String
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------
-
 short int onoff = 1;          //Cursor status
-
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 // Ausgabe-Stream Terminal, Datei, Seriell oder FRAM
@@ -341,7 +334,6 @@ unsigned int restorepointer = 0;    //begin des Datanfeldes
 unsigned int num_of_datalines = 0;  //Anzahl DATA-Zeilen
 unsigned int current_dataline = 0;  //aktuelle DATA-Zeile
 unsigned int data_numbers[300];     //Array zur speicherung von 300 DATA Zeilennummern
-
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // ASCII Characters
 #define CR	'\r'
@@ -362,17 +354,11 @@ bool tron_marker = false;                              //TRON "AUS"
 typedef short unsigned LINENUM;
 
 // Variablen zur Zwischenspeicherung von logischen Operationen (AND OR)
-
 int logic_counter;
 int logic_ergebnis[10];
-
 //-> bis zu 5 AND oder OR Vergleiche können in einer Zeile vorkommen
 
-
-
 bool useColor = true;         //Text-Highlightning on
-
-//#define User_Ram (kRamSize-STACK_SIZE-(26 * 27 * VAR_SIZE))
 
 /***************************Basic-Befehle ********************************/
 const static char keywords[] PROGMEM = {
@@ -1003,17 +989,6 @@ void Beep(int n, int len)
 
   Terminal.print("\e_S0;" + String(n, DEC) + ";" + String(len, DEC) + ";126$");
   delay(len);
-}
-
-//--------------------------------------------- Unterprogramm - Zeichen überspringen --------------------------------------------------------------
-//--------------------------------------------- nächstes Zeichen zurückgeben ----------------------------------------------------------------------
-
-static char skip_spaces() {
-  if (*txtpos)
-  {
-    txtpos++;
-    return spaces();
-  }
 }
 
 //--------------------------------------------- Unterprogramm - Leerzeichen überspringen ----------------------------------------------------------
@@ -2666,7 +2641,8 @@ static int input()
     c = spaces();
     if (c == '$') {                                      //Zeichenkette
       str_m[nr] = true;
-      c = skip_spaces();
+      txtpos++;
+      c = spaces();
     }
 
     if (c == ',')
@@ -3396,21 +3372,21 @@ fnkey:                                                            //Funktionstas
         continue;
         break;
 
-      case KW_CHD:                                      // SD-Card Change-Directory CD
+      case KW_CHD:                                        // SD-Card Change-Directory CD
         cmd_chdir();
         break;
 
-      case KW_MKD:                                      // SD-Card Make-Dir MD
+      case KW_MKD:                                        // SD-Card Make-Dir MD
         if (cmd_mkdir(1));
         continue;
         break;
 
-      case KW_RMD:                                      // SD-Card Remove-Dir RD
+      case KW_RMD:                                        // SD-Card Remove-Dir RD
         if (cmd_mkdir(0));
         continue;
         break;
 
-      case KW_CLS:                                      // CLS
+      case KW_CLS:                                        // CLS
         if (Frame_nr) {
           win_cls(Frame_nr);
         }
@@ -3431,63 +3407,63 @@ fnkey:                                                            //Funktionstas
           continue;
         break;
 
-      case KW_PSET:                                       // PSET x,y
+      case KW_PSET:                                     // PSET x,y
         if (pset())
           continue;
         break;
 
       case KW_CIRC:                                     // CIRCLE x,y,w,h,fill
-        if (line_rec_circ(1, 4))                          //1=Circle, 0..4 Parameter
+        if (line_rec_circ(1, 4))                        //1=Circle, 0..4 Parameter
           continue;
         break;
 
-      case KW_LINE:                                       // LINE x,y,xx,yy
-        if (line_rec_circ(0, 3))                          // 0=Lines, 0..3 Parameter
+      case KW_LINE:                                     // LINE x,y,xx,yy
+        if (line_rec_circ(0, 3))                        // 0=Lines, 0..3 Parameter
           continue;
         break;
 
-      case KW_RECT:                                       // RECT x,y,w,h,fill
-        if (line_rec_circ(2, 4))                          // 2=Rect, 0..4 Parameter
+      case KW_RECT:                                     // RECT x,y,w,h,fill
+        if (line_rec_circ(2, 4))                        // 2=Rect, 0..4 Parameter
           continue;
         break;
 
-      case KW_FRAME:                                      // FRAME x,y,w,h,r
-        if (line_rec_circ(3, 4))                          // 3=Round, 0..4 Parameter
+      case KW_FRAME:                                    // FRAME x,y,w,h,r
+        if (line_rec_circ(3, 4))                        // 3=Round, 0..4 Parameter
           continue;
         break;
 
-      case KW_ARC:                                        // ARC x,y,rmin,rmax,gstart,gend,fill
+      case KW_ARC:                                      // ARC x,y,rmin,rmax,gstart,gend,fill
         if (line_rec_circ(4, 6))
           continue;
         break;
 
-      case KW_PATH:                                       // Path x,y,xx,yy,...xn,yn
+      case KW_PATH:                                     // Path x,y,xx,yy,...xn,yn
         if (draw_path())
           continue;
         break;
 
       case KW_SWAP:
-        if (line_rec_circ(5, 3))                          //SWAP x,y,xx,yy ->vertauscht vorder und Hintergrundfarbe eines rechtecks
+        if (line_rec_circ(5, 3))                        //SWAP x,y,xx,yy ->vertauscht vorder und Hintergrundfarbe eines rechtecks
           continue;
         break;
 
       case KW_COPY:
-        if (line_rec_circ(6, 5))                          //Copy x,y,x_dest,y_dest, w, h ->Kopiert ein Rechteck von x,y nach x_dest,y_dest mit der Größe w,h
+        if (line_rec_circ(6, 5))                        //Copy x,y,x_dest,y_dest, w, h ->Kopiert ein Rechteck von x,y nach x_dest,y_dest mit der Größe w,h
           continue;
         break;
 
-      case KW_ANGLE:                                      //eine Linie im Winkel zeichnen
+      case KW_ANGLE:                                    //eine Linie im Winkel zeichnen
         if (line_rec_circ(9, 3))
           continue;
         break;
 
-      case KW_FONT:                                       // FONT f
+      case KW_FONT:                                     // FONT f
         expression_error = 0;
         val = int(get_value());
         set_font(val);
         break;
 
-      case KW_PAUSE:                                       //PAUSE - kann mit ESC oder Ctrl+C unterbrochen werden (wie beim KC)
+      case KW_PAUSE:                                     //PAUSE - kann mit ESC oder Ctrl+C unterbrochen werden (wie beim KC)
         expression_error = 0;
         val = get_value();
         startZeit = millis();
@@ -3528,12 +3504,12 @@ fnkey:                                                            //Funktionstas
           continue;
         break;
 
-      case KW_PRZ:                                      // PREZ 6 ->Nachkommastellen
+      case KW_PRZ:                                        //PRZ 6 ->Nachkommastellen
         if (set_prezision())
           continue;
         break;
 
-      case KW_DMP:                                       // DUMP adresse
+      case KW_DMP:                                        //DMP adresse
         if (Memory_Dump())
           continue;
         break;
@@ -3572,8 +3548,8 @@ fnkey:                                                            //Funktionstas
         }
         break;
 
-      case KW_RESTORE:                                                //setzen des Datazeigers
-        if (*txtpos == NL || *txtpos == ':')                          //wird kein Wert gelesen, datapointer zurücksetzen
+      case KW_RESTORE:                                     //setzen des Datazeigers
+        if (*txtpos == NL || *txtpos == ':')               //wird kein Wert gelesen, datapointer zurücksetzen
         {
           string_marker = false;
           datapointer = 0;
@@ -3635,12 +3611,12 @@ fnkey:                                                            //Funktionstas
           continue;
         break;
 
-      case KW_DRAW:                                       //Draw x,y,0..1
+      case KW_DRAW:                                    //Draw x,y,0..1
         if (line_rec_circ(7, 2))
           continue;
         break;
 
-      case KW_SPRT:                                     //SPRITE-Befehl
+      case KW_SPRT:                                    //SPRITE-Befehl
         if (Test_char('(')) continue;
         pa = *txtpos;
         if (pa == 'C' || pa == 'D' || pa == 'S') {
@@ -4778,16 +4754,11 @@ static int Sound(void) {
   par[2] = NoteToFreq(par[2]);
   Terminal.print("\e_S" + String(par[1], DEC) + ";" + String(par[2], DEC) + ";" + String(par[3], DEC) + ";" + String(par[4], DEC) + "$");
 
-
   if (Test_char(')')) return 1;                           //Klammer-zu vorhanden?
-
-  // Check that we are at the end of the statement
   if (*txtpos != NL && *txtpos != ':' )  return 1;
   return 0;
 
 }
-
-
 
 //#######################################################################################################################################
 //--------------------------------------------- PSET - Befehl ---------------------------------------------------------------------------
@@ -4801,15 +4772,11 @@ static int pset()
   expression_error = 0;
   xp = get_value();
   if (expression_error) return 1;
-
-  // check for a comma
   if (Test_char(',')) return 1;
 
-  // Now get the value to assign
   expression_error = 0;
   yp = get_value();
   if (expression_error) return 1;
-
 
   if (*txtpos == ',') {                  //optional Angabe der Farbe
     txtpos++;
@@ -4819,11 +4786,8 @@ static int pset()
 
     fcolor(pc);
   }
-  // Check that we are at the end of the statement
   if (*txtpos != NL && *txtpos != ':') return 1;
-
   GFX.setPixel(xp, yp);
-
   return 0;
 }
 
@@ -4833,22 +4797,16 @@ static int pset()
 
 static int color()
 {
-
   short int fc, bc;
-  // Work out where to put it
   expression_error = 0;
   fc = get_value();
   if (expression_error) return 1;
-
-  // check for a comma
   if (Test_char(',')) return 1;
 
-  // Now get the value to assign
   expression_error = 0;
   bc = get_value();
   if (expression_error) return 1;
 
-  // Check that we are at the end of the statement
   if (*txtpos != NL && *txtpos != ':') return 1;
 
   Vordergrund = fc;
@@ -4878,7 +4836,6 @@ void fbcolor(int fc, int bc)
   bcolor(bc);
 }
 
-
 void fcolor(int fc) {
   GFX.setPenColor(colorTable[(fc >> 4) & 0x03], colorTable[(fc >> 2) & 0x03], colorTable[fc & 0x03]);
 }
@@ -4886,7 +4843,6 @@ void fcolor(int fc) {
 void bcolor(int bc) {
   GFX.setBrushColor(colorTable[(bc >> 4) & 0x03], colorTable[(bc >> 2) & 0x03], colorTable[bc & 0x03]);
 }
-
 
 //#######################################################################################################################################
 //--------------------------------------------- PEN - Befehl --------------------------------------------------------------------------------------
@@ -4905,13 +4861,10 @@ static int set_pen()
     expression_error = 0;
     pw = int(get_value());
     if (expression_error) return 1;
-
     GFX.setPenWidth(pw);                           //Pen-Weite
 
   }
-  // Check that we are at the end of the statement
   else if (*txtpos != NL && *txtpos != ':') return 1;
-
   fcolor(pc);
   return 0;
 }
@@ -4931,11 +4884,9 @@ static int def_func()
   fnpos = fname * 5; // Jede Funktion belegt 5 Slots (4 Operatoren + 1 Zähler)
   txtpos++;
 
-  // 2. Klammer auf prüfen
   if (Test_char('(')) return 1;
 
   i = 0;
-  // 3. Operatoren (Parameter) einlesen
   while (1) {
     if (*txtpos < 'A' || *txtpos > 'Z') {
       syntaxerror(syntaxmsg);
@@ -4957,7 +4908,7 @@ static int def_func()
       return 1;
     }
 
-    if (i > 4) { // Du hast Platz für 4 Parameter (0,1,2,3), der 5. Slot ist für die Anzahl
+    if (i > 4) { // Platz für 4 Parameter (0,1,2,3), 5. Slot ist für die Anzahl
       syntaxerror(illegalmsg);
       return 1;
     }
@@ -5955,11 +5906,11 @@ static int cmd_mkdir(int mod)
     if ( !SD.rmdir(String(sd_pfad) + String(tempstring)))
     {
       printmsg(dirmsg, 1);
-      sd_ende();                                             //SD-Card unmount
+      sd_ende();                                              //SD-Card unmount
       return 1;
     }
   }
-  sd_ende();                                             //SD-Card unmount
+  sd_ende();                                                  //SD-Card unmount
 }
 
 //#######################################################################################################################################
@@ -5984,31 +5935,40 @@ void cmd_Dir()
 }
 
 void zeichneGeruest() {
-  bcolor(1);
+  //bcolor(21);
+  //GFX.fillRectangle(25, 25, 305, 225);  // Schattenemulation für Fenster
+  bcolor(3);
   fcolor(63);
   GFX.fillRectangle(20, 20, 300, 220);  // Fensterfläche
   GFX.drawRectangle(20, 20, 300, 220);  // Fensterrahmen
-  // 2. Titel-Trennlinie zeichnen
+  bcolor(42);
+  GFX.fillRectangle(21, 21, 299, 44);   // Kopfzeile
   fcolor(51);
-  GFX.drawLine(21, 45, 299, 45);
-  fcolor(31);
-  GFX.drawText(30, 26, "SD-Card EXPLORER");
+  GFX.drawLine(21, 45, 299, 45);        //Trennlinie
+  fcolor(0);
+  GFX.drawText(31, 27, "SD-Card EXPLORER");
   fcolor(63);
+  GFX.setGlyphOptions(GlyphOptions().FillBackground(false));
+  GFX.drawText(30, 26, "SD-Card EXPLORER");
+  GFX.setGlyphOptions(GlyphOptions().FillBackground(true));
+  fcolor(0);
   GFX.drawText(160, 26, "...please wait");
   if (filestring[0] != '\0') {
     GFX.drawText(&fabgl::FONT_6x8, 30, 35, "search for:");
     GFX.drawText(&fabgl::FONT_6x8, 99, 35, filestring);
   }
-  fcolor(60);
+  GFX.fillRectangle(21, 203, 299, 219);  // Fusszeile
+  fcolor(51);
   GFX.drawLine(21, 202, 299, 202);
-  GFX.drawText(&fabgl::FONT_6x8, 30, 206, "[Cursor/Page]=Scroll [Enter]=Run [ESC]=Break");
+  fcolor(0);
+  GFX.drawText(&fabgl::FONT_6x8, 30, 208, "[Cursor/Page]=Scroll [Enter]=Run [ESC]=Break");
   fcolor(63);
 }
 
 
 void zeichneCustomExplorer(const std::vector<String>& dateiListe, int ausgewaehlterIndex, int startSchnitt) {
   int maxSichtbar = 16;
-  
+  bcolor(3);
   // 1. Hintergrund löschen, wenn gescrollt wurde ODER der Explorer frisch geöffnet wurde
   if (startSchnitt != letzterStartSchnitt || letzterStartSchnitt == -1) {
     GFX.fillRectangle(22, 60, 298, 188);
@@ -6063,7 +6023,11 @@ bool starteGrafischenExplorer(char ext[]) {
   int startSchnitt = 0;
 
 verzeichnis_laden:
+  bcolor(42);
+  fcolor(0);
   GFX.drawText(160, 26, "...please wait");
+  bcolor(3);
+  fcolor(63);
   combinedList.clear();
   aktuellerIndex = 0;
   startSchnitt = 0;
@@ -6134,10 +6098,13 @@ verzeichnis_laden:
 
   // Erstes Zeichnen
   zeichneCustomExplorer(combinedList, aktuellerIndex, startSchnitt);
+  bcolor(42);
+  fcolor(0);
   GFX.drawText(160, 26, "              ");       // ...please wait löschen
   GFX.drawText(&fabgl::FONT_6x8,268, 35,"   ");  //Zahlenbereich löschen
   GFX.drawText(&fabgl::FONT_6x8,220, 35, ("Dateien:" + String(anzahlDateien)).c_str());
-  
+  bcolor(3);
+  fcolor(63);
   while (1) {
     char c = wait_key(0);
 
@@ -6228,6 +6195,8 @@ verzeichnis_laden:
     else if (c == 0x03) {
       sd_ende();
       erfolg = false;
+      bcolor(Hintergrund);
+      fcolor(Vordergrund);
       GFX.clear();
       break;
     }

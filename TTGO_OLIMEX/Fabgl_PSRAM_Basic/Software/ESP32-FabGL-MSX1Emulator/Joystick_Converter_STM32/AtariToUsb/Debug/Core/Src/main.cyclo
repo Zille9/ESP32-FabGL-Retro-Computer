@@ -1,0 +1,6 @@
+../Core/Src/main.c:106:11:read_controller_raw	28
+../Core/Src/main.c:67:5:main	15
+../Core/Src/main.c:204:6:SystemClock_Config	4
+../Core/Src/main.c:251:13:MX_USART2_UART_Init	2
+../Core/Src/main.c:284:13:MX_GPIO_Init	1
+../Core/Src/main.c:329:6:Error_Handler	1

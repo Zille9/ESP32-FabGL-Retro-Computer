@@ -9,7 +9,7 @@
 #include <SPI.h>
 #include <Update.h>
 #include <FS.h>
-// #define SDFAT_FILE_TYPE 1 // Uncomment for Due and Teensy
+#define SDFAT_FILE_TYPE 1 // Uncomment for Due and Teensy
 
 // SD library - Greinman SdFat from Library Manager
 #include <SdFat.h>           // SD library - Greinman SdFat from Library Manager
@@ -46,12 +46,12 @@ File fp;
 // TTGO VGA32 Hardware Definition File
 // =========================================================================================
 // Board definitions go into the "hardware" folder- Choose/change a file from there
-#include "hardware/esp32/ttgo_vga32_esp32.h"  //SD-Pin-Konfiguration
+//#include "hardware/esp32/ttgo_vga32_esp32.h"  //SD-Pin-Konfiguration
 
 // =========================================================================================
 // Olimex ESP32-SBC FabGL Hardware Definition File
 // =========================================================================================
-// #include "hardware/esp32/olimex_esp32_sbc.h"
+#include "hardware/esp32/olimex_esp32_sbc.h"
 
 // =========================================================================================
 // Delays for LED blinking (for never used void loop) ;)

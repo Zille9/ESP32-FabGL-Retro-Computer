@@ -66,6 +66,11 @@
 
 extern "C" uint8_t temprature_sens_read(); // No header file found
 
+#define SD_CLK   14
+#define SD_MISO  35
+#define SD_MOSI  12
+#define SD_CS    13
+
 //------------------------------------------------------------------
 
 XStreams xStreams;
