@@ -258,16 +258,16 @@ static const int sub_half_carry_table[] = { 0, 1, 1, 1, 0, 0, 0, 1 };
 
 void i8080::reset()
 {
-  C_FLAG = 0;
-  S_FLAG = 0;
-  Z_FLAG = 0;
-  H_FLAG = 0;
-  P_FLAG = 0;
+  C_FLAG   = 0;
+  S_FLAG   = 0;
+  Z_FLAG   = 0;
+  H_FLAG   = 0;
+  P_FLAG   = 0;
   UN1_FLAG = 1;
   UN3_FLAG = 0;
   UN5_FLAG = 0;
-
-  PC = 0xF800;
+  IFF      = 0;
+  PC       = 0x0000;
 }
 
 
@@ -291,6 +291,19 @@ void i8080::retrieve_flags()
   H_FLAG = F & F_HCARRY   ? 1 : 0;
   P_FLAG = F & F_PARITY   ? 1 : 0;
   C_FLAG = F & F_CARRY    ? 1 : 0;
+}
+
+
+int i8080::interruptRST(int nRST)
+{
+  if(IFF)
+  {
+    IFF = 0;
+    PUSH(PC);
+    PC = (nRST << 3) & 0x0038;
+    return 11;    // return cpu_cycles
+  }
+  else return 0;
 }
 
 

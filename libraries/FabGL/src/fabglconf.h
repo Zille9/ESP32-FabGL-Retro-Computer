@@ -103,7 +103,7 @@
 
 
 /** Optional feature. If enabled terminal fonts are cached in RAM for better performance. */
-#define FABGLIB_CACHE_FONT_IN_RAM 1
+#define FABGLIB_CACHE_FONT_IN_RAM 0
 
 
 /** Optional feature. Enables Keyboard.virtualKeyToString() method */
@@ -160,8 +160,8 @@
 #define FABGLIB_TERMINAL_DEBUG_REPORT_DESCS          0
 #define FABGLIB_TERMINAL_DEBUG_REPORT_DESCSALL       0
 #define FABGLIB_TERMINAL_DEBUG_REPORT_OSC_CONTENT    0
-#define FABGLIB_TERMINAL_DEBUG_REPORT_UNSUPPORT      0
-#define FABGLIB_TERMINAL_DEBUG_REPORT_ERRORS         0
+#define FABGLIB_TERMINAL_DEBUG_REPORT_UNSUPPORT      1
+#define FABGLIB_TERMINAL_DEBUG_REPORT_ERRORS         1
 #define FABGLIB_VGAXCONTROLLER_PERFORMANCE_CHECK     0
 #define FABGLIB_CVBSCONTROLLER_PERFORMANCE_CHECK     0
 
@@ -169,12 +169,10 @@
 /************ Preset Resolution Modelines ************/
 
 // Modeline for 256x192@50Hz resolution - requires upscaler
-//#define VGA_256x192_50Hz "\"256x192@50\" 8.13 256 288 296 328 192 196 198 202 -HSync -VSync DoubleScan"
 #define VGA_256x192_50Hz "\"256x192@50\" 8.13 256 288 296 328 192 196 198 202 -HSync -VSync DoubleScan"
+
 /** Modeline for 256x384@60Hz resolution */
 #define VGA_256x384_60Hz "\"256x384@60\" 17.09 256 272 304 352 384 387 391 404 -HSync -VSync DoubleScan"
-
-#define VGA_320x200_60Hz "\"320x200@60Hz\" 12.5875 320 328 376 400 200 226 227 262 -HSync -VSync DoubleScan"
 
 #define VGA_320x200_60HzD "\"320x200@60HzD\" 25.175 320 328 376 400 200 226 227 262 -HSync -VSync DoubleScan"
 
@@ -194,7 +192,7 @@
 #define VGA_400x300_60Hz "\"400x300@60Hz\" 20 400 420 484 528 300 300 302 314 -HSync -VSync DoubleScan"
 
 /** Modeline for 480x300@75Hz resolution */
-#define VGA_480x300_75Hz "\"480x300@75Hz\" 21.21 480 504 584 624 300 319 322 333 -HSync -VSync DoubleScan"
+#define VGA_480x300_75Hz "\"480x300@75Hz\" 31.22 480 504 584 624 300 319 322 333 -HSync -VSync DoubleScan"
 
 /** Modeline for 512x192@60Hz resolution */
 #define VGA_512x192_60Hz "\"512x192@60Hz\" 32.5 512 524 592 672 192 193 194 202 -HSync -VSync QuadScan"
