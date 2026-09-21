@@ -10,8 +10,11 @@
 //      PS2Controller IRQ (clock) to ESP32 pin 33;                                                                                                //
 //      VGA RGB to ESP32 pin 21,22, 18,19 und 4,5                                                                                                 //
 //      VGA Hsync und Vsync am ESP32 pins 23 und 15                                                                                               //
-//      SD-Card 14, 16, 35, 13 (SCK, MISO, MOSI, CS)             OLIMEX-SBC   siehe cfg.h                                                         //
+//      SD-Card 14, 35, 12, 13 (SCK, MISO, MOSI, CS)             OLIMEX-SBC   siehe cfg.h                                                         //
 //      SD-Card 14, 2, 12, 13 (SCK, MISO, MOSI, CS)              TTGO 1.4                                                                         //
+//                                                                                                                                                //
+//      Compiler-Einstellungen : CPU-Freq=240MHz, PSRAM=Enabled, Partitionscheme=Minimal SPIFFS 1,9MB with OTA/190kB SPIFFS                       //
+//                               MCU-TYP=ESP32 Dev Module                                                                                         //
 //                                                                                                                                                //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Authors: Mike Field <hamster@snap.net.nz>
@@ -55,7 +58,9 @@
 //                            -Verzeichniswechsel im Explorer eingebaut (ENTER=Verzeichnis runter, Backspace=Verzeichnis hoch)
 //                            -etwas optische Kosmetik im Datei-Explorer betrieben
 //                            -etwas Codebereinigung durchgeführt
-//                            -49669 Zeilen/sek.
+//                            -Einbindung des UIEXT-Anschlusses beim Olimex-SBC wäre noch offen
+//                            -beim TTGO müsste man experimentieren, wie die Einbindung eines Portexpanders möglich wäre (I2c? SPI?)
+//                            -49728 Zeilen/sek.
 //
 // V2.21:21.08.2026           -Variablenanzeige mit MENU-Taste realisiert, zeigt die belegten Variablen und Strings im RAM an
 //                            -Arrays wären noch cool, aber das ist noch etwas aufwendig
@@ -139,7 +144,6 @@ File fp;
 //------------------------------------- OTA-Update-Lib --------------------------------------------------------------------------------------------
 #include <Update.h>
 //-------------------------------------------------------------------------------------------------------------------------------------------------
-
 
 //------------------------------------- ESP32-Time-Lib fuer Datei-zeitstempel ---------------------------------------------------------------------
 #include <ESP32Time.h>
