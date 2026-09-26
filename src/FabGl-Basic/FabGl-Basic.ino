@@ -221,6 +221,12 @@ fabgl::Canvas           GFX(&VGAController);
 TerminalController      tc(&Terminal);
 byte v_mode = 0;                             //Standard-Bildschirmauflösung 320x240
 fabgl::SoundGenerator SoundGenerator;
+#include <JPEGDEC.h>                    //JPEG-Decoder
+JPEGDEC jpeg;
+static uint8_t zeilenBuffer[640];       //Zeilenpuffer für jpeg Bildaufbau
+
+int letzterStartSchnitt = -1;
+int letzterAusgewaehlterIndex = -1;
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 #define erststart_marker 131                //dieser Marker steht im EEprom an Position 100 - wird der ESP32 zum ersten mal mit dem Basic gestartet werden standard-Werte gesetzt
@@ -444,6 +450,11 @@ short int Mode_state = 0;               //aktuelle Auflösung (im EEProm gespeic
 static bool break_marker = false;       //Abbruch-Marker
 static bool function_key = false;       //Funktionstasten-Marker
 static bool show_vars    = false;       //Anzeige der Variablen über Menu-Taste
+static bool cursor_up    = false;
+static bool cursor_down  = false;
+static bool page_up      = false;
+static bool page_down    = false;
+
 //------------------------------ Grid-Parameter ---------------------------------------------------------------------------------------------------
 int Grid[15];                          //0=x, 1=y, 2=xx, 3=yy, 4=zell_x, 5=zell_y, 6=pix_x, 7=pix_y, 8=frame-col, 9=grid_col
 int Grid_point_x, Grid_point_y;
@@ -1180,6 +1191,7 @@ static const char dirnotfound[]      PROGMEM = "DIR not found !";               
 static const char extension_error[]  PROGMEM = "invalid File-Extension !";      //27
 static const char stringtolong[]     PROGMEM = "String to long!";               //28
 static const char wronglinenr[]      PROGMEM = "Wrong Line-Number!";            //29
+static const char jpgfilemsg[]       PROGMEM = "No JPG-File!";                  //30
 
 //----------------------------------- Interpreter-Variablen ---------------------------------------------------------------------------------------
 char *pstart;
@@ -1438,13 +1450,26 @@ static uint16_t wait_key(bool modes) {
     if (Terminal.available()) {
       return (uint16_t)Terminal.read();
     }
-    // 2. Break-Marker Check (Logik korrigiert)
-    if (break_marker) {
-      break_marker = false; // Korrektur: = statt ==
-      return 0x03;             // ASCII ESC
+    if (cursor_up) {
+      cursor_up = false;
+      return 0x06;
     }
-    // 3. CPU-Entlastung
-    //yield();
+    if (cursor_down) {
+      cursor_down = false;
+      return 0x05;
+    }
+    if (page_up) {
+      page_up = false;
+      return 0x14;
+    }
+    if (page_down) {
+      page_down = false;
+      return 0x15;
+    }
+    if (break_marker) {
+      break_marker = false;
+      return 0x03;
+    }
   }
 }
 
@@ -3606,7 +3631,7 @@ interpreteAtTxtpos:
 fnkey:                                                            //Funktionstaste wurde gedrückt -> Befehl ausführen
 
     if (function_key) {                                           //Funktions-Befehl nur ausführen, wenn kein Programm läuft
-      if(show_vars) zeige_variablen();                            //Variablen über LALT+v anzeigen
+      if (show_vars) zeige_variablen();                           //Variablen über LALT+v anzeigen
       keyword_index = key_command;
       function_key = false;
       show_vars = false;
@@ -3629,7 +3654,7 @@ fnkey:                                                            //Funktionstas
           continue;
         }
 
-        if (load_file()) {
+        if (load_file(0)) {
           continue;
         }
         string_marker = false;
@@ -3643,7 +3668,7 @@ fnkey:                                                            //Funktionstas
 
       case KW_RUN:                                        // RUN
         if (*txtpos != NL && *txtpos != '*') {            //RUN"/Filename" / RUN X$ lädt und startet das Programm
-          if (load_file()) continue;
+          if (load_file(0)) continue;
           string_marker = false;
           autorun = true;
         }
@@ -4237,7 +4262,7 @@ fnkey:                                                            //Funktionstas
         break;
 
       case KW_TYPE:
-        type_file();
+        type_file(1);
         break;
 
       case KW_GRID:
@@ -6132,19 +6157,19 @@ void sd_ende() {
 //--------------------------------------------- LOAD - Befehl ---------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static int load_file()
+static int load_file(int modes)
 {
   int fcheck;
   // Programmspeicher löschen
   program_end = program_start;
 
   // lade BAS-Datei in den Speicher
-
-  expression_error = 0;
-  get_value();                                              //in tempstring steht der Dateiname
-
-  if (expression_error) return expression_error;
-
+  if (!modes) {
+    expression_error = 0;
+    get_value();                                              //in tempstring steht der Dateiname
+    if (expression_error) return expression_error;
+  }
+  
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
   while (!SD.begin( kSD_CS, spiSD)) {
     syntaxerror(sderrormsg);
@@ -6171,9 +6196,28 @@ static int load_file()
         fp = SD.open(String(sd_pfad) + String(tempstring));     //Datei zum Laden öffnen
         inStream = kStreamFile;
         inhibitOutput = true;
+        
         break;
       case 2:
         load_binary();                                          //Bin-Dateien laden
+        break;
+      case 3:
+        import_pic(0, 0, tempstring, 1);                        // BMP-Dateien
+        break;
+      case 4:
+        {
+          load_pic(FRAM_OFFSET, tempstring);                    // PIC-Dateien
+          static char picd[] = "_D(0)\n";                       // Befehlssequenz für die Darstellung
+          txtpos = picd;                                        // Befehlssequenz an txtpos übergeben
+          show_Pic();                                           // PIC auf Speicherplatz 0 anzeigen
+        }
+        break;
+      case 5:
+        type_file(0);                                           // TXT-Dateien, LUA-Dateien
+        break;
+      case 6:
+        //Terminal.print(tempstring);
+        vga_jpeg(0, 0, 0);                                      // JPEG-Dateien
         break;
 
       default:
@@ -6195,7 +6239,10 @@ int check_extension() {
   // equalsIgnoreCase ist auf dem ESP32 effizient und spart toUpperCase()
   if (ext.equalsIgnoreCase(".BAS")) return 1;
   if (ext.equalsIgnoreCase(".BIN")) return 2;
-
+  if (ext.equalsIgnoreCase(".BMP")) return 3;
+  if (ext.equalsIgnoreCase(".PIC")) return 4;
+  if (ext.equalsIgnoreCase(".TXT") || ext.equalsIgnoreCase(".LUA")) return 5;
+  if (ext.equalsIgnoreCase(".JPG")) return 6;
   return 0;
 }
 
@@ -6502,150 +6549,311 @@ bool search_file(const char* names) {
   if (cbuf.indexOf(filestring) > -1) return true;
   else return false;
 }
-/*
+
 void cmd_Dir()
-{ int ln = 1;
-  int ex = 0;
+{
   String cbuf;
-  const char hi[] = "._";
-  int was, tmp_col;
-  int wd = GFX.getWidth() / x_char[fontsatz];
-  int Dateien = 0;
-  bool ext = false;       //Sucherweiterung ?
-  bool found = false;
-  bool hidden_flag = false;
-  char c;
-  c = *txtpos;
-  if (c == char(34)) {                                        //Anführungszeichen erkannt
+  char c = *txtpos;
+  memset(filestring, 0, sizeof(filestring));                  //Puffer für Suchbegriff leeren
+
+  if (c == char(34)) {                                        // Anführungszeichen erkannt
     expression_error = 0;
-    get_value();                                              //in tempstring steht die Dateinamens-Erweiterung
+    get_value();                                              // in tempstring steht die Dateinamens-Erweiterung
     cbuf = String(tempstring);
-    cbuf.toUpperCase();                                       //String in Grossbuchstaben umwandeln
-    cbuf.toCharArray(filestring, cbuf.length() + 1);          //und nach filestring schreiben
+    cbuf.toUpperCase();                                       // String in Grossbuchstaben umwandeln
+    cbuf.toCharArray(filestring, cbuf.length() + 1);          // und nach filestring schreiben
     if (expression_error) return;
-    ext = true;                                               //Ausgabe mit Sucherweiterung
-    Terminal.print("search for:");
-    Terminal.print(filestring);                               //Dateierweiterung anzeigen
-    Terminal.println();
   }
+  zeichneGeruest();
+  starteGrafischenExplorer(filestring);
+}
+
+void zeichneGeruest() {
+  //bcolor(21);
+  //GFX.fillRectangle(25, 25, 305, 225);  // Schattenemulation für Fenster
+  bcolor(3);
+  fcolor(63);
+  GFX.fillRectangle(20, 20, 300, 220);  // Fensterfläche
+  GFX.drawRectangle(20, 20, 300, 220);  // Fensterrahmen
+  bcolor(42);
+  GFX.fillRectangle(21, 21, 299, 44);   // Kopfzeile
+  fcolor(51);
+  GFX.drawLine(21, 45, 299, 45);        //Trennlinie
+  fcolor(0);
+  GFX.drawText(31, 27, "SD-Card EXPLORER");
+  fcolor(63);
+  GFX.setGlyphOptions(GlyphOptions().FillBackground(false));
+  GFX.drawText(30, 26, "SD-Card EXPLORER");
+  GFX.setGlyphOptions(GlyphOptions().FillBackground(true));
+  fcolor(0);
+  GFX.drawText(160, 26, "...please wait");
+  if (filestring[0] != '\0') {
+    GFX.drawText(&fabgl::FONT_6x8, 30, 35, "search for:");
+    GFX.drawText(&fabgl::FONT_6x8, 99, 35, filestring);
+  }
+  GFX.fillRectangle(21, 203, 299, 219);  // Fusszeile
+  fcolor(51);
+  GFX.drawLine(21, 202, 299, 202);
+  fcolor(0);
+  GFX.drawText(&fabgl::FONT_6x8, 30, 208, "[Cursor/Page]=Scroll [Enter]=Run [ESC]=Break");
+  fcolor(63);
+}
+
+
+void zeichneCustomExplorer(const std::vector<String>& dateiListe, int ausgewaehlterIndex, int startSchnitt) {
+  int maxSichtbar = 16;
+  bcolor(3);
+  // 1. Hintergrund löschen, wenn gescrollt wurde ODER der Explorer frisch geöffnet wurde
+  if (startSchnitt != letzterStartSchnitt || letzterStartSchnitt == -1) {
+    GFX.fillRectangle(22, 60, 298, 188);
+    letzterStartSchnitt = startSchnitt;
+    letzterAusgewaehlterIndex = -1; // Erzwingt das Neuzeichnen aller Zeilen
+  }
+
+  if (dateiListe.empty()) {
+    fcolor(48);
+    GFX.drawText(35, 60, "Keine Dateien gefunden!");
+
+  } else {
+    int zeile = 0;
+    for (size_t i = startSchnitt; i < dateiListe.size() && zeile < maxSichtbar; i++) {
+      int yPos = 60 + (zeile * 8);
+      // Alten Auswahlbalken entfernen (nur wenn sich der Bildausschnitt NICHT verschoben hat)
+      if (letzterStartSchnitt == startSchnitt && letzterAusgewaehlterIndex != -1) {
+        if ((int)i == letzterAusgewaehlterIndex && ausgewaehlterIndex != letzterAusgewaehlterIndex) {
+          GFX.swapRectangle(25, yPos, 295, yPos + 7);
+        }
+      }
+      // Text zeichnen
+      if (letzterAusgewaehlterIndex == -1 || (int)i == ausgewaehlterIndex || (int)i == letzterAusgewaehlterIndex) {
+        GFX.drawText(&fabgl::FONT_6x8, 35, yPos, dateiListe[i].c_str());
+      }
+      // Neuen Auswahlbalken setzen
+      if ((int)i == ausgewaehlterIndex && ausgewaehlterIndex != letzterAusgewaehlterIndex) {
+        GFX.swapRectangle(25, yPos, 295, yPos + 7);
+      }
+      zeile++;
+    }
+  }
+  fcolor(63);
+  letzterAusgewaehlterIndex = ausgewaehlterIndex;
+}
+
+bool starteGrafischenExplorer(char ext[]) {
+  String cbuf;
+  bool erfolg = false;
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
   delay(5);
   if (!SD.begin(kSD_CS, spiSD)) {
     syntaxerror(sderrormsg);
     sd_ende();
+    return false;
   }
 
-  File dir = SD.open(String(sd_pfad));
-  dir.seek(0);                                                  //zum Verzeichnis-Anfang
+  std::vector<String> combinedList;
+  int aktuellerIndex = 0;
+  int maxSichtbar = 16;
+  int startSchnitt = 0;
 
-  while ( !ex ) {
-    File entry = dir.openNextFile();                            //nächsten Eintrag holen
-    if ( !entry ) {                                             //kein Eintrag mehr, dann abbruch
+verzeichnis_laden:
+  bcolor(42);
+  fcolor(0);
+  GFX.drawText(160, 26, "...please wait");
+  bcolor(3);
+  fcolor(63);
+  combinedList.clear();
+  aktuellerIndex = 0;
+  startSchnitt = 0;
+  letzterStartSchnitt = -1;
+  letzterAusgewaehlterIndex = -1;
+
+  File dir = SD.open(String(sd_pfad));
+  if (!dir || !dir.isDirectory()) {
+    // Falls Ordner nicht existiert, dann Root
+    strcpy(sd_pfad, "/");
+    dir = SD.open(String(sd_pfad));
+    if (!dir) {
+      syntaxerror(sdfilemsg);
+      sd_ende();
+      return false;
+    }
+  }
+  dir.seek(0);
+
+  std::vector<String> folderList;
+  std::vector<String> fileList;
+  int anzahlOrdner = 0;
+  int anzahlDateien = 0;
+
+  while (true) {
+    File entry = dir.openNextFile();
+    if (!entry) {
       entry.close();
       break;
     }
+
     cbuf = String(entry.name());
-    cbuf.toCharArray(tempstring, cbuf.length() + 1);
+    if (cbuf.startsWith(".")) {         //unsichtbare Dateien ausblenden
+      entry.close();
+      continue;
+    }
 
-    if (strstr(tempstring, hi)) continue;                       //versteckte dateien ausblenden
+    String nameStr = cbuf;
+    nameStr.toUpperCase();
 
-    if (ext == true) {                                          //Sucherweiterung aktiv?
+    // Ordner werden immer angezeigt, Dateien nach Sucherweiterung gefiltert
+    if (!entry.isDirectory() && nameStr.indexOf(ext) == -1) {
+      entry.close();
+      continue;
+    }
+    if (entry.isDirectory()) {
+      folderList.push_back("[" + cbuf + "]"); // Ordner optisch kennzeichnen
+      anzahlOrdner++;
+    } else {
+      fileList.push_back(cbuf);
+      anzahlDateien++;
+    }
+    entry.close();
+    yield();
+  }
 
-      found = search_file(entry.name());                        //untersuche Dateinamen mit Suchstring
+  auto compCaseInsensitive = [](const String & a, const String & b) {
+    String a_upper = a; a_upper.toUpperCase();
+    String b_upper = b; b_upper.toUpperCase();
+    return a_upper < b_upper;
+  };
 
-      if (found == true )
-      {
-        printmsg(spacemsg, 0);
-        printmsg(entry.name(), 0);                              //Datei- oder Verzeichnisname ausgeben
-        found = false;
-        was = key_press(ln);
-        if (was == 0) ln = 1;
-        if (was == 1) ex = 1;
+  std::sort(folderList.begin(), folderList.end(), compCaseInsensitive);
+  std::sort(fileList.begin(), fileList.end(), compCaseInsensitive);
+  combinedList = std::move(folderList);
+  combinedList.insert(combinedList.end(), fileList.begin(), fileList.end());
+  dir.close();
+
+  // Erstes Zeichnen
+  zeichneCustomExplorer(combinedList, aktuellerIndex, startSchnitt);
+  bcolor(42);
+  fcolor(0);
+  GFX.drawText(160, 26, "              ");       // ...please wait löschen
+  GFX.drawText(&fabgl::FONT_6x8, 268, 35, "   "); //Zahlenbereich löschen
+  GFX.drawText(&fabgl::FONT_6x8, 220, 35, ("Dateien:" + String(anzahlDateien)).c_str());
+  bcolor(3);
+  fcolor(63);
+  while (1) {
+    char c = wait_key(0);
+
+    // PFEIL RUNTER
+    if (c == 0x05 && aktuellerIndex < (int)combinedList.size() - 1) {
+      aktuellerIndex++;
+      if (aktuellerIndex >= startSchnitt + maxSichtbar) {
+        startSchnitt = aktuellerIndex - maxSichtbar + 1;
+      }
+      zeichneCustomExplorer(combinedList, aktuellerIndex, startSchnitt);
+    }
+
+    // PFEIL HOCH
+    else if (c == 0x06 && aktuellerIndex > 0) {
+      aktuellerIndex--;
+      if (aktuellerIndex < startSchnitt) {
+        startSchnitt = aktuellerIndex;
+      }
+      zeichneCustomExplorer(combinedList, aktuellerIndex, startSchnitt);
+    }
+
+    // PAGE DOWN (0x15)
+    else if (c == 0x15 && aktuellerIndex < (int)combinedList.size() - 1) {
+      aktuellerIndex += maxSichtbar;
+      if (aktuellerIndex >= (int)combinedList.size()) {
+        aktuellerIndex = (int)combinedList.size() - 1;
+      }
+      if (aktuellerIndex >= startSchnitt + maxSichtbar) {
+        startSchnitt = aktuellerIndex - maxSichtbar + 1;
+      }
+      if (startSchnitt + maxSichtbar > (int)combinedList.size()) {
+        startSchnitt = (int)combinedList.size() - maxSichtbar;
+        if (startSchnitt < 0) startSchnitt = 0;
+      }
+      zeichneCustomExplorer(combinedList, aktuellerIndex, startSchnitt);
+    }
+
+    // PAGE UP (0x14)
+    else if (c == 0x14 && aktuellerIndex > 0) {
+      aktuellerIndex -= maxSichtbar;
+      if (aktuellerIndex < 0) {
+        aktuellerIndex = 0;
+      }
+      if (aktuellerIndex < startSchnitt) {
+        startSchnitt = aktuellerIndex;
+      }
+      zeichneCustomExplorer(combinedList, aktuellerIndex, startSchnitt);
+    }
+
+    // BACKSPACE (0x7F=127) - Einen Ordner nach oben springen
+    else if (c == 0x7F) {
+      String pfadStr = String(sd_pfad);
+      if (pfadStr != "/" && pfadStr.length() > 1) {
+        if (pfadStr.endsWith("/")) {
+          pfadStr.remove(pfadStr.length() - 1);
+        }
+        int letzterSlash = pfadStr.lastIndexOf('/');
+        if (letzterSlash >= 0) {
+          pfadStr = pfadStr.substring(0, letzterSlash + 1);
+        }
+        // Aktualisiere den globalen Arbeitsordner
+        pfadStr.toCharArray(sd_pfad, pfadStr.length());
+        goto verzeichnis_laden;
+      }
+    }
+
+    // ENTER (Datei laden ODER Ordner öffnen)
+    else if (c == 13 && !combinedList.empty()) {
+      String auswahl = combinedList[aktuellerIndex];
+
+      if (auswahl.startsWith("[") && auswahl.endsWith("]")) {
+        String ordnerName = auswahl.substring(1, auswahl.length() - 1);  // Ordnername extrahieren
+        String neuerPfad = String(sd_pfad);
+        if (!neuerPfad.endsWith("/")) {
+          neuerPfad += "/";
+        }
+        neuerPfad += ordnerName ;
+        neuerPfad.toCharArray(sd_pfad, neuerPfad.length() + 1);          //neuer Pfad
+        goto verzeichnis_laden;
       }
       else {
-        entry.close();
-        continue;
+        erfolg = true;
+        break;
       }
     }
 
-    else {
-      printmsg(spacemsg, 0);
-      printmsg(entry.name(), 0);                                 //Datei- oder Verzeichnisname ausgeben
+    // ESCAPE (Abbrechen)
+    else if (c == 0x03) {
+      sd_ende();
+      erfolg = false;
+      bcolor(Hintergrund);
+      fcolor(Vordergrund);
+      GFX.clear();
+      break;
     }
+    yield();
+  }
 
-
-
-    //-------------------------------- Verzeichnis ----------------------------------------------------------------
-    if ( entry.isDirectory() ) {
-
-      printmsg(slashmsg, 0);
-
-      for ( int i = strlen(entry.name()) ; i < 17 ; i++ ) {    //abhängig von der Stringlänge, Leerzeichen ausgeben
-        printmsg(spacemsg, 0);
-      }
-
-      printmsg(dirextmsg, 0);                                   //'dir' ausgeben
-
-    }
-    //-------------------------------- Datei ----------------------------------------------------------------------
-    else {
-      for ( int i = strlen( entry.name()) ; i < 17 ; i++ ) {    //abhängig von der Stringlänge, Leerzeichen ausgeben
-        printmsg(spacemsg, 0);
-      }
-      printnum(int(entry.size()), Zahlenformat);                //Dateigrösse ausgeben
-      Dateien++;
-      itoa(entry.size(), tempstring, 10);                       //Dateigrösse in String umwandeln
-      for ( int i = strlen(tempstring) ; i < 8 ; i++ ) {        //abhängig von der Stringlänge, Leerzeichen ausgeben
-        printmsg(spacemsg, 0);
-      }
-      time_t t = entry.getLastWrite();                          //Datei-Zeitstempel lesen
-      struct tm * tmstruct = localtime(&t);
-      if (tmstruct->tm_mday < 10) outchar('0');                 //führende Null bei Werten < 10
-      printnum(tmstruct->tm_mday, 0);                           //Tag ausgeben
-      outchar('.');
-      if ((tmstruct->tm_mon + 1) < 10) outchar('0');            //führende Null bei Werten < 10
-      printnum(tmstruct->tm_mon + 1, 0);                        //Monat ausgeben -> +1, da der Monat von 0-11 zurückgegeben wird
-      outchar('.');
-      printnum(((tmstruct->tm_year) + 1900), 0);                //Jahr ausgeben
-      if (wd > 40) {                                            //bei Terminalbreite > 40 zusätzlich Zeit anzeigen
-        outchar(' ');
-        if (tmstruct->tm_hour < 10) outchar('0');               //Stunde ausgeben
-        printnum(tmstruct->tm_hour, 0);
-        outchar(':');
-        if (tmstruct->tm_min < 10) outchar('0');                //Minute ausgeben
-        printnum(tmstruct->tm_min, 0);
-      }
-
-    }
-    line_terminator();
-    entry.close();
-    ln++;
-
-    was = key_press(ln);
-    if (was == 0) ln = 1;
-    if (was == 1) ex = 1;
-
-    yield();                 //CPU-Entlastung
-  } //while(!ex)
-
-  line_terminator();
-  printmsg(spacemsg, 0);
-  printnum(Dateien, Zahlenformat);
-  printmsg(" Files on SD-Card", 1);
-  printmsg("  Total space: ", 0);
-  printnum(SD.totalBytes() / (1024 * 1024), Zahlenformat);
-  printmsg("MB", 1);
-  printmsg("  Used  space: ", 0);
-  printnum(SD.usedBytes() / (1024 * 1024), Zahlenformat);
-  printmsg("MB", 1);
-
-  dir.close();
-  sd_ende();                                             //SD-Card unmount
+  if (erfolg) {
+    // Kopiere den echten Dateinamen ohne Ordner-Klammern nach tempstring
+    cbuf = String(combinedList[aktuellerIndex]);
+    cbuf.toCharArray(tempstring, cbuf.length() + 1);
+    load_file(1);
+    string_marker = false;
+    autorun = true;
+  }
+  letzterStartSchnitt = -1;
+  letzterAusgewaehlterIndex = -1;
+  return erfolg;
 }
-*/
+
+
+/*
 void cmd_Dir()
-{ 
+{
   int ln = 1;
   int ex = 0;
   String cbuf;
@@ -6684,7 +6892,7 @@ void cmd_Dir()
   // Zwei getrennte Listen für Ordner und Dateien
   std::vector<String> folderList;
   std::vector<String> fileList;
-  
+
   int maxNameLength = 12; // Standard-Mindestbreite für die Namensspalte (z.B. 8.3 Format)
 
   // Schritt 1: Alle Einträge trennen, sammeln und maximale Länge ermitteln
@@ -6714,7 +6922,7 @@ void cmd_Dir()
     }
 
     String nameStr = String(entry.name());
-    
+
     // Ermittle die Länge für die dynamische Spaltenbreite
     if (nameStr.length() > maxNameLength) {
       maxNameLength = nameStr.length();
@@ -6726,21 +6934,21 @@ void cmd_Dir()
     } else {
       fileList.push_back(nameStr);
     }
-    
+
     entry.close();
     yield();
   }
 
   // Begrenzung der Spaltenbreite, damit bei riesigen Namen noch Platz für Daten bleibt
   // Wenn die Terminalbreite (wd) z.B. 40 ist, sollte die Spalte nicht 35 Zeichen einnehmen
-  int maxAllowedWidth = wd - 23; 
+  int maxAllowedWidth = wd - 23;
   if (maxAllowedWidth < 10) maxAllowedWidth = 10; // Untere Grenze absichern
   if (maxNameLength > maxAllowedWidth) {
     maxNameLength = maxAllowedWidth;
   }
 
   // Lambda-Funktion für case-insensitive alphabetische Sortierung
-  auto compCaseInsensitive = [](const String &a, const String &b) {
+  auto compCaseInsensitive = [](const String & a, const String & b) {
     String a_upper = a; a_upper.toUpperCase();
     String b_upper = b; b_upper.toUpperCase();
     return a_upper < b_upper;
@@ -6760,19 +6968,19 @@ void cmd_Dir()
 
     String fullPath = String(sd_pfad);
     if (!fullPath.endsWith("/")) fullPath += "/";
-    
+
     if (fileName.startsWith("/")) {
       fullPath += fileName.substring(1);
     } else {
       fullPath += fileName;
     }
-    
+
     File entry = SD.open(fullPath);
     if (!entry) continue;
 
     // 1. Ein einzelnes führendes Leerzeichen für den Zeilenanfang
     outchar(' ');
-    
+
     // 2. Namen vorbereiten und bei Überlänge kürzen
     String displayName = entry.name();
     if (displayName.length() > maxNameLength) {
@@ -6789,9 +6997,9 @@ void cmd_Dir()
     //-------------------------------- Verzeichnis ----------------------------------------------------------------
     if ( entry.isDirectory() ) {
       printmsg(slashmsg, 0);      // Gibt das "/" hinter dem Ordnernamen aus
-      
+
       // Festen Abstand bis zur "<DIR>"-Anzeige auffüllen
-      for ( int i = 1 ; i < 12 ; i++ ) { 
+      for ( int i = 1 ; i < 12 ; i++ ) {
         outchar(' ');
       }
       printmsg(dirextmsg, 0);     // Gibt "DIR" bzw. "<DIR>" aus
@@ -6858,7 +7066,7 @@ void cmd_Dir()
   dir.close();
   sd_ende();
 }
-
+*/
 //#######################################################################################################################################
 //--------------------------------------------- RENAME - Befehl REN(Filename_old,Filename_new) ----------------------------------------------------
 //#######################################################################################################################################
@@ -7245,7 +7453,7 @@ void setup()
   GFX.clear();
   if (Theme_marker) set_theme(Theme_state, fontsatz);                                           //Theme setzen, wenn im EEprom gespeichert
   else set_font(user_font);
-  
+
   PS2Controller.keyboard()-> onVirtualKey = [&](VirtualKey * vk, bool keyDown) {
     if (keyDown) {
 
@@ -7276,7 +7484,24 @@ void setup()
         break_marker = true;                                                            //ESC abfangen und in Ctrl-C wandeln
         *vk = VirtualKey::VK_NONE;
       }
-      
+      else if (*vk == VirtualKey::VK_DOWN) {
+        cursor_down = true;
+        *vk = VirtualKey::VK_NONE;
+      }
+      // PFEIL HOCH
+      else if (*vk == VirtualKey::VK_UP) {
+        cursor_up = true;
+        *vk = VirtualKey::VK_NONE;
+      }
+      else if (*vk == VirtualKey::VK_PAGEDOWN) {
+        page_down = true;
+        *vk = VirtualKey::VK_NONE;
+      }
+      // PFEIL HOCH
+      else if (*vk == VirtualKey::VK_PAGEUP) {
+        page_up = true;
+        *vk = VirtualKey::VK_NONE;
+      }
       else if (*vk == VirtualKey::VK_APPLICATION) {                                     //Anzeige der belegten Variablen
         if (current_line == NULL) {
           key_command = KW_PRINT;
@@ -7285,7 +7510,7 @@ void setup()
         }
         *vk = VirtualKey::VK_NONE;
       }
-      
+
       else if (*vk == VirtualKey::VK_F1) {                                              //Anzeige der Funktionstastenbelegung
         if (current_line == NULL) {
           key_command = KW_COUNT;
@@ -8504,7 +8729,22 @@ nochmal:
         if (Test_char(')')) return 1;
         import_pic(dx, dy, tempstring, scal);
         break;
-
+      //****************************************************** PIC_J(X,Y,Filename.jpg<,scal>) **********************************
+      case 'J':                                         //Import <- BMP
+        if (Test_char('(')) return 1;
+        dx = get_value();                               //x
+        if (Test_char(',')) return 1;                   //Komma überspringen
+        dy = get_value();                               //y
+        if (Test_char(',')) return 1;                   //Komma überspringen
+        get_value();                                    //Dateiname in tempstring
+        scal = 0;
+        if (*txtpos == ',') {                           //wenn Komma dann scal=0,2,4 oder 8
+          txtpos++;
+          scal = get_value();
+        }
+        if (Test_char(')')) return 1;
+        vga_jpeg(dx, dy, scal);
+        break;
       //****************************************************** PIC_L(PIC_Nr,Filename) ******************************************
       case 'L':                                         //Load PIC_RAW-Data
         if (Test_char('(')) return 1;
@@ -8767,6 +9007,103 @@ nochmal:
     fp.close();
     sd_ende();                                               //SD-Card unmount
     return 0;
+  }
+  //****************************************************** PIC_J(X,Y,Filename.jpg,scal) ******************************************
+  int JPEGDraw(JPEGDRAW * pDraw) {
+    uint16_t *pSrc = pDraw->pPixels;
+    int xStart = pDraw->x;
+    int yStart = pDraw->y;
+
+    auto canvas = &GFX; // Deine FabGL-Canvas-Instanz
+
+    // Vertikaler Clipping-Schutz
+    if (yStart >= 240 || yStart + pDraw->iHeight < 0) return 1;
+
+    for (int y = 0; y < pDraw->iHeight; y++) {
+      int currentY = yStart + y;
+      // Falls Zeile außerhalb des Bildschirms liegt, überspringen
+      if (currentY < 0 || currentY >= 240) {
+        pSrc += pDraw->iWidth;
+        continue;
+      }
+
+      // Horizontaler Clipping-Schutz
+      int zeichneBreite = pDraw->iWidth;
+      if (xStart + zeichneBreite > 320) {
+        zeichneBreite = 320 - xStart;
+      }
+      if (zeichneBreite <= 0) {
+        pSrc += pDraw->iWidth;
+        continue;
+      }
+
+      // 1. Pixel der aktuellen JPEG-Zeile konvertieren
+      for (int x = 0; x < zeichneBreite; x++) {
+        uint16_t p = *pSrc++;
+
+        // Bits aus RGB565 isolieren
+        uint8_t r5 = (p >> 11) & 0x1F; // 5 Bits Rot
+        uint8_t g6 = (p >> 5)  & 0x3F; // 6 Bits Grün
+        uint8_t b5 = p         & 0x1F; // 5 Bits Blau
+
+        // Auf die 2 Bits reduzieren, die FabGLs Hardware pro Kanal im 8-Bit-Modus erwartet
+        uint8_t r2 = r5 >> 3; // die obersten 2 von 5 Bits
+        uint8_t g2 = g6 >> 4; // die obersten 2 von 6 Bits
+        uint8_t b2 = b5 >> 3; // die obersten 2 von 5 Bits
+        uint8_t a2 = 3;       // Alpha voll deckend (Bits 11), damit kein Hintergrund fehlt!
+        zeilenBuffer[x] = r2 | (g2 << 2) | (b2 << 4) | (a2 << 6);
+      }
+
+      // Falls der Block breiter war als der sichtbare Bildschirm, Rest überspringen
+      if (zeichneBreite < pDraw->iWidth) {
+        pSrc += (pDraw->iWidth - zeichneBreite);
+      }
+
+      fabgl::Bitmap zeilenBitmap(zeichneBreite, 1, zeilenBuffer, fabgl::PixelFormat::RGBA2222);
+      canvas->drawBitmap(xStart, currentY, &zeilenBitmap);
+      canvas->waitCompletion(false);
+    }
+    return 1;
+  }
+
+  void * myOpen(const char *filename, int32_t *size) {
+    if (fp) fp.close(); // Alten Puffer leeren
+    // Den Pfad zusammensetzen
+    String vollerPfad = String(sd_pfad) + "/" + String(filename);
+    vollerPfad.replace("//", "/"); // Doppelte Slashes korrigieren
+    fp = SD.open(vollerPfad.c_str(), FILE_READ);
+    if (fp) {
+      *size = fp.size();
+      return &fp;
+    }
+    return NULL;
+  }
+
+  void myClose(void *handle) {
+    if (handle) fp.close();
+  }
+
+  int32_t myRead(JPEGFILE * handle, uint8_t *buffer, int32_t length) {
+    File *f = static_cast<File *>(handle->fHandle);
+    if (!f || !*f) return 0;
+    return f->read(buffer, length);
+  }
+
+  int32_t mySeek(JPEGFILE * handle, int32_t position) {
+    File *f = static_cast<File *>(handle->fHandle);
+    if (!f || !*f) return 0;
+    return f->seek(position);
+  }
+
+  int vga_jpeg(int x, int y, int sc) {
+    if (jpeg.open(tempstring, myOpen, myClose, myRead, mySeek, JPEGDraw)) {
+      jpeg.decode(x, y, sc);
+      jpeg.close();
+      return 0;
+    } else {
+      syntaxerror(jpgfilemsg);
+      return 1;
+    }
   }
   //******************************************************* PIC_S(PIC_NR,Filename) *************************************
   int save_pic(long adr, long n, char *file) {
@@ -9854,112 +10191,112 @@ nochmal:
   //#########################################################################################################################################################################
   //########################################################################## Testbereich - neue Funktionen ################################################################
   void zeige_variablen() {
-  Terminal.println("--- Variables & Strings ---");
-  int gefundene = 0;
-  int zeilen_zaehler = 1;
-  int max_zeilen = 22;
-  bool ist_rechte_spalte = false;
+    Terminal.println("--- Variables & Strings ---");
+    int gefundene = 0;
+    int zeilen_zaehler = 1;
+    int max_zeilen = 22;
+    bool ist_rechte_spalte = false;
 
-  // ==========================================
-  // PART 1: EIN- UND ZWEI-BUCHSTABIGE FLOAT-VARIABLEN
-  // ==========================================
-  for (int i = 0; i < 702; i++) {
-    float wert = ((float *)variables_begin)[i];
+    // ==========================================
+    // PART 1: EIN- UND ZWEI-BUCHSTABIGE FLOAT-VARIABLEN
+    // ==========================================
+    for (int i = 0; i < 702; i++) {
+      float wert = ((float *)variables_begin)[i];
 
-    if (wert != 0.0f) {
-      String name = "";
-      if (i < 26) {
-        name += (char)('A' + i);
-      } else {
-        int erster_index = i % 26;
-        int zweiter_index = (i / 26) - 1;
-        name += (char)('A' + erster_index);
-        name += (char)('A' + zweiter_index);
+      if (wert != 0.0f) {
+        String name = "";
+        if (i < 26) {
+          name += (char)('A' + i);
+        } else {
+          int erster_index = i % 26;
+          int zweiter_index = (i / 26) - 1;
+          name += (char)('A' + erster_index);
+          name += (char)('A' + zweiter_index);
+        }
+
+        String wert_text = String(wert, 4);
+        while (wert_text.indexOf('.') != -1 && (wert_text.endsWith("0") || wert_text.endsWith("."))) {
+          wert_text.remove(wert_text.length() - 1);
+        }
+
+        String block = "  " + name;
+        if (name.length() == 1) block += "   ";
+        else                     block += "  ";
+        block += "= " + wert_text;
+
+        // Scroll-Pause
+        if (!ist_rechte_spalte && zeilen_zaehler >= max_zeilen) {
+          if (wait_key(true) == 3) return;                          //Abbruch mit ESC
+          Terminal.print("\r                               \r");
+          zeilen_zaehler = 0;
+        }
+
+        if (!ist_rechte_spalte) {
+          Terminal.print(block);
+          int rest_leerzeichen = 20 - block.length();
+          for (int l = 0; l < rest_leerzeichen; l++) Terminal.print(" ");
+          ist_rechte_spalte = true;
+        } else {
+          Terminal.println(block);
+          ist_rechte_spalte = false;
+          zeilen_zaehler++;
+        }
+        gefundene++;
       }
+    }
 
-      String wert_text = String(wert, 4);
-      while (wert_text.indexOf('.') != -1 && (wert_text.endsWith("0") || wert_text.endsWith("."))) {
-        wert_text.remove(wert_text.length() - 1);
+    // ==========================================
+    // PART 2: STRINGS AUS DER STRINGTABLE (A$ - Z$)
+    // ==========================================
+    // STR_LEN sollte der Puffergröße im Interpreter entsprechen (z.B. 40)
+    const int STR_LEN_VAL = STR_LEN;
+
+    for (int i = 0; i < 26; i++) {
+      // Berechne die Startadresse des jeweiligen Strings im flachen Array
+      int offset = i * STR_LEN_VAL;
+
+      // Prüfen, ob der String Inhalt hat (erstes Byte ist nicht 0)
+      if (Stringtable[offset] != '\0') {
+
+        // String-Namen erzeugen (z.B. A$)
+        String name = String((char)('A' + i)) + "$";
+
+        // Den Text sicher aus dem Array extrahieren (stoppt automatisch bei \0)
+        String string_inhalt = String(&Stringtable[offset]);
+
+        // Block-Formatierung (z.B. "  A$  = Text")
+        String block = "  " + name + "  = " + string_inhalt;
+
+        // Scroll-Pause
+        if (!ist_rechte_spalte && zeilen_zaehler >= max_zeilen) {
+          if (wait_key(true) == 3) return;                          //Abbruch mit ESC
+          Terminal.print("\r                               \r");
+          zeilen_zaehler = 0;
+        }
+
+        if (!ist_rechte_spalte) {
+          Terminal.print(block);
+          int rest_leerzeichen = 20 - block.length();
+          // Falls der String-Inhalt sehr lang ist, erzwingen wir mindestens ein Trenn-Leerzeichen
+          if (rest_leerzeichen < 1) rest_leerzeichen = 1;
+
+          for (int l = 0; l < rest_leerzeichen; l++) Terminal.print(" ");
+          ist_rechte_spalte = true;
+        } else {
+          Terminal.println(block);
+          ist_rechte_spalte = false;
+          zeilen_zaehler++;
+        }
+        gefundene++;
       }
+    }
 
-      String block = "  " + name;
-      if (name.length() == 1) block += "   ";
-      else                     block += "  ";
-      block += "= " + wert_text;
+    // Zeilenabschluss, falls am Ende ein Eintrag links hängen geblieben ist
+    if (ist_rechte_spalte) {
+      Terminal.println();
+    }
 
-      // Scroll-Pause
-      if (!ist_rechte_spalte && zeilen_zaehler >= max_zeilen) {
-        if (wait_key(true) == 3) return;                          //Abbruch mit ESC
-        Terminal.print("\r                               \r");
-        zeilen_zaehler = 0;
-      }
-
-      if (!ist_rechte_spalte) {
-        Terminal.print(block);
-        int rest_leerzeichen = 20 - block.length();
-        for (int l = 0; l < rest_leerzeichen; l++) Terminal.print(" ");
-        ist_rechte_spalte = true;
-      } else {
-        Terminal.println(block);
-        ist_rechte_spalte = false;
-        zeilen_zaehler++;
-      }
-      gefundene++;
+    if (gefundene == 0) {
+      Terminal.println("No Variables or Strings.");
     }
   }
-
-  // ==========================================
-  // PART 2: STRINGS AUS DER STRINGTABLE (A$ - Z$)
-  // ==========================================
-  // STR_LEN sollte der Puffergröße im Interpreter entsprechen (z.B. 40)
-  const int STR_LEN_VAL = STR_LEN;
-
-  for (int i = 0; i < 26; i++) {
-    // Berechne die Startadresse des jeweiligen Strings im flachen Array
-    int offset = i * STR_LEN_VAL;
-
-    // Prüfen, ob der String Inhalt hat (erstes Byte ist nicht 0)
-    if (Stringtable[offset] != '\0') {
-
-      // String-Namen erzeugen (z.B. A$)
-      String name = String((char)('A' + i)) + "$";
-
-      // Den Text sicher aus dem Array extrahieren (stoppt automatisch bei \0)
-      String string_inhalt = String(&Stringtable[offset]);
-
-      // Block-Formatierung (z.B. "  A$  = Text")
-      String block = "  " + name + "  = " + string_inhalt;
-
-      // Scroll-Pause
-      if (!ist_rechte_spalte && zeilen_zaehler >= max_zeilen) {
-        if (wait_key(true) == 3) return;                          //Abbruch mit ESC
-        Terminal.print("\r                               \r");
-        zeilen_zaehler = 0;
-      }
-
-      if (!ist_rechte_spalte) {
-        Terminal.print(block);
-        int rest_leerzeichen = 20 - block.length();
-        // Falls der String-Inhalt sehr lang ist, erzwingen wir mindestens ein Trenn-Leerzeichen
-        if (rest_leerzeichen < 1) rest_leerzeichen = 1;
-
-        for (int l = 0; l < rest_leerzeichen; l++) Terminal.print(" ");
-        ist_rechte_spalte = true;
-      } else {
-        Terminal.println(block);
-        ist_rechte_spalte = false;
-        zeilen_zaehler++;
-      }
-      gefundene++;
-    }
-  }
-
-  // Zeilenabschluss, falls am Ende ein Eintrag links hängen geblieben ist
-  if (ist_rechte_spalte) {
-    Terminal.println();
-  }
-
-  if (gefundene == 0) {
-    Terminal.println("No Variables or Strings.");
-  }
-}

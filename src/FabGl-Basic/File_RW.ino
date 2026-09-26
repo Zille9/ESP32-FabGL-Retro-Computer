@@ -217,10 +217,10 @@ void File_read(void) {
 }
 
 //------------------------------------------------------- Befehl TYPE -------------------------------------------------------------------------------------
-void type_file(void) {
+void type_file(int m) {
   char c, d;
   int b, ex = 0;
-  get_value();                    //Dateiname in tempstring
+  if(m) get_value();                    //Dateiname in tempstring
 
   strcpy(filestring, tempstring); //Tempstring nach filestring kopieren
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1

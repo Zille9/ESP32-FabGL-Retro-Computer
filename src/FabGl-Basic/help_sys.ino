@@ -471,6 +471,9 @@ void show_Command_Help(int was) {                                       //Anzeig
       break;
     case KW_PIC:
       Terminal.println("PIC_I(x,y,BMP-Filename)-Import BMP");
+      Terminal.println("PIC_J(x,y,JPG-Filename,scal)-Import JPG");
+      Terminal.println("scal must be 0,2,4 or 8");
+      Terminal.println();
       Terminal.println("PIC_E(x,y,xx,yy,BMP-Filename)-Export");
       Terminal.println();
       Terminal.println("PIC_S(place,Pic-Filename)");
