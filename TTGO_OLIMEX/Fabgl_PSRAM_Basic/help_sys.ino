@@ -471,19 +471,22 @@ void show_Command_Help(int was) {                                       //Anzeig
       break;
     case KW_PIC:
       Terminal.println("PIC_I(x,y,BMP-Filename)-Import BMP");
+      Terminal.println("PIC_J(x,y,JPG-Filename,scal)-Import JPG");
+      Terminal.println("scal must be 0,2,4 or 8");
+      Terminal.println();
       Terminal.println("PIC_E(x,y,xx,yy,BMP-Filename)-Export");
       Terminal.println();
       Terminal.println("PIC_S(place,Pic-Filename)");
-      Terminal.println("Save Raw-Pic from FRAM (0..4)");
+      Terminal.println("Save Raw-Pic from RAM (0..11)");
       Terminal.println();
       Terminal.println("PIC_L(place,Pic-Filename)");
-      Terminal.println("Load Raw-Pic in FRAM (0..4)");
+      Terminal.println("Load Raw-Pic in RAM (0..11)");
       Terminal.println();
       Terminal.println("PIC_P(place,x,y,xx,yy)");
-      Terminal.println("Save Screen as Raw-Pic in FRAM (0..4)");
+      Terminal.println("Save Screen as Raw-Pic in RAM (0..11)");
       Terminal.println();
       Terminal.println("PIC_D(place<mode,x,y>)");
-      Terminal.println("Show Raw-Pic in FRAM (0..4)on x,y");
+      Terminal.println("Show Raw-Pic in RAM (0..11)on x,y");
       Terminal.println("mode 0..1 changes the Background-color");
       break;
     case KW_OPEN:

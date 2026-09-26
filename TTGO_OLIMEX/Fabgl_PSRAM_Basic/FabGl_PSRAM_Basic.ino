@@ -109,6 +109,10 @@ fabgl::Canvas           GFX(&VGAController);
 TerminalController      tc(&Terminal);
 fabgl::SoundGenerator SoundGenerator;
 
+#include <JPEGDEC.h>                    //JPEG-Decoder
+JPEGDEC jpeg;
+static uint8_t zeilenBuffer[640];       //Zeilenpuffer für jpeg Bildaufbau
+
 int letzterStartSchnitt = -1;
 int letzterAusgewaehlterIndex = -1;
 
@@ -941,6 +945,7 @@ const char dirnotfound[]      = "DIR not found !";               //26
 const char extension_error[]  = "invalid File-Extension !";      //27
 const char stringtolong[]     = "String to long!";               //28
 const char wronglinenr[]      = "Wrong Line-Number!";            //29
+const char jpgfilemsg[]       = "No JPG-File!";                  //30
 
 //----------------------------------- Interpreter-Variablen ---------------------------------------------------------------------------------------
 char *pstart;
@@ -5595,7 +5600,7 @@ static int load_file(int modes)
     syntaxerror(sderrormsg);
     delay(3000);
   }
-  
+
   if ( !SD.exists(String(sd_pfad) + String(tempstring)))    //Datei vorhanden?
   {
     syntaxerror(sdfilemsg);                                 //Datei nicht vorhanden -> Fehlerausgabe
@@ -5631,7 +5636,10 @@ static int load_file(int modes)
         }
         break;
       case 5:
-        type_file(0);                                           // TXT-Dateien, LUA-Dateien 
+        type_file(0);                                           // TXT-Dateien, LUA-Dateien
+        break;
+      case 6:
+        vga_jpeg(0, 0, 0);                                      // JPEG-Dateien
         break;
 
       default:
@@ -5655,6 +5663,7 @@ int check_extension() {
   if (ext.equalsIgnoreCase(".BMP")) return 3;
   if (ext.equalsIgnoreCase(".PIC")) return 4;
   if (ext.equalsIgnoreCase(".TXT") || ext.equalsIgnoreCase(".LUA")) return 5;
+  if (ext.equalsIgnoreCase(".JPG")) return 6;
   return 0;
 }
 
@@ -5979,11 +5988,11 @@ void zeichneCustomExplorer(const std::vector<String>& dateiListe, int ausgewaehl
     letzterStartSchnitt = startSchnitt;
     letzterAusgewaehlterIndex = -1; // Erzwingt das Neuzeichnen aller Zeilen
   }
-  
+
   if (dateiListe.empty()) {
     fcolor(48);
     GFX.drawText(35, 60, "Keine Dateien gefunden!");
-    
+
   } else {
     int zeile = 0;
     for (size_t i = startSchnitt; i < dateiListe.size() && zeile < maxSichtbar; i++) {
@@ -6055,7 +6064,7 @@ verzeichnis_laden:
   std::vector<String> fileList;
   int anzahlOrdner = 0;
   int anzahlDateien = 0;
-  
+
   while (true) {
     File entry = dir.openNextFile();
     if (!entry) {
@@ -6105,8 +6114,8 @@ verzeichnis_laden:
   bcolor(42);
   fcolor(0);
   GFX.drawText(160, 26, "              ");       // ...please wait löschen
-  GFX.drawText(&fabgl::FONT_6x8,268, 35,"   ");  //Zahlenbereich löschen
-  GFX.drawText(&fabgl::FONT_6x8,220, 35, ("Dateien:" + String(anzahlDateien)).c_str());
+  GFX.drawText(&fabgl::FONT_6x8, 268, 35, "   "); //Zahlenbereich löschen
+  GFX.drawText(&fabgl::FONT_6x8, 220, 35, ("Dateien:" + String(anzahlDateien)).c_str());
   bcolor(3);
   fcolor(63);
   while (1) {
@@ -6178,7 +6187,7 @@ verzeichnis_laden:
     // ENTER (Datei laden ODER Ordner öffnen)
     else if (c == 13 && !combinedList.empty()) {
       String auswahl = combinedList[aktuellerIndex];
-      
+
       if (auswahl.startsWith("[") && auswahl.endsWith("]")) {
         String ordnerName = auswahl.substring(1, auswahl.length() - 1);  // Ordnername extrahieren
         String neuerPfad = String(sd_pfad);
@@ -6188,13 +6197,13 @@ verzeichnis_laden:
         neuerPfad += ordnerName ;
         neuerPfad.toCharArray(sd_pfad, neuerPfad.length() + 1);          //neuer Pfad
         goto verzeichnis_laden;
-      } 
+      }
       else {
         erfolg = true;
         break;
       }
     }
-    
+
     // ESCAPE (Abbrechen)
     else if (c == 0x03) {
       sd_ende();
@@ -6210,13 +6219,13 @@ verzeichnis_laden:
   if (erfolg) {
     // Kopiere den echten Dateinamen ohne Ordner-Klammern nach tempstring
     cbuf = String(combinedList[aktuellerIndex]);
-    cbuf.toCharArray(tempstring, cbuf.length() + 1);    
+    cbuf.toCharArray(tempstring, cbuf.length() + 1);
     String vollerPfad = String(sd_pfad);
     // Falls nicht im Root "/" , Slash zwischen Ordner und Datei
     if (vollerPfad != "/") {
       vollerPfad += "/";
     }
-    vollerPfad += String(tempstring); // Jetzt z.B. "/ORDNER/DATEI.BAS"    
+    vollerPfad += String(tempstring); // Jetzt z.B. "/ORDNER/DATEI.BAS"
     if (String(sd_pfad) != "/") {
       // Slash direkt vor dem Dateinamen einfügen
       String dateiMitSlash = "/" + String(tempstring);
@@ -7280,8 +7289,8 @@ int show_Pic(void) {
   vh = GFX.getWidth();
   px = vv;
   py = vh;
-  
-  
+
+
   if (Test_char('_')) return 1;                       //Unterstrich für folgenden Befehlsbuchstaben
   c = spaces();                                       //Befehlsbuchstabe lesen
   txtpos++;
@@ -7357,7 +7366,22 @@ int show_Pic(void) {
       if (Test_char(')')) return 1;
       import_pic(dx, dy, tempstring, scal);
       break;
-
+    //****************************************************** PIC_J(X,Y,Filename.jpg<,scal>) **********************************
+    case 'J':                                         //Import <- BMP
+      if (Test_char('(')) return 1;
+      dx = get_value();                               //x
+      if (Test_char(',')) return 1;                   //Komma überspringen
+      dy = get_value();                               //y
+      if (Test_char(',')) return 1;                   //Komma überspringen
+      get_value();                                    //Dateiname in tempstring
+      scal = 0;
+      if (*txtpos == ',') {                           //wenn Komma dann scal=0,2,4 oder 8
+        txtpos++;
+        scal = get_value();
+      }
+      if (Test_char(')')) return 1;
+      vga_jpeg(dx, dy, scal);
+      break;
     //****************************************************** PIC_L(PIC_Nr,Filename) ******************************************
     case 'L':                                         //Load PIC_RAW-Data
       {
@@ -7635,6 +7659,133 @@ int import_pic(int x, int y, char *file, float sc) {
   fp.close();
   sd_ende();                                               //SD-Card unmount
   return 0;
+}
+
+//****************************************************** PIC_J(X,Y,Filename.jpg,scal) ******************************************
+int JPEGDraw(JPEGDRAW * pDraw) {
+  uint16_t *pSrc = pDraw->pPixels;
+  int xStart = pDraw->x;
+  int yStart = pDraw->y;
+
+  auto canvas = &GFX; // Deine FabGL-Canvas-Instanz
+
+  // Vertikaler Clipping-Schutz
+  if (yStart >= 240 || yStart + pDraw->iHeight < 0) return 1;
+
+  for (int y = 0; y < pDraw->iHeight; y++) {
+    int currentY = yStart + y;
+    // Falls Zeile außerhalb des Bildschirms liegt, überspringen
+    if (currentY < 0 || currentY >= 240) {
+      pSrc += pDraw->iWidth;
+      continue;
+    }
+
+    // Horizontaler Clipping-Schutz
+    int zeichneBreite = pDraw->iWidth;
+    if (xStart + zeichneBreite > 320) {
+      zeichneBreite = 320 - xStart;
+    }
+    if (zeichneBreite <= 0) {
+      pSrc += pDraw->iWidth;
+      continue;
+    }
+
+    // 1. Pixel der aktuellen JPEG-Zeile konvertieren
+    for (int x = 0; x < zeichneBreite; x++) {
+      uint16_t p = *pSrc++;
+      
+      // Bits aus RGB565 isolieren
+      uint8_t r5 = (p >> 11) & 0x1F; // 5 Bits Rot
+      uint8_t g6 = (p >> 5)  & 0x3F; // 6 Bits Grün
+      uint8_t b5 = p         & 0x1F; // 5 Bits Blau
+
+      // Auf die 2 Bits reduzieren, die FabGLs Hardware pro Kanal im 8-Bit-Modus erwartet
+      uint8_t r2 = r5 >> 3; // die obersten 2 von 5 Bits
+      uint8_t g2 = g6 >> 4; // die obersten 2 von 6 Bits
+      uint8_t b2 = b5 >> 3; // die obersten 2 von 5 Bits
+      uint8_t a2 = 3;       // Alpha voll deckend (Bits 11), damit kein Hintergrund fehlt!
+      zeilenBuffer[x] = r2 | (g2 << 2) | (b2 << 4) | (a2 << 6);
+      }
+    
+    // Falls der Block breiter war als der sichtbare Bildschirm, Rest überspringen
+    if (zeichneBreite < pDraw->iWidth) {
+      pSrc += (pDraw->iWidth - zeichneBreite);
+     }
+
+    fabgl::Bitmap zeilenBitmap(zeichneBreite, 1, zeilenBuffer, fabgl::PixelFormat::RGBA2222);
+    canvas->drawBitmap(xStart, currentY, &zeilenBitmap);
+    canvas->waitCompletion(false);
+  }
+  return 1;
+}
+/*
+  int JPEGDraw(JPEGDRAW * pDraw) {
+  uint16_t *pSrc = pDraw->pPixels;
+  int xStart = pDraw->x;
+  int yStart = pDraw->y;
+
+  for (int y = 0; y < pDraw->iHeight; y++) {
+    int currentY = yStart + y;
+    if (currentY >= 240) break; // Vertikaler Clipping-Schutz
+
+    for (int x = 0; x < pDraw->iWidth; x++) {
+      uint16_t p = *pSrc++;
+
+        if ((xStart + x < 320) && (currentY < 240)) {
+        // 1. Bits aus dem RGB565 extrahieren
+        uint8_t r5 = (p >> 11) & 0x1F;
+        uint8_t g6 = (p >> 5)  & 0x3F;
+        uint8_t b5 = p         & 0x1F;
+        // 2. Auf echte 8-Bit Werte (0-255) hochskalieren (Bit-Shifting + Bit-Kopie für echtes Weiß)
+        uint8_t r8 = (r5 << 3) | (r5 >> 2);
+        uint8_t g8 = (g6 << 2) | (g6 >> 4);
+        uint8_t b8 = (b5 << 3) | (b5 >> 2);
+
+        GFX.setPixel(xStart + x, currentY, fabgl::RGB888(r8, g8, b8));
+      }
+    }
+  }
+  return 1;
+  }
+*/
+void * myOpen(const char *filename, int32_t *size) {
+  if (fp) fp.close(); // Alten Puffer leeren
+  // Den Pfad zusammensetzen
+  String vollerPfad = String(sd_pfad) + "/" + String(filename);
+  vollerPfad.replace("//", "/"); // Doppelte Slashes korrigieren
+  fp = SD.open(vollerPfad.c_str(), FILE_READ);
+  if (fp) {
+    *size = fp.size();
+    return &fp;
+  }
+  return NULL;
+}
+
+void myClose(void *handle) {
+  if (handle) fp.close();
+}
+
+int32_t myRead(JPEGFILE * handle, uint8_t *buffer, int32_t length) {
+  File *f = static_cast<File *>(handle->fHandle);
+  if (!f || !*f) return 0;
+  return f->read(buffer, length);
+}
+
+int32_t mySeek(JPEGFILE * handle, int32_t position) {
+  File *f = static_cast<File *>(handle->fHandle);
+  if (!f || !*f) return 0;
+  return f->seek(position);
+}
+
+int vga_jpeg(int x, int y, int sc) {
+  if (jpeg.open(tempstring, myOpen, myClose, myRead, mySeek, JPEGDraw)) {
+    jpeg.decode(x, y, sc);
+    jpeg.close();
+    return 0;
+  } else {
+    syntaxerror(jpgfilemsg);
+    return 1;
+  }
 }
 
 //******************************************************* PIC_S(PIC_NR,Filename) *************************************
