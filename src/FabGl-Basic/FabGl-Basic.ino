@@ -6728,18 +6728,21 @@ verzeichnis_laden:
   std::sort(fileList.begin(), fileList.end(), compCaseInsensitive);
   combinedList = std::move(folderList);
   combinedList.insert(combinedList.end(), fileList.begin(), fileList.end());
+  uint32_t Total = SD.totalBytes() / (1024 * 1024);
+  uint32_t Used  = SD.usedBytes() / (1024 * 1024);
   dir.close();
 
   // Erstes Zeichnen
   zeichneCustomExplorer(combinedList, aktuellerIndex, startSchnitt);
   bcolor(42);
   fcolor(0);
-  GFX.drawText(160, 26, "              ");       // ...please wait löschen
+  GFX.drawText(160, 26, "               ");       // ...please wait löschen
+  GFX.drawText(&fabgl::FONT_6x8, 170, 26, ("U:" + String(Used) + "MB").c_str());   //benutzte Bytes
+  GFX.drawText(&fabgl::FONT_6x8, 222, 26, ("T:" + String(Total) + "MB").c_str());  //gesamtgrösse
   GFX.drawText(&fabgl::FONT_6x8, 268, 35, "   "); //Zahlenbereich löschen
-  GFX.drawText(&fabgl::FONT_6x8, 220, 35, ("Dateien:" + String(anzahlDateien)).c_str());
+  GFX.drawText(&fabgl::FONT_6x8, 222, 35, ("Dateien:" + String(anzahlDateien)).c_str());
   bcolor(3);
-  fcolor(63);
-  while (1) {
+  fcolor(63);   while (1) {
     char c = wait_key(0);
 
     // PFEIL RUNTER
@@ -7057,7 +7060,7 @@ void cmd_Dir()
   printnum(Dateien, Zahlenformat);
   printmsg(" Files on SD-Card", 1);
   printmsg("  Total space: ", 0);
-  printnum(SD.totalBytes() / (1024 * 1024), Zahlenformat);
+  printnum(SD.totalBytes() SD.totalBytes()), Zahlenformat);
   printmsg("MB", 1);
   printmsg("  Used  space: ", 0);
   printnum(SD.usedBytes() / (1024 * 1024), Zahlenformat);

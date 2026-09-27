@@ -6021,7 +6021,7 @@ void zeichneCustomExplorer(const std::vector<String>& dateiListe, int ausgewaehl
 bool starteGrafischenExplorer(char ext[]) {
   String cbuf;
   bool erfolg = false;
-
+  
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
   delay(5);
   if (!SD.begin(kSD_CS, spiSD)) {
@@ -6107,15 +6107,19 @@ verzeichnis_laden:
   std::sort(fileList.begin(), fileList.end(), compCaseInsensitive);
   combinedList = std::move(folderList);
   combinedList.insert(combinedList.end(), fileList.begin(), fileList.end());
+  uint32_t Total = SD.totalBytes() / (1024 * 1024);
+  uint32_t Used  = SD.usedBytes() / (1024 * 1024);
   dir.close();
 
   // Erstes Zeichnen
   zeichneCustomExplorer(combinedList, aktuellerIndex, startSchnitt);
   bcolor(42);
   fcolor(0);
-  GFX.drawText(160, 26, "              ");       // ...please wait löschen
+  GFX.drawText(160, 26, "               ");       // ...please wait löschen
+  GFX.drawText(&fabgl::FONT_6x8, 170, 26, ("U:" + String(Used) + "MB").c_str());   //benutzte Bytes
+  GFX.drawText(&fabgl::FONT_6x8, 222, 26, ("T:" + String(Total) + "MB").c_str());  //gesamtgrösse
   GFX.drawText(&fabgl::FONT_6x8, 268, 35, "   "); //Zahlenbereich löschen
-  GFX.drawText(&fabgl::FONT_6x8, 220, 35, ("Dateien:" + String(anzahlDateien)).c_str());
+  GFX.drawText(&fabgl::FONT_6x8, 222, 35, ("Dateien:" + String(anzahlDateien)).c_str());
   bcolor(3);
   fcolor(63);
   while (1) {
@@ -7718,36 +7722,7 @@ int JPEGDraw(JPEGDRAW * pDraw) {
   }
   return 1;
 }
-/*
-  int JPEGDraw(JPEGDRAW * pDraw) {
-  uint16_t *pSrc = pDraw->pPixels;
-  int xStart = pDraw->x;
-  int yStart = pDraw->y;
 
-  for (int y = 0; y < pDraw->iHeight; y++) {
-    int currentY = yStart + y;
-    if (currentY >= 240) break; // Vertikaler Clipping-Schutz
-
-    for (int x = 0; x < pDraw->iWidth; x++) {
-      uint16_t p = *pSrc++;
-
-        if ((xStart + x < 320) && (currentY < 240)) {
-        // 1. Bits aus dem RGB565 extrahieren
-        uint8_t r5 = (p >> 11) & 0x1F;
-        uint8_t g6 = (p >> 5)  & 0x3F;
-        uint8_t b5 = p         & 0x1F;
-        // 2. Auf echte 8-Bit Werte (0-255) hochskalieren (Bit-Shifting + Bit-Kopie für echtes Weiß)
-        uint8_t r8 = (r5 << 3) | (r5 >> 2);
-        uint8_t g8 = (g6 << 2) | (g6 >> 4);
-        uint8_t b8 = (b5 << 3) | (b5 >> 2);
-
-        GFX.setPixel(xStart + x, currentY, fabgl::RGB888(r8, g8, b8));
-      }
-    }
-  }
-  return 1;
-  }
-*/
 void * myOpen(const char *filename, int32_t *size) {
   if (fp) fp.close(); // Alten Puffer leeren
   // Den Pfad zusammensetzen
