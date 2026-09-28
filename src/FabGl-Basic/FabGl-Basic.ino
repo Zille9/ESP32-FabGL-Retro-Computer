@@ -53,9 +53,15 @@
 //
 //
 //
-#define BasicVersion "2.21"
-#define BuiltTime "24.08.2026"
+#define BasicVersion "2.22"
+#define BuiltTime "27.09.2026"
 // siehe Logbuch.txt zum Entwicklungsverlauf
+// V2.22:27.09.2026           -Dateiexplorer eingebaut, kann mit dem Befehl DIR oder Taste-F4 aufgerufen werden
+//                            -Funktionalität des DIR-Befehls bleibt erhalten
+//                            -Dateien komfortabel über Cursortasten auswählbar
+//                            -Dateiendungen BIN, BAS  sind direkt start- bzw. anzeigbar PIC, BMP, TXT, JPG, LUA
+//                            -Korrektur von load_file bezüglich Pfadverarbeitung (im Unterverzeichnis fehlte der Slash zwischen Pfad-und Dateiname
+// 
 // V2.21:21.08.2026           -Variablenanzeige mit MENU-Taste realisiert, zeigt die belegten Variablen und Strings im RAM an
 //
 // V2.17:22.04.2026           -DIR-Ausgabe überarbeitet, Ausgabe erfolgt jetzt sortiert, dauert allerdings etwas
@@ -6175,8 +6181,18 @@ static int load_file(int modes)
     syntaxerror(sderrormsg);
     delay(3000);
   }
-
-  if ( !SD.exists(String(sd_pfad) + String(tempstring)))    //Datei vorhanden?
+  
+  //*************************Pfad ergänzen, falls nicht in root *********************************
+  String neuerPfad = String(sd_pfad);
+  if (!neuerPfad.endsWith("/")) {
+    memmove(tempstring + 1, tempstring, strlen(tempstring) + 1);
+    tempstring[0] = '/';                                          //slash an den Anfang des Dateinamens setzen
+  }
+  //WICHTIG: der Slash wird vor den Dateinamen gesetzt, damit die Pfadstruktur nicht korumpiert wird
+  // tempstring wird nach load_file ohnehin gelöscht
+  //*********************************************************************************************
+  
+  if (!SD.exists(String(sd_pfad) + String(tempstring)))    //Datei vorhanden?
   {
     syntaxerror(sdfilemsg);                                 //Datei nicht vorhanden -> Fehlerausgabe
     sd_ende();
@@ -6189,7 +6205,7 @@ static int load_file(int modes)
     fcheck = check_extension();
     switch (fcheck) {
       case 0:
-        syntaxerror(extension_error);                           //falsche Dateierwieterung
+        syntaxerror(extension_error);                           //falsche Dateierweiterung
         return 1;
         break;
       case 1:
@@ -6216,7 +6232,6 @@ static int load_file(int modes)
         type_file(0);                                           // TXT-Dateien, LUA-Dateien
         break;
       case 6:
-        //Terminal.print(tempstring);
         vga_jpeg(0, 0, 0);                                      // JPEG-Dateien
         break;
 
@@ -6224,7 +6239,8 @@ static int load_file(int modes)
         break;
     }
   }
-
+  
+  //Terminal.print(sd_pfad);
   warmstart();
   return expression_error;
 }
@@ -6569,6 +6585,9 @@ void cmd_Dir()
 }
 
 void zeichneGeruest() {
+  tc.setCursorPos(0, 0);
+  GFX.clear();
+  GFX.waitCompletion(false);
   //bcolor(21);
   //GFX.fillRectangle(25, 25, 305, 225);  // Schattenemulation für Fenster
   bcolor(3);
@@ -6669,6 +6688,7 @@ verzeichnis_laden:
   letzterAusgewaehlterIndex = -1;
 
   File dir = SD.open(String(sd_pfad));
+  
   if (!dir || !dir.isDirectory()) {
     // Falls Ordner nicht existiert, dann Root
     strcpy(sd_pfad, "/");

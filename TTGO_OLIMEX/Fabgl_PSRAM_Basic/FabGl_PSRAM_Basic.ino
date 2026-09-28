@@ -49,9 +49,12 @@
 //
 //
 //
-#define BasicVersion "2.22"
-#define BuiltTime "26.08.2026"
-// V2.22:26.08.2026           -im Explorer sind jetzt BAS, BIN, BMP und PIC-Dateien ladbar
+#define BasicVersion "2.23"
+#define BuiltTime "28.09.2026"
+// V2.23:28.09.2026           -Korrektur von load_file bezüglich Pfadverarbeitung (im Unterverzeichnis fehlte der Slash zwischen Pfad-und Dateiname
+//                            
+//
+// V2.22:26.09.2026           -im Explorer sind jetzt BAS, BIN, BMP, JPG und PIC-Dateien ladbar
 //                            -TXT und LUA Dateien werden mit type_file angezeigt (als Text)
 //                            -dies erweitert auch die Load-funktion um dieses Feature, da alle Dateien über load_file anhand der
 //                            -Dateierweiterung identifiziert und geladen werden
@@ -5573,7 +5576,6 @@ static int initSD()
 
 void sd_ende() {
   spiSD.end();                                              //SD-Card unmount
-  //spi_fram.begin(3);                                        //FRAM aktivieren
   string_marker == false;                                   //Stringmarker für Dateioperationen löschen
 }
 
@@ -5600,6 +5602,16 @@ static int load_file(int modes)
     syntaxerror(sderrormsg);
     delay(3000);
   }
+
+  //*************************Pfad ergänzen, falls nicht in root *********************************
+  String neuerPfad = String(sd_pfad);
+  if (!neuerPfad.endsWith("/")) {
+    memmove(tempstring + 1, tempstring, strlen(tempstring) + 1);
+    tempstring[0] = '/';                                          //slash an den Anfang des Dateinamens setzen
+  } //WICHTIG: der Slash wird vor den Dateinamen gesetzt, damit die Pfadstruktur nicht korumpiert wird
+    // tempstring wird nach load_file ohnehin gelöscht
+  //*********************************************************************************************
+
 
   if ( !SD.exists(String(sd_pfad) + String(tempstring)))    //Datei vorhanden?
   {
@@ -5948,6 +5960,9 @@ void cmd_Dir()
 }
 
 void zeichneGeruest() {
+  tc.setCursorPos(0, 0);
+  GFX.clear();
+  GFX.waitCompletion(false);
   //bcolor(21);
   //GFX.fillRectangle(25, 25, 305, 225);  // Schattenemulation für Fenster
   bcolor(3);
