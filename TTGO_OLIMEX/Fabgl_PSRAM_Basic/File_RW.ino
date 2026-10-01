@@ -267,7 +267,9 @@ void hex_monitor(int m) {
   
   fp = SD.open(String(sd_pfad) + String(filestring), FILE_READ);
   uint8_t zeilenBuffer[8];
-
+  int fnt = fontsatz;
+  set_font(2);          //Font 6x8 laden - bessere Darstellung
+  
   while (fp.available()) {
     int geleseneBytes = fp.read(zeilenBuffer, 8);
     if (geleseneBytes <= 0) break;
@@ -312,6 +314,7 @@ void hex_monitor(int m) {
   fp.close();
   sd_ende();
   string_marker = false;
+  set_font(fnt);
 }
 
 //------------------------------ tempstring auseinander nehmen für FILE_RD Funktion -------------------------------------------

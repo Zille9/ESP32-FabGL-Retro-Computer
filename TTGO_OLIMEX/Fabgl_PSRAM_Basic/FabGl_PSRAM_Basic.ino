@@ -22,7 +22,7 @@
 //          Brian O'Dell <megamemnon@megamemnon.com>
 //
 // How to compile:-Arduino IDE 1.8.19
-//                -ESP32 Core 1.0.6 ... 2.0.8 ... 2.0.17
+//                -ESP32 Core 2.0.8 ... 2.0.17   JPEG Decoder erfordert mind. Core 2.0
 //                -copy lib Files in Arduino lib Directory
 //                -Partition Scheme 1,9MB Minimal SPIFFS with OTA
 //
@@ -51,8 +51,9 @@
 //
 #define BasicVersion "2.23"
 #define BuiltTime "28.09.2026"
-// V2.23:28.09.2026           -Korrektur von load_file bezüglich Pfadverarbeitung (im Unterverzeichnis fehlte der Slash zwischen Pfad-und Dateiname
-//                            
+// V2.23:28.09.2026           -Korrektur von load_file bezüglich Pfadverarbeitung (im Unterverzeichnis fehlte der Slash zwischen Pfad-und Dateiname)
+//                            -unbekannte Dateien im Datei-Explorer werden im Hexmonitor angezeigt
+//
 //
 // V2.22:26.09.2026           -im Explorer sind jetzt BAS, BIN, BMP, JPG und PIC-Dateien ladbar
 //                            -TXT und LUA Dateien werden mit type_file angezeigt (als Text)
@@ -272,11 +273,11 @@ static bool Theme_marker = false;       //Theme-Marker, falls Farben geändert
 static bool break_marker = false;       //Abbruch-Marker
 static bool function_key = false;       //Funktionstasten-Marker
 static bool show_vars    = false;       //Anzeige der Variablen über Menue-Taste
-static bool cursor_up    = false;
-static bool cursor_down  = false;
-static bool page_up      = false;
-static bool page_down    = false;
-
+static bool cursor_up    = false;       //Cursor Up
+static bool cursor_down  = false;       //Cursor down
+static bool page_up      = false;       //Page Up
+static bool page_down    = false;       //Page Down
+static bool del_key      = false;       //Del-Taste
 //------------------------------ Grid-Parameter ---------------------------------------------------------------------------------------------------
 int Grid[15];                          //0=x, 1=y, 2=xx, 3=yy, 4=zell_x, 5=zell_y, 6=pix_x, 7=pix_y, 8=frame-col, 9=grid_col
 int Grid_point_x, Grid_point_y;
@@ -857,7 +858,7 @@ const char relop_tab[] PROGMEM = {
 #define RELOP_POW 12
 #define RELOP_UNKNOWN  13
 
-// Die IDs exakt nach deiner Definition
+// Die IDs exakt nach Definition
 const uint8_t relop_id[] PROGMEM = {
   9,  // MOD
   10, // AND
@@ -1184,6 +1185,8 @@ void printmsg(const char *msg, int nl) {
     line_terminator();
   }
 }
+
+
 //--------------------------------------------- Unterprogramm - Tastenabfrage (list-Ausgaben) -----------------------------------------------------
 
 static uint16_t wait_key(bool modes) {
@@ -1212,6 +1215,10 @@ static uint16_t wait_key(bool modes) {
     if (page_down) {
       page_down = false;
       return 0x15;
+    }
+    if (del_key) {
+      del_key = false;
+      return 0x02;
     }
     if (break_marker) {
       break_marker = false;
@@ -3584,7 +3591,7 @@ fnkey:                                                            //Funktionstas
         break;
 
       case KW_DEL:                                        // DEL File
-        if (cmd_delFiles())
+        if (cmd_delFiles(0))
         {
           syntaxerror(notexistmsg);
         }
@@ -5609,7 +5616,7 @@ static int load_file(int modes)
     memmove(tempstring + 1, tempstring, strlen(tempstring) + 1);
     tempstring[0] = '/';                                          //slash an den Anfang des Dateinamens setzen
   } //WICHTIG: der Slash wird vor den Dateinamen gesetzt, damit die Pfadstruktur nicht korumpiert wird
-    // tempstring wird nach load_file ohnehin gelöscht
+  // tempstring wird nach load_file ohnehin gelöscht
   //*********************************************************************************************
 
 
@@ -5808,7 +5815,7 @@ static int load_ram() {
 //--------------------------------------------- DEL - Befehl ----------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static int cmd_delFiles()
+static int cmd_delFiles(int m)
 {
 
   char c;
@@ -5816,15 +5823,28 @@ static int cmd_delFiles()
 
   // eingabe Dateiname
   expression_error = 0;
-  get_value();
+  if (!m) {
+    get_value();
+    if (expression_error) return 1;
+  }
 
-  if (expression_error) return 1;
+
+  Terminal.print(String(sd_pfad) + String(tempstring));
 
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
   while (!SD.begin( kSD_CS, spiSD)) {
     syntaxerror(sderrormsg);
     delay(3000);
   }
+
+  //*************************Pfad ergänzen, falls nicht in root *********************************
+  String neuerPfad = String(sd_pfad);
+  if (!neuerPfad.endsWith("/")) {
+    memmove(tempstring + 1, tempstring, strlen(tempstring) + 1);
+    tempstring[0] = '/';                                          //slash an den Anfang des Dateinamens setzen
+  } //WICHTIG: der Slash wird vor den Dateinamen gesetzt, damit die Pfadstruktur nicht korumpiert wird
+  // tempstring wird nach load_file ohnehin gelöscht
+  //*********************************************************************************************
 
   // Datei löschen, wenn sie existiert
   if ( SD.exists(String(sd_pfad) + String(tempstring))) {
@@ -6036,7 +6056,7 @@ void zeichneCustomExplorer(const std::vector<String>& dateiListe, int ausgewaehl
 bool starteGrafischenExplorer(char ext[]) {
   String cbuf;
   bool erfolg = false;
-  
+
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
   delay(5);
   if (!SD.begin(kSD_CS, spiSD)) {
@@ -6202,6 +6222,30 @@ verzeichnis_laden:
         goto verzeichnis_laden;
       }
     }
+
+    // DEL-Taste zum Löschen von Dateien
+    else if ( c == 0x2 ) {
+      cbuf = String(combinedList[aktuellerIndex]);
+      cbuf.toCharArray(tempstring, cbuf.length() + 1);
+      GFX.drawText(&fabgl::FONT_6x8, 55, 48, ("Delete File? y/n - " + String(tempstring)).c_str());
+      if ( wait_key(false) == 'y') {
+        //*************************Pfad ergänzen, falls nicht in root *********************************
+        String neuerPfad = String(sd_pfad);
+        if (!neuerPfad.endsWith("/")) {
+          memmove(tempstring + 1, tempstring, strlen(tempstring) + 1);
+          tempstring[0] = '/';                                          //slash an den Anfang des Dateinamens setzen
+        } //WICHTIG: der Slash wird vor den Dateinamen gesetzt, damit die Pfadstruktur nicht korumpiert wird
+        //*********************************************************************************************
+        SD.remove( String(sd_pfad) + String(tempstring));
+      }
+      bcolor(3);
+      GFX.fillRectangle(55, 48, 290, 55);
+      goto verzeichnis_laden;
+    }
+
+
+    //-----------------------------------
+
 
     // ENTER (Datei laden ODER Ordner öffnen)
     else if (c == 13 && !combinedList.empty()) {
@@ -6668,6 +6712,11 @@ void setup()
       // PFEIL HOCH
       else if (*vk == VirtualKey::VK_PAGEUP) {
         page_up = true;
+        *vk = VirtualKey::VK_NONE;
+      }
+      //DEL-Taste
+      else if (*vk == VirtualKey::VK_DELETE) {
+        del_key = true;
         *vk = VirtualKey::VK_NONE;
       }
       else if (*vk == VirtualKey::VK_APPLICATION) {                                     //Anzeige der belegten Variablen
@@ -7712,7 +7761,7 @@ int JPEGDraw(JPEGDRAW * pDraw) {
     // 1. Pixel der aktuellen JPEG-Zeile konvertieren
     for (int x = 0; x < zeichneBreite; x++) {
       uint16_t p = *pSrc++;
-      
+
       // Bits aus RGB565 isolieren
       uint8_t r5 = (p >> 11) & 0x1F; // 5 Bits Rot
       uint8_t g6 = (p >> 5)  & 0x3F; // 6 Bits Grün
@@ -7724,12 +7773,12 @@ int JPEGDraw(JPEGDRAW * pDraw) {
       uint8_t b2 = b5 >> 3; // die obersten 2 von 5 Bits
       uint8_t a2 = 3;       // Alpha voll deckend (Bits 11), damit kein Hintergrund fehlt!
       zeilenBuffer[x] = r2 | (g2 << 2) | (b2 << 4) | (a2 << 6);
-      }
-    
+    }
+
     // Falls der Block breiter war als der sichtbare Bildschirm, Rest überspringen
     if (zeichneBreite < pDraw->iWidth) {
       pSrc += (pDraw->iWidth - zeichneBreite);
-     }
+    }
 
     fabgl::Bitmap zeilenBitmap(zeichneBreite, 1, zeilenBuffer, fabgl::PixelFormat::RGBA2222);
     canvas->drawBitmap(xStart, currentY, &zeilenBitmap);

@@ -25,7 +25,7 @@
 //          Brian O'Dell <megamemnon@megamemnon.com>
 //
 // How to compile:-Arduino IDE 1.8.19
-//                -ESP32 Core 1.0.6 ... 2.0.8 ... 2.0.17
+//                -ESP32 Core 2.0.8 ... 2.0.17     JPEG Funktion erfordert Core ab 2.0
 //                -copy lib Files in Arduino lib Directory
 //                -Partition Scheme 1,9MB Minimal SPIFFS with OTA
 //
@@ -60,8 +60,9 @@
 //                            -Funktionalität des DIR-Befehls bleibt erhalten
 //                            -Dateien komfortabel über Cursortasten auswählbar
 //                            -Dateiendungen BIN, BAS  sind direkt start- bzw. anzeigbar PIC, BMP, TXT, JPG, LUA
+//                            -unbekannte Dateien werden im Hexmonitor angezeigt
 //                            -Korrektur von load_file bezüglich Pfadverarbeitung (im Unterverzeichnis fehlte der Slash zwischen Pfad-und Dateiname
-// 
+//
 // V2.21:21.08.2026           -Variablenanzeige mit MENU-Taste realisiert, zeigt die belegten Variablen und Strings im RAM an
 //
 // V2.17:22.04.2026           -DIR-Ausgabe überarbeitet, Ausgabe erfolgt jetzt sortiert, dauert allerdings etwas
@@ -455,11 +456,12 @@ short int Mode_state = 0;               //aktuelle Auflösung (im EEProm gespeic
 
 static bool break_marker = false;       //Abbruch-Marker
 static bool function_key = false;       //Funktionstasten-Marker
-static bool show_vars    = false;       //Anzeige der Variablen über Menu-Taste
-static bool cursor_up    = false;
-static bool cursor_down  = false;
-static bool page_up      = false;
-static bool page_down    = false;
+static bool show_vars    = false;       //Anzeige der Variablen über Menue-Taste
+static bool cursor_up    = false;       //Cursor Up
+static bool cursor_down  = false;       //Cursor down
+static bool page_up      = false;       //Page Up
+static bool page_down    = false;       //Page Down
+static bool del_key      = false;       //Del-Taste
 
 //------------------------------ Grid-Parameter ---------------------------------------------------------------------------------------------------
 int Grid[15];                          //0=x, 1=y, 2=xx, 3=yy, 4=zell_x, 5=zell_y, 6=pix_x, 7=pix_y, 8=frame-col, 9=grid_col
@@ -1471,6 +1473,10 @@ static uint16_t wait_key(bool modes) {
     if (page_down) {
       page_down = false;
       return 0x15;
+    }
+    if (del_key) {
+      del_key = false;
+      return 0x02;
     }
     if (break_marker) {
       break_marker = false;
@@ -6175,13 +6181,13 @@ static int load_file(int modes)
     get_value();                                              //in tempstring steht der Dateiname
     if (expression_error) return expression_error;
   }
-  
+
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
   while (!SD.begin( kSD_CS, spiSD)) {
     syntaxerror(sderrormsg);
     delay(3000);
   }
-  
+
   //*************************Pfad ergänzen, falls nicht in root *********************************
   String neuerPfad = String(sd_pfad);
   if (!neuerPfad.endsWith("/")) {
@@ -6191,7 +6197,7 @@ static int load_file(int modes)
   //WICHTIG: der Slash wird vor den Dateinamen gesetzt, damit die Pfadstruktur nicht korumpiert wird
   // tempstring wird nach load_file ohnehin gelöscht
   //*********************************************************************************************
-  
+
   if (!SD.exists(String(sd_pfad) + String(tempstring)))    //Datei vorhanden?
   {
     syntaxerror(sdfilemsg);                                 //Datei nicht vorhanden -> Fehlerausgabe
@@ -6205,14 +6211,12 @@ static int load_file(int modes)
     fcheck = check_extension();
     switch (fcheck) {
       case 0:
-        syntaxerror(extension_error);                           //falsche Dateierweiterung
-        return 1;
+        hex_monitor(0);                                         //alle unbekannten Dateien werden im Hex-Monitor angezeigt
         break;
       case 1:
         fp = SD.open(String(sd_pfad) + String(tempstring));     //Datei zum Laden öffnen
         inStream = kStreamFile;
         inhibitOutput = true;
-        
         break;
       case 2:
         load_binary();                                          //Bin-Dateien laden
@@ -6239,7 +6243,7 @@ static int load_file(int modes)
         break;
     }
   }
-  
+
   //Terminal.print(sd_pfad);
   warmstart();
   return expression_error;
@@ -6688,7 +6692,7 @@ verzeichnis_laden:
   letzterAusgewaehlterIndex = -1;
 
   File dir = SD.open(String(sd_pfad));
-  
+
   if (!dir || !dir.isDirectory()) {
     // Falls Ordner nicht existiert, dann Root
     strcpy(sd_pfad, "/");
@@ -6759,7 +6763,7 @@ verzeichnis_laden:
   GFX.drawText(160, 26, "               ");       // ...please wait löschen
   GFX.drawText(&fabgl::FONT_6x8, 170, 26, ("U:" + String(Used) + "MB").c_str());   //benutzte Bytes
   GFX.drawText(&fabgl::FONT_6x8, 222, 26, ("T:" + String(Total) + "MB").c_str());  //gesamtgrösse
-  GFX.drawText(&fabgl::FONT_6x8, 268, 35, "   "); //Zahlenbereich löschen
+  GFX.drawText(&fabgl::FONT_6x8, 268, 35, "     "); //Zahlenbereich löschen
   GFX.drawText(&fabgl::FONT_6x8, 222, 35, ("Dateien:" + String(anzahlDateien)).c_str());
   bcolor(3);
   fcolor(63);   while (1) {
@@ -6827,6 +6831,25 @@ verzeichnis_laden:
         goto verzeichnis_laden;
       }
     }
+    // DEL-Taste zum Löschen von Dateien
+    else if ( c == 0x2 ) {
+      cbuf = String(combinedList[aktuellerIndex]);
+      cbuf.toCharArray(tempstring, cbuf.length() + 1);
+      GFX.drawText(&fabgl::FONT_6x8, 55, 48, ("Delete File? y/n - " + String(tempstring)).c_str());
+      if ( wait_key(false) == 'y') {
+        //*************************Pfad ergänzen, falls nicht in root *********************************
+        String neuerPfad = String(sd_pfad);
+        if (!neuerPfad.endsWith("/")) {
+          memmove(tempstring + 1, tempstring, strlen(tempstring) + 1);
+          tempstring[0] = '/';                                          //slash an den Anfang des Dateinamens setzen
+        } //WICHTIG: der Slash wird vor den Dateinamen gesetzt, damit die Pfadstruktur nicht korumpiert wird
+        //*********************************************************************************************
+        SD.remove( String(sd_pfad) + String(tempstring));
+      }
+      bcolor(3);
+      GFX.fillRectangle(55, 48, 290, 55);
+      goto verzeichnis_laden;
+    }
 
     // ENTER (Datei laden ODER Ordner öffnen)
     else if (c == 13 && !combinedList.empty()) {
@@ -6875,8 +6898,8 @@ verzeichnis_laden:
 
 
 /*
-void cmd_Dir()
-{
+  void cmd_Dir()
+  {
   int ln = 1;
   int ex = 0;
   String cbuf;
@@ -7088,7 +7111,7 @@ void cmd_Dir()
 
   dir.close();
   sd_ende();
-}
+  }
 */
 //#######################################################################################################################################
 //--------------------------------------------- RENAME - Befehl REN(Filename_old,Filename_new) ----------------------------------------------------
@@ -7523,6 +7546,11 @@ void setup()
       // PFEIL HOCH
       else if (*vk == VirtualKey::VK_PAGEUP) {
         page_up = true;
+        *vk = VirtualKey::VK_NONE;
+      }
+      //DEL-Taste
+      else if (*vk == VirtualKey::VK_DELETE) {
+        del_key = true;
         *vk = VirtualKey::VK_NONE;
       }
       else if (*vk == VirtualKey::VK_APPLICATION) {                                     //Anzeige der belegten Variablen

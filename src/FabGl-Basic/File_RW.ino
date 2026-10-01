@@ -33,25 +33,25 @@ int File_Operations(void) {
       if (Test_char('R')) return 1;
       File_write();
       break;
-      
+
     case 'P':                                         //FILE_PS ->set Pos in File
       if (Test_char('S')) return 1;
-      if(Test_char('(')) return 1;
-      ps=long(get_value());
-      if(Test_char(')')) return 1;
-      if(ps<=File_size) File_pos=ps;
+      if (Test_char('(')) return 1;
+      ps = long(get_value());
+      if (Test_char(')')) return 1;
+      if (ps <= File_size) File_pos = ps;
       break;
 
     default:
       break;
   }
 
-return 0;
+  return 0;
 }
 
 //--------------------------------------------- Befehl OPEN ---------------------------------------------------------------------------------------
 void file_rw_open(void) {
-  char c,File_function;
+  char c, File_function;
   int a = 1;
   get_value();                    //Dateiname in tempstring
 
@@ -220,19 +220,20 @@ void File_read(void) {
 void type_file(int m) {
   char c, d;
   int b, ex = 0;
-  if(m) get_value();                    //Dateiname in tempstring
+  if (m) get_value();                   //Dateiname in tempstring
 
   strcpy(filestring, tempstring); //Tempstring nach filestring kopieren
   spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);         //SCK,MISO,MOSI,SS 13 //HSPI1
-  if (!SD.exists( String(sd_pfad) + String(tempstring))) {  //Datei nicht vorhanden
+  if (!SD.exists( String(sd_pfad) + String(filestring))) {  //Datei nicht vorhanden
     syntaxerror(sdfilemsg);
     return;
   }
+  
   fp = SD.open( String(sd_pfad) + String(filestring), FILE_READ);
 
   while (fp.available()) {
     c = fp.read();
-    if (c == NL) {
+    if (c == NL || c == CR) {
       Terminal.println();
       b++;
       continue;
@@ -249,18 +250,90 @@ void type_file(int m) {
   string_marker = false;
 }
 
+//------------------------------------------------------- Hexdatei-Monitor -------------------------------------------------------------------------------------
+void hex_monitor(int m) {
+  char c;
+  int ex = 0;
+  unsigned long offset = 0;  // Zählt die aktuelle Byte-Adresse in der Datei
+  int zeilenAufBildschirm = 0;
+  
+  
+  
+  if(m) get_value(); // Dateiname in tempstring
+
+  strcpy(filestring, tempstring); // Tempstring nach filestring kopieren
+  spiSD.begin(kSD_CLK, kSD_MISO, kSD_MOSI, kSD_CS);
+  
+  if (!SD.exists(String(sd_pfad) + String(tempstring))) {
+    syntaxerror(sdfilemsg);
+    return;
+  }
+  
+  fp = SD.open(String(sd_pfad) + String(filestring), FILE_READ);
+  uint8_t zeilenBuffer[8];
+  int fnt = fontsatz;
+  set_font(2);          //Font 6x8 laden - bessere Darstellung
+  
+  while (fp.available()) {
+    int geleseneBytes = fp.read(zeilenBuffer, 8);
+    if (geleseneBytes <= 0) break;
+
+    // Ausgabe der Adresse  (z.B. 0000A0: )
+    char adresseStr[12];
+    sprintf(adresseStr, "  %06X:", offset);
+    Terminal.print(adresseStr);
+
+    for (int i = 0; i < 8; i++) {
+      if (i < geleseneBytes) {
+        char hexStr[4];
+        sprintf(hexStr, "%02X ", zeilenBuffer[i]);
+        Terminal.print(hexStr);
+      } //else {
+        //Terminal.print(" "); 
+      //}
+    }
+    Terminal.print("|");
+    for (int i = 0; i < geleseneBytes; i++) {
+      char byteChar = zeilenBuffer[i];
+      // Nur lesbare ASCII-Zeichen anzeigen, den Rest als Punkt darstellen
+      if (byteChar >= 32 && byteChar <= 126) {
+        Terminal.print(byteChar);
+      } else {
+        Terminal.print(".");
+      }
+    }
+    Terminal.println("|");
+    offset += geleseneBytes;
+    zeilenAufBildschirm++;
+
+    if (zeilenAufBildschirm >= 16) {
+      char taste = wait_key(true);
+      if (taste == 3) { 
+        break; 
+      }
+      zeilenAufBildschirm = 0; // Zähler zurücksetzen für die nächste Seite
+    }
+  }
+
+  fp.close();
+  sd_ende();
+  string_marker = false;
+  set_font(fnt);
+}
+
+
 //------------------------------ tempstring auseinander nehmen für FILE_RD Funktion -------------------------------------------
-int File_line(char * vals) {        
+int File_line(char * vals) {
 
   float value;
   float *var;
   char *st;
-  int tmp, stmp, svar, i, o,var_pos, array_art;
+  int tmp, stmp, svar, i, o, var_pos, array_art;
   char c;
   String dbuf;
   word arr_adr;
 
-  
+
   o = 0;
 
   if (*txtpos < 'A' || *txtpos > 'Z')                                     //erster Variablenbuchstabe
@@ -341,8 +414,8 @@ int File_line(char * vals) {
     value =  dbuf.toFloat();
     string_marker = false;
   }
-  
-    if (array_art == 1) {
+
+  if (array_art == 1) {
     byte* bytes = (byte*)&value;                            //float nach byte-array umwandeln
     SPI_RAM_write(arr_adr, bytes, 4);
     return 0;
