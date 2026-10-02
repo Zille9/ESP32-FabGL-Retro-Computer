@@ -228,7 +228,8 @@ void type_file(int m) {
     return;
   }
   fp = SD.open( String(sd_pfad) + String(filestring), FILE_READ);
-
+  tc.setCursorPos(0, 0);
+  GFX.clear();
   while (fp.available()) {
     c = fp.read();
     if (c == NL || c == CR) {

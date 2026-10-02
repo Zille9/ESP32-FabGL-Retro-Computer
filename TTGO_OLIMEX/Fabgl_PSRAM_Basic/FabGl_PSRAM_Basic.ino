@@ -53,6 +53,8 @@
 #define BuiltTime "28.09.2026"
 // V2.23:28.09.2026           -Korrektur von load_file bezüglich Pfadverarbeitung (im Unterverzeichnis fehlte der Slash zwischen Pfad-und Dateiname)
 //                            -unbekannte Dateien im Datei-Explorer werden im Hexmonitor angezeigt
+//                            -Fehler in Renum-Befehl behoben - load_adress hatte falschen wert (0x0 statt 0x10000)
+//                            -dadurch wurde nach der Renumfunktion der Bearbeitungsspeicher in den Ram geladen statt des geänderten Programms (an Adresse 0x10000)
 //
 //
 // V2.22:26.09.2026           -im Explorer sind jetzt BAS, BIN, BMP, JPG und PIC-Dateien ladbar
@@ -80,7 +82,7 @@
 //                            -POKE,DOKE,FPOKE sowie PEEK,DEEK und FPEEK ist nur noch im User-Ram möglich/erlaubt
 //                            -diese Befehle sind um die Angabe des Speicherortes gekürzt POKE 1,#1c00,Wert -> POKE #1c00,Wert
 //                            -Adresse für save und load (Programm im PSRAM) auf 0x0 geändert und Berechnung der im PSRAM speicherbaren
-//                            -Bilder angepasst (user_groesse - 0x10000) damit wird ein Programm im RAM nicht durch den PIC Befehl überschrieben
+//                            -Bilder angepasst (user_groesse - 0x20000) damit wird ein Programm im RAM nicht durch den PIC Befehl überschrieben
 //                            -insgesamt sind so 12 Bilder 320x240 und ein 64kb Programm im Speicher ablegbar (FRAM_OFFSET wieder auf 0x10000)
 //                            -Fehler in der OPTION Funktion behoben ->Font wurde nicht geladen
 //
@@ -122,8 +124,6 @@ int letzterAusgewaehlterIndex = -1;
 
 const uint8_t colorTable[4] = {0, 85, 170, 255};    //Farbtabelle für Umwandlung Farbwerte
 //-------------------------------------------------------------------------------------------------------------------------------------------------
-
-#define erststart_marker 131                //dieser Marker steht im EEprom an Position 100 - wird der ESP32 zum ersten mal mit dem Basic gestartet werden standard-Werte gesetzt
 //damit eine benutzbare Version gestartet wird
 //---------------------------------------------------- verfügbare Themes ---------------------------------------------------------------------------
 const char * Themes[]    PROGMEM = {"C64", "C128", "CPC", "ATARI 800", "ZX-Spectrum", "KC87", "KC85", "VIC-20", "TRS-80", "TI99", "LCD", "User"}; //Theme-Namen
@@ -162,9 +162,10 @@ ESP32Time e_rtc(0);  // offset in seconds GMT+1
 #include "MathHelpers.h"
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
-// -------------------------- EEPROM Routinen für Parameter-Speicherung ---------------------------------------------------------------------------
-#include <EEPROM.h>
-#define EEPROM_SIZE 512  //512 byte lesen/speichern
+// -------------------------- Preferences für Parameter-Speicherung -------------------------------------------------------------------------------
+#include <Preferences.h>
+// Erstelle ein globales oder lokales Preferences-Objekt
+Preferences prefs;
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 //######################################### Anfang Konfiguration SPI-RAM ##########################################################################
@@ -180,9 +181,9 @@ uint32_t fram_ptr;                    //Pointer für Renumber
 unsigned int zeilen_anzahl;           //für Renumber
 
 //---------------------------------------- spezielle SPI-Ram-Adressen -----------------------------------------------------------------------------
-word FRAM_OFFSET      = 0x10000;      //Offset für Poke-Anweisungen, um zu verhindern, das in den Array-Bereich gepoked wird
+word FRAM_OFFSET      = 0x20000;      //Offset für Bilder um zu verhindern, das in den PSRAM-Programm-Bereich geschrieben wird
 word FRAM_PIC_OFFSET  ;               //Platz pro Bildschirm im Speicher 320x240=76800 + 4Byte für die Dimension = 76804 --> siehe Memory_RW
-long load_adress      = 0x0;          //ab hier kann ein Basicprogramm abgelegt werden (Eingabe: LOAD oder SAVE ohne Parameter)
+long load_adress      = 0x10000;      //ab hier kann ein Basicprogramm abgelegt werden (Eingabe: LOAD oder SAVE ohne Parameter)
 
 //---------------------------------------- Array-Parameter ----------------------------------------------------------------------------------------
 //Der Arraybereich befindet sich 0x0..0x7fff
@@ -204,8 +205,6 @@ bool serout_marker = false;
 
 //------------------------------------------------ Startparameterauswahl --------------------------------------------------------------------------
 byte Keyboard_lang = KLayout; //Tastatur-Layout (cfg.h) - Standardeinstellung=German
-byte THEME_SET = 77;    //-steht 77 im EEPROM Platz 17, dann setze das gespeicherte Theme
-byte PATH_SET = 88;     //-steht 88 im EEPROM Platz 19, dann setze Arbeits-Pfad
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 int currentIndent = 0;        //Einrückungsmerker für For-Next
@@ -245,6 +244,7 @@ uint32_t bmp_width, bmp_height;
 
 #define STR_LEN 40
 #define STR_SIZE 26*STR_LEN             //Stringspeicher = Stringlänge 26*40 Zeichen (A..Z * 40 Zeichen)
+#define GOSUB_FRAME_SIZE ((sizeof(struct stack_gosub_frame) + 3) & ~3) //Gosub-Frame-Grösse
 
 //------------------------------ hier wird der Funktionsstring gespeichert ------------------------------------------------------------------------
 #define FN_SIZE STR_LEN                 //Funktionsspeicher für benutzerdefinierte Funktionen mit bis zu vier Operatoren-> FN A(A,B,C,D)
@@ -321,7 +321,6 @@ int Fnoperator[27 * 5];                   //DEFN A(a,b,c,d,e,f,g,h)-> Name 0-26,
 bool fn_marker = false;                   //Funktions-Marker
 //------------------------------------ Editor -----------------------------------------------------------------------------------------------------
 char const * Edit_line = nullptr;        //Editor-Zeile
-long editpos;                            //Position innerhalb des Programs
 //------------------------------------ Interpreter ------------------------------------------------------------------------------------------------
 char tempstring[STR_LEN];                //String Zwischenspeicher
 
@@ -345,7 +344,7 @@ unsigned int datapointer = 0;       //data-Zeiger innerhalb des Datanfeldes
 unsigned int restorepointer = 0;    //begin des Datanfeldes
 unsigned int num_of_datalines = 0;  //Anzahl DATA-Zeilen
 unsigned int current_dataline = 0;  //aktuelle DATA-Zeile
-unsigned int data_numbers[300];     //Array zur speicherung von 300 DATA Zeilennummern
+unsigned int data_numbers[200];     //Array zur speicherung von 200 DATA Zeilennummern
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // ASCII Characters
 #define CR	'\r'
@@ -905,7 +904,7 @@ static char *stack; // Software stack for things that should go on the CPU stack
 static char *variables_begin;
 static char *current_line;
 static char *data_line;
-//static char *sp;
+
 #define STACK_GOSUB_FLAG 'G'
 #define STACK_FOR_FLAG 'F'
 static char table_index;
@@ -1109,13 +1108,6 @@ static int Memory_Dump() {                       //DMP Speichertyp 0..2 <,Adress
             if (x_weite > 39) outchar(' ');                       //wenn genug Platz, dann Leerzeichen zwischen den Werten
             if (n > user_groesse) n = 0;                          //letzte Speicherstelle erreicht?, dann von vorn
             break;
-          case 3:  //OPTION EEPROM
-            c = EEPROM.read(n++);
-            if (c < 16) outchar('0');
-            printnum(c, 3);
-            if (x_weite > 39) outchar(' ');                       //wenn genug Platz, dann Leerzeichen zwischen den Werten
-            if (n > 512) n = 0;
-            break;
           default:  //interner RAM
             if (program[int(n)] < 16) outchar('0');
             printnum(program[int(n++)], 3);
@@ -1136,10 +1128,6 @@ static int Memory_Dump() {                       //DMP Speichertyp 0..2 <,Adress
           case 2:  //USER-PSRAM
             c = user_fram_read8(adr++);
             if (adr > user_groesse) adr = 0;                      //letzte Speicherstelle erreicht?, dann von vorn
-            break;
-          case 3:
-            c = EEPROM.read(adr++);
-            if (adr > 512) adr = 0;                      //letzte Speicherstelle erreicht?, dann von vorn
             break;
           default:  //interner RAM
             c = program[int(adr++)];
@@ -1455,50 +1443,6 @@ int printline() {
       }
     }
 
-    /*
-
-        else if (isalpha(c)) {
-          // 1. Prüfen ob Keyword (Gelb)
-          int kwort = peekInTable(list_line, keywords, kw_id_map, kw_offsets, KW_COUNT, matched_len);
-          if (kwort != -1)
-          {
-            if ((kwort == KW_FOR) || (kwort == KW_NEXT)) {
-
-              if (isStartOfLine) {                               // Zeileneinrückung und -ausrückung bei FOR-NEXT
-                if (kwort == KW_FOR) currentIndent ++;
-
-
-                for (int i = 0; i < currentIndent; i++) outchar(' ');
-
-                if (kwort == KW_NEXT) {
-                  currentIndent --;
-                  if (currentIndent < 0)
-                    currentIndent = 0;
-                }
-                isStartOfLine = false; // Danach für den Rest der Zeile sperren
-              }
-            }
-            setSyntaxColor("\e[33m");
-            for (int k = 0; k < matched_len; k++) outchar(*list_line++);
-            setSyntaxColor("\e[0m");
-          }
-
-
-          // 2. Prüfen ob Funktion (Cyan)
-          else if (peekInTable(list_line, func_tab, func_id_map, func_offsets, 60, matched_len) != -1) {
-            setSyntaxColor("\e[36m");
-            for (int k = 0; k < matched_len; k++) outchar(*list_line++);
-            setSyntaxColor("\e[0m");
-            isStartOfLine = false;
-          }
-          // 3. Sonst Variable (Grün)
-          else {
-            setSyntaxColor("\e[32m");
-            while (isalnum(*list_line) || *list_line == '$' || *list_line == '_') outchar(*list_line++);
-            setSyntaxColor("\e[0m");
-            isStartOfLine = false;
-          }
-        }*/
     // --- OPERATOREN & REST ---
     else {
       outchar(*list_line++);
@@ -1962,8 +1906,7 @@ static float expr4()
         break;
 
       case FUNC_VAL:                                           //VAL("numerische Zeichenkette")
-        //dbuf = String(tempstring);
-        a = atof(cbuf.c_str());//cbuf.toFloat();
+        a = atof(cbuf.c_str());
         string_marker = false;
         return a;
         break;
@@ -2500,36 +2443,13 @@ static int run_next() {
 //#######################################################################################################################################
 //--------------------------------------------- GOSUB - Befehl --------------------------------------------------------------------------
 //#######################################################################################################################################
-/*
-  static int gosub()
-  {
-  struct stack_gosub_frame *f;
-  if (sp + sizeof(struct stack_gosub_frame) < stack_limit)
-  {
-    printmsg(gosubmsg, 1);
-    warmstart();
-    return 1;//continue;
-  }
-
-  sp -= sizeof(struct stack_gosub_frame);
-  f = (struct stack_gosub_frame *)sp;
-  f->frame_type = STACK_GOSUB_FLAG;
-  f->txtpos = txtpos;
-  f->current_line = current_line;
-  current_line = findline();
-  return 0;
-
-  }
-*/
-// Stelle sicher, dass die Frame-Größe für den ESP32 optimiert ist
-#define GOSUB_FRAME_SIZE ((sizeof(struct stack_gosub_frame) + 3) & ~3)
 
 static int gosub()
 {
   // 1. Sicherstellen, dass wir eine Zielzeile haben, BEVOR wir den Stack anfassen
   char *next_line_ptr = findline();
   if (next_line_ptr == NULL) {
-    // Fehler: Zeile nicht gefunden, wir brechen ab, bevor der Stack korrumpiert wird
+    // Fehler: Zeile nicht gefunden, abbrechen, bevor der Stack korrumpiert wird
     return 1;
   }
 
@@ -2559,41 +2479,7 @@ static int gosub()
 
   return 0;
 }
-/*
-  static int gosub()
-  {
-  struct stack_gosub_frame *f;
 
-  // 1. Korrekte Prüfung: Reicht der Platz nach unten?
-  if ((uintptr_t)sp - sizeof(struct stack_gosub_frame) < (uintptr_t)stack_limit)
-  {
-    printmsg(gosubmsg, 1);
-    warmstart();
-    return 1;
-  }
-
-  // 2. Stack-Pointer senken
-  sp -= sizeof(struct stack_gosub_frame);
-
-  // 3. Daten sichern
-  f = (struct stack_gosub_frame *)sp;
-  f->frame_type = STACK_GOSUB_FLAG;
-  f->txtpos = txtpos;
-  f->current_line = current_line;
-
-  // 4. Neue Zeile suchen
-  char *newline = findline();
-  if (newline == NULL) {
-      // Fehler: Zielzeile nicht gefunden!
-      // Stack wieder aufräumen oder Error ausgeben
-      sp += sizeof(struct stack_gosub_frame);
-      return 1;
-  }
-
-  current_line = newline;
-  return 0;
-  }
-*/
 //#######################################################################################################################################
 //--------------------------------------------- INPUT - Befehl --------------------------------------------------------------------------
 //#######################################################################################################################################
@@ -2733,7 +2619,6 @@ inputagain:
 
   txtpos = tmptxtpos;
   return 0;
-
 }
 
 //#######################################################################################################################################
@@ -3488,7 +3373,6 @@ fnkey:                                                            //Funktionstas
         startZeit = millis();
         while ((millis() - startZeit < val) && (!break_marker)) yield();      // Wichtig, um den Watchdog-Timer zu beruhigen!
         break_marker = false;
-        //delay(val);
         break;
 
       case KW_END:
@@ -3828,8 +3712,6 @@ forloop:
       to_var = get_value();
       if (expression_error) continue;
 
-      //if (initial > to_var) goto run_next_statement;
-
       if (txtpos[0] == 'S' && txtpos[1] == 'T' && txtpos[2] == 'E' && txtpos[3] == 'P')//if (isStep())//table_index == 0)
       {
         txtpos += 4;
@@ -3956,7 +3838,6 @@ gosub_return:
           continue;
       }
     }
-    // Didn't find the variable we've been looking for
 
     syntaxerror(syntaxmsg);
   }//while(1)
@@ -4399,18 +4280,14 @@ static int Test_char(char az)
 //--------------------------------------------- POKE - Befehl ---------------------------------------------------------------------------
 //#######################################################################################################################################
 
-static int poke(int fn)             //POKE WAS,ADRESSE,WERT
+static int poke(int fn)             //POKE ADRESSE,WERT
 {
   unsigned long address;
   float w_ert;
   word wert;
   int was, weite;
   byte value, p_data[2];
-  /*
-    was = abs(get_value());                                       //Speicherort 0..2 ->0-RAM, 1-FRAM, 2-EEPROM
-    if (was > 2) was = 2;
-    if (Test_char(',')) return 1;
-  */
+
   address = abs(get_value());                                  //Speicheradresse
   if (Test_char(',')) return 1;
 
@@ -4426,55 +4303,20 @@ static int poke(int fn)             //POKE WAS,ADRESSE,WERT
     syntaxerror(syntaxmsg);
     return 1;
   }
-  //---------------------------- RAM -----------------------------------------------
 
-  /*
-    if (was == 0) {
-      if (fn == KW_POKE)  program[address] = byte(wert);            //RAM  Byte
-      else if (fn == KW_DOKE)
-      {
-        program[address] = highByte(wert);                          //RAM  Word
-        program[address + 1] = lowByte(wert);                       //RAM
-      }
-      else if (fn == KW_FPOKE) {
-        byte* bytes = (byte*)&w_ert;
-        program[address] = byte(bytes[0]);
-        program[address + 1] = byte(bytes[1]);
-        program[address + 2] = byte(bytes[2]);
-        program[address + 3] = byte(bytes[3]);
-      }
-      return 0;
-    }*/
   //---------------------------- USER-PSRAM ---------------------------------------------
-  //  else if (was == 1) {
-  if (fn == KW_POKE)  USER_RAM_write8(address, byte(wert));   //FRAM Byte
+  if (fn == KW_POKE)  USER_RAM_write8(address, byte(wert));   //PSRAM Byte
   else if (fn == KW_DOKE)
   {
     p_data[0] = highByte(wert);
     p_data[1] = lowByte(wert);
-    USER_RAM_write(address, p_data, 2);                       //FRAM Word
+    USER_RAM_write(address, p_data, 2);                       //PSRAM Word
   }
   else if (fn == KW_FPOKE) {
     byte* bytes = (byte*)&w_ert;
-    USER_RAM_write(address, bytes, 4);                        //FRAM float
+    USER_RAM_write(address, bytes, 4);                        //PSRAM float
   }
   return 0;
-  // }
-  //----------------------------- EEPROM -------------------------------------------
-  /*
-    else if (fn == KW_POKE)  writeEEPROM(EEprom_ADDR, address, byte(wert));   //EEPROM Byte
-    else if (fn == KW_DOKE)
-    {
-      p_data[0] = highByte(wert);
-      p_data[1] = lowByte(wert);
-      WriteBuffer(EEprom_ADDR, address, 2, p_data);                           //EEPROM Word
-    }
-    else if (fn == KW_FPOKE) {                                                //EEPROM float
-      byte* bytes = (byte*)&w_ert;
-      WriteBuffer(EEprom_ADDR, address, 4, bytes);
-    }
-    return 0;
-  */
 }
 
 //#######################################################################################################################################
@@ -4888,8 +4730,6 @@ static int set_pen()
   return 0;
 }
 
-
-
 //#######################################################################################################################################
 //---------------------------------------------- DEF_FN Befehl --------------------------------------------------------------------------
 //#######################################################################################################################################
@@ -4986,157 +4826,6 @@ static char print_quoted_string()
   }
   txtpos++; // Skip over the last delimiter
 
-  return 0;
-}
-
-//#######################################################################################################################################
-//--------------------------------------------- PULSE - Befehl --------------------------------------------------------------------------
-//#######################################################################################################################################
-
-static int set_pulse()
-{
-  int p, x, y, pl;
-  if (Test_char('(')) return 1;
-
-  expression_error = 0;
-  p = get_value();             //IO-Port
-  if (expression_error) return 1;
-
-  if ((p == 2) || (p == 12) || (p == 26) || (p == 27))
-  {
-    ledcDetachPin(p);     //PWM freimachen falls benutzt
-    pinMode(p, OUTPUT);
-  }
-  else
-  {
-    syntaxerror(portmsg);
-    return 1;
-  }
-  // check for a comma
-  if (Test_char(',')) return 1;
-
-  // Now get the value to assign
-  expression_error = 0;
-  pl = get_value();                     //Anzahl-Pulse
-  if (expression_error) return 1;
-
-  if (Test_char(',')) return 1;
-
-  expression_error = 0;
-  x = get_value();                      //Pause1-Zeit
-  if (expression_error) return 1;
-
-  if (Test_char(',')) return 1;
-
-  expression_error = 0;
-  y = get_value();                     //Pause2-Zeit
-  if (expression_error) return 1;
-
-  if (Test_char(')')) return 1;
-
-  if (*txtpos != NL && *txtpos != ':') return 1;
-
-  for (int i = 0; i < pl; i++) {                    //Anzahl pl-Impulse
-    digitalWrite(p, HIGH);                      //setze Port - High
-    delay(x);                                   //Pause x
-    digitalWrite(p, LOW);                       //Low
-    delay(y);
-  }
-
-  return 0;
-}
-
-//#######################################################################################################################################
-//--------------------------------------------- DOUT-Befehl -----------------------------------------------------------------------------
-//#######################################################################################################################################
-static int set_port()
-{
-  int p, x;
-
-  if (Test_char('(')) return 1;
-
-  expression_error = 0;
-  p = get_value();
-  if (expression_error) return 1;
-
-  if ((p == 2) || (p == 12) || (p == 26) || (p == 27))
-  {
-    ledcDetachPin(p);     //PWM freimachen falls benutzt
-    pinMode(p, OUTPUT);
-  }
-  else
-  {
-    syntaxerror(portmsg);
-    return 1;
-  }
-  // check for a comma
-  if (Test_char(',')) return 1;
-
-  // Now get the value to assign
-  expression_error = 0;
-  x = get_value();
-  if (expression_error) return 1;
-
-  if (Test_char(')')) return 1;
-
-  if (*txtpos != NL && *txtpos != ':') return 1;
-
-  if (x > 0) digitalWrite(p, HIGH);                //setze Port - alles ausser 0 ist High
-  else digitalWrite(p, LOW);                       //sonst Low
-
-  return 0;
-}
-
-//#######################################################################################################################################
-//--------------------------------------------- PWM-Befehl ------------------------------------------------------------------------------
-//#######################################################################################################################################
-
-static int set_pwm()
-{
-  int p, x, chan;
-  if (Test_char('(')) return 1;
-
-  expression_error = 0;
-  p = get_value();
-  if (expression_error) return 1;
-
-  if ((p == 2) || (p == 12) || (p == 26) || (p == 27)) //nur gültige Pins setzen
-  {
-    switch (p) {
-      case 2:
-        chan = 1;
-        break;
-      case 12:
-        chan = 2;
-        break;
-      case 26:
-        chan = 3;
-        break;
-      case 27:
-        chan = 4;
-        break;
-    }
-    ledcSetup(chan, 500, 8);
-    ledcAttachPin(p, chan);
-  }
-  else
-  {
-    syntaxerror(portmsg);
-    return 1;
-  }
-  // check for a comma
-  if (Test_char(',')) return 1;
-
-  // Now get the value to assign
-  expression_error = 0;
-  x = get_value();
-  if (expression_error) return 1;
-
-  if (Test_char(')')) return 1;
-
-  if (*txtpos != NL && *txtpos != ':') return 1;
-
-  ledcWrite(chan, x);                //PWM-Wert setzen (pwm-channel,wert)
   return 0;
 }
 
@@ -5549,21 +5238,8 @@ static int initSD()
   outStream = kStreamTerminal;                              //Ein-und Ausgabe-Stream auf Terminal setzen
   inStream = kStreamTerminal;
   inhibitOutput = false;
-  sd_pfad[0] = '/';                                         //setze Root-Verzeichnis
-  sd_pfad[1] = 0;
-
-  adr = 20;                                                 //ab Adresse 20 im EEPROM ist der User-Pfad abgelegt
-  i = 0;
-  if (EEPROM.read(19) == PATH_SET) {                        //Pfad im EEPROM gespeichert?
-    while (1) {
-      c = EEPROM.read(adr++);
-      sd_pfad[i++] = char(c);
-      if (c == 0) break;
-    }
-  }
-
-
-  if ( !SD.open(String(sd_pfad)))                          //Überprüfung, ob Pfad gültig
+  
+  if (!SD.open(String(sd_pfad)))                          //Überprüfung, ob Pfad gültig
   {
     printmsg(dirnotfound, 1);
     sd_pfad[0] = '/';                                      //Verzeichnis ungültig->Root-Verzeichnis
@@ -6578,6 +6254,20 @@ int findRelopBinary() {
 }
 
 
+void loadSettings() {
+  prefs.begin("sys_cfg", true); // "true" öffnet im Read-Only-Modus
+  
+  // Standardwerte (2. Parameter) werden genommen, falls noch nichts gespeichert wurde
+  Vordergrund = prefs.getUChar("color_fg", 60);     // Standard: Gelb (60)
+  Hintergrund = prefs.getUChar("color_bg", 1);      // Standard: Dunkelblau (1)
+  fontsatz = prefs.getUChar("font", 2);             // Standard: Font 2
+  
+  // Textpfad auslesen
+  String saved_path = prefs.getString("sd_path", "/");
+  saved_path.toCharArray(sd_pfad, sizeof(sd_pfad));
+
+  prefs.end();
+}
 //#######################################################################################################################################
 //--------------------------------------------- SETUP -----------------------------------------------------------------------------------
 //#######################################################################################################################################
@@ -6591,7 +6281,7 @@ void setup()
   setupTableIndex(keywords, kw_offsets, KW_COUNT);                                  // Basic-Befehls-Index-Tabelle erstellen
   setupTableIndex(func_tab, func_offsets, FUNC_UNKNOWN);                            //Funktions-Index-Tabelle erstellen
   setupTableIndex(options_tab, opt_offsets, OPT_COUNT);                             //Index-Tabelle für Options erstellen
-
+  
   pinMode(kSD_CS, OUTPUT);
   digitalWrite(kSD_CS, HIGH);
 
@@ -6625,41 +6315,10 @@ void setup()
     memset(user_psram, 0, user_groesse);          // 1MB Speicher löschen
   }
   //-------------------------------------------------------------------------------------
-
-  EEPROM. begin ( EEPROM_SIZE ) ;
-  delay(200);
-  if (EEPROM.read(100) == erststart_marker) {                                         //auf jungfräulichkeit prüfen
-
-    //################ Farbschema aus dem internen EEPROM lesen ##################
-    Vordergrund = EEPROM.read(0) ;   //512 Byte Werte im EEPROM speicherbar
-    Hintergrund = EEPROM.read(1);
-    user_vcolor = Vordergrund;       //User-Vordergrundfarbe merken
-    user_bcolor = Hintergrund;       //User-Hintergrundfarbe merken
-    //#############################################################################
-    fontsatz = EEPROM.read(2);
-    user_font = fontsatz;         //User-Fontsatz merken
-
-    // --- auf Platz 15 im EEPROM steht das Keyboard-Layout
-    byte k = EEPROM.read(15);
-    if (k > 0 && k < 10) Keyboard_lang = k;
-    Theme_marker = false;
-    // --- ist der Theme_marker (77) auf Platz 17 gesetzt, dann das gespeicherte Theme setzen
-    if (EEPROM.read(17) == THEME_SET) {
-      Theme_state = EEPROM.read(16);
-      Theme_marker = true;
-    }
-    else Theme_state = 0;
-  }
-  else                                                  //der ESP ist noch jungfräulich, also standard-Werte setzen
-  {
-
-    Vordergrund = 60;                                     //CPC Theme
-    Hintergrund = 1;
-    user_font   = 2;
-    Theme_state = 2;                                      //CPC Theme
-  }
-
-  delay(1000);                                              //eine sek warten, damit die CardKB-Tastatur starten kann
+  //------------------- Einstellungen laden ---------------------------------------------
+  
+  loadSettings();   //eventuell gespeicherte Werte einlesen (Fontsatz, Farben, Pfad)
+  //-------------------------------------------------------------------------------------
 
   Keyboard.begin(GPIO_NUM_33, GPIO_NUM_32);
   Set_Layout();                                             //Keyboard-Layout setzen
@@ -6687,7 +6346,7 @@ void setup()
   GFX.clear();
 
   if (Theme_marker) set_theme(Theme_state, user_font);                                           //Theme setzen, wenn im EEprom gespeichert
-  else set_font(user_font);
+  else set_font(fontsatz);
 
   PS2Controller.keyboard()-> onVirtualKey = [&](VirtualKey * vk, bool keyDown) {
     if (keyDown) {
@@ -6808,7 +6467,7 @@ void setup()
 
       else if (*vk == VirtualKey::VK_F11) {                                              //SPI-RAM-Löschen (Test)
         if (current_line == NULL) {
-          Terminal.print("erase SPI-RAM, please wait...");
+          Terminal.print("erase PSRAM, please wait...");
           memset(var_table_psram, 0, SPI_memSize);                                       //Variablen-Speicher löschen
           memset(user_psram, 0, user_groesse);                                           //User-Speicher löschen
           line_terminator();
@@ -7031,90 +6690,80 @@ int Array_Dim(void) {
 //----------------------------------------------------------- OPTION-Befehl -------------------------------------------------------------
 //#######################################################################################################################################
 int Option(void) {
-  byte p[6];
-  table_index = findOption();         //Optionstabelle lesen
+  table_index = findOption(); // Optionstabelle lesen
   char fu = table_index;
-  int i, adr;
-
-  switch (fu) {
-
-    case OPT_FONT:
-      p[0] = get_value();
-      EEPROM.write(2, p[0]);          //Font-Nummer im Flash speichern                        Platz 2
-      EEPROM.write(17, 0);            //THEME-Marker löschen
-      EEPROM.commit () ;
-      set_font(p[0]);                 //setze Font
-      if (EEPROM.read(100) != erststart_marker) {                                           //marker-setzen, das werte im EEprom stehen
-        EEPROM.write ( 100, erststart_marker) ;                                             //Platz 100
-        EEPROM.commit () ;
-      }
-      break;
-
-    case OPT_KEYBOARD:
-      p[0] = get_value();
-      EEPROM.write(15, p[0]);         //Keyboard-Layout im Flash speichern                    Platz 15
-      EEPROM.commit () ;
-      Terminal.println("For take effect now reboot!");
-      delay(1000);
-      ESP.restart();
-      break;
-
-    case OPT_COLOR:
-      p[0] = get_value();
-      if (Test_char(',')) return 1;
-      p[1] = get_value();
-      EEPROM.write(0, p[0]);          //Vordergrundfarbe im Flash speichern                   Platz 0
-      EEPROM.write(1, p[1]);          //Hintergrundfarbe im Flash speichern                   Platz 1
-      EEPROM.write(17, 0);            //THEME-Marker löschen
-      EEPROM.commit () ;
-      Vordergrund = p[0];
-      Hintergrund = p[1];
-      fbcolor(Vordergrund, Hintergrund); //Farben setzen
-      if (EEPROM.read(100) != erststart_marker) {                                           //marker-setzen, das werte im EEprom stehen
-        EEPROM.write ( 100, erststart_marker) ;                                             //Platz 100
-        EEPROM.commit () ;
-      }
-      break;
-
-    case OPT_THEME:
-      p[0] = get_value();
-      EEPROM.write(16, p[0]);          //Nummer des Themes                                      Platz 16
-      EEPROM.write(17, THEME_SET);     //THEME-Marker                                           Platz 17
-      EEPROM.commit();
-      set_theme(p[0], fontsatz);
-      EEPROM.write(2, byte(fontsatz));  //Font-Nummer im Flash speichern                        Platz 2
-      EEPROM.commit () ;
-      if (EEPROM.read(100) != erststart_marker) {                                           //marker-setzen, das werte im EEprom stehen
-        EEPROM.write ( 100, erststart_marker) ;
-        EEPROM.commit () ;
-      }
-      break;
-
-    case OPT_PATH:                    //Arbeits-Pfad im EEPROM-Platz 20-50 (max. 30 Zeichen)
-      cmd_chdir();
-      adr = 20;
-      i = 0;
-      EEPROM.write(19, PATH_SET);                                                              //Platz 19 - 99
-      EEPROM.commit();
-      while (sd_pfad[i]) {
-        EEPROM.write (adr++, sd_pfad[i++]);
-        EEPROM.commit();
-      }
-      EEPROM.write(adr, 0);
-      EEPROM.commit();
-
-      break;
-
-    default:
-      break;
-  }
-
-
-  if (fu == OPT_COUNT)                                              //am ende angekommen, Option nicht gefunden
-  {
+  
+  // Fehlerbehandlung direkt am Anfang (Early Exit)
+  if (fu == OPT_COUNT) {
     syntaxerror(syntaxmsg);
     return 1;
   }
+
+  // Öffne "sys_cfg" im Lese-/Schreibmodus (false)
+  prefs.begin("sys_cfg", false);
+
+  switch (fu) {
+
+    case OPT_FONT: {
+      byte font_num = get_value();
+      prefs.putUChar("font", font_num);     // Fontsatz
+      prefs.remove("theme_set");            // Löscht THEME-Marker 
+      set_font(font_num);                   // setze Font
+      break;
+    }
+
+    case OPT_KEYBOARD: {
+      byte kb_layout = get_value();
+      prefs.putUChar("keyboard", kb_layout); 
+      prefs.end();                          // Preferences sauber schließen vor Reboot
+      Terminal.println("For take effect now reboot!");
+      delay(1000);
+      ESP.restart();
+      return 0;
+    }
+
+    case OPT_COLOR: {
+      byte fg = get_value();
+      if (Test_char(',')) {
+        prefs.end();
+        return 1;
+      }
+      byte bg = get_value();
+      
+      prefs.putUChar("color_fg", fg);       // Ersetzt Platz 0
+      prefs.putUChar("color_bg", bg);       // Ersetzt Platz 1
+      prefs.remove("theme_set");            // Löscht THEME-Marker 
+      
+      Vordergrund = fg;
+      Hintergrund = bg;
+      fbcolor(Vordergrund, Hintergrund);    // Farben setzen
+      break;
+    }
+
+    case OPT_THEME: {
+      byte theme_num = get_value();
+      prefs.putUChar("theme_num", theme_num); // Theme nummer
+      prefs.putBool("theme_set", true);       // THEME_SET-Marker
+      set_theme(theme_num, -1);
+      prefs.putUChar("color_fg", Vordergrund);       // Farbe setzen
+      prefs.putUChar("color_bg", Hintergrund);       // Farbe setzen
+      prefs.putUChar("font", (byte)fontsatz); // Ersetzt Platz 2
+      break;
+    }
+
+    case OPT_PATH: { 
+      cmd_chdir();
+      prefs.putString("sd_path", sd_pfad);   // Speichert den Pfad 
+      break;
+    }
+
+    default:
+      prefs.end();
+      return 0;
+  }
+
+  // Speicherbereich abschließen
+  prefs.end();
   return 0;
 }
 
@@ -7369,7 +7018,7 @@ int show_Pic(void) {
       {
         if (Test_char('(')) return 1;
         ad = get_value();
-        if (ad > ((user_groesse - 0x10000) / FRAM_PIC_OFFSET) - 1) {
+        if (ad > ((user_groesse - 0x20000) / FRAM_PIC_OFFSET) - 1) {
           syntaxerror(outofmemory);
           return 1;
         }
@@ -7455,7 +7104,7 @@ int show_Pic(void) {
       {
         if (Test_char('(')) return 1;
         ad = get_value();                               //Adresse im Speicher
-        if (ad > ((user_groesse - 0x10000) / FRAM_PIC_OFFSET) - 1) {
+        if (ad > ((user_groesse - 0x20000) / FRAM_PIC_OFFSET) - 1) {
           syntaxerror(outofmemory);
           return 1;
         }
@@ -7472,7 +7121,7 @@ int show_Pic(void) {
       {
         if (Test_char('(')) return 1;
         ad = get_value();                               //Adresse im Speicher
-        if (ad > ((user_groesse - 0x10000) / FRAM_PIC_OFFSET) - 1) {//Überprüfung auf max.Anzahl der Bilder
+        if (ad > ((user_groesse - 0x20000) / FRAM_PIC_OFFSET) - 1) {//Überprüfung auf max.Anzahl der Bilder
           syntaxerror(outofmemory);
           return 1;
         }
@@ -7493,7 +7142,7 @@ int show_Pic(void) {
     case 'P':                                         //Grafikbildschirm in FRAM speichern
       if (Test_char('(')) return 1;
       ad = get_value();
-      if (ad > ((user_groesse - 0x10000) / FRAM_PIC_OFFSET) - 1) {
+      if (ad > ((user_groesse - 0x20000) / FRAM_PIC_OFFSET) - 1) {
         syntaxerror(outofmemory);
         return 1;
       }
@@ -8614,7 +8263,7 @@ void renum()
   schritt = 10;
   zeilen_anzahl = 0;                                                               //merker für die anzahl der Zeilen im SPI_RAM
 
-  USER_RAM_fill(0x0, 0x20000, 0);                                                  //Bearbeitungsspeicher löschen sonst gibt's fehler
+  USER_RAM_fill(0x10000, 0x20000, 0);                                                  //Bearbeitungsspeicher löschen sonst gibt's fehler
 
   if (*txtpos != NL) {                                                             //Parameter für Startnummer und Schrittweite
     startnum = int(get_value());
@@ -8985,3 +8634,4 @@ void zeige_variablen() {
 
 //#########################################################################################################################################################################
 //########################################################################## Testbereich - neue Funktionen ################################################################
+//#########################################################################################################################################################################
