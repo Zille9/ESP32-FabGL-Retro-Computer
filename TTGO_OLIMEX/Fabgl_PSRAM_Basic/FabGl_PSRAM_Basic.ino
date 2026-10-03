@@ -55,6 +55,8 @@
 //                            -unbekannte Dateien im Datei-Explorer werden im Hexmonitor angezeigt
 //                            -Fehler in Renum-Befehl behoben - load_adress hatte falschen wert (0x0 statt 0x10000)
 //                            -dadurch wurde nach der Renumfunktion der Bearbeitungsspeicher in den Ram geladen statt des geänderten Programms (an Adresse 0x10000)
+//                            -Window-Parameter auf struct umgestellt
+//                            -42318 Zeilen/sek.
 //
 //
 // V2.22:26.09.2026           -im Explorer sind jetzt BAS, BIN, BMP, JPG und PIC-Dateien ladbar
@@ -278,26 +280,34 @@ static bool cursor_down  = false;       //Cursor down
 static bool page_up      = false;       //Page Up
 static bool page_down    = false;       //Page Down
 static bool del_key      = false;       //Del-Taste
+
 //------------------------------ Grid-Parameter ---------------------------------------------------------------------------------------------------
 int Grid[15];                          //0=x, 1=y, 2=xx, 3=yy, 4=zell_x, 5=zell_y, 6=pix_x, 7=pix_y, 8=frame-col, 9=grid_col
 int Grid_point_x, Grid_point_y;
-//------------------------------ Window-Parameter -------------------------------------------------------------------------------------------------
 
-int Frame_nr;                 //5 Fenster können erstellt werden
-int Frame_x[6];
-int Frame_y[6];
-int Frame_xx[6];
-int Frame_yy[6];
-int Frame_curx[6];            //X-Cursor Initialwert
-int Frame_curtmpx[6];         //X-Cursor temporärer Wert
-int Frame_curtmpy[6];         //Y-Cursor temporärer Wert
-int Frame_cury[6];            //Y-Cursor Initialwert
-int Frame_col[6];             //Rahmenfarbe
-int Cursor_x, Cursor_y;       //temporäre Cursorpositionen
-int Frame_vcol[6];            //Vordergrundfarbe
-int Frame_hcol[6];            //Hintergrundfarbe
-bool Frame_title[6];          //Titeltext
-char Frame_ttext[6][STR_LEN]; //Fenster-Titel-String
+//------------------------------ Window-Parameter -------------------------------------------------------------------------------------------------
+#define MAX_FRAMES 5 // Definiert die maximale Anzahl an Fenstern
+// Definition der Fenster-Struktur
+struct Frame {
+int x;
+int y;
+int xx;
+int yy;
+int curx;       // X-Cursor Initialwert
+int cury;       // Y-Cursor Initialwert
+int curtmpx;    // X-Cursor temporärer Wert
+int curtmpy;    // Y-Cursor temporärer Wert
+uint8_t col;    // Rahmenfarbe
+uint8_t vcol;   // Vordergrundfarbe
+uint8_t hcol;   // Hintergrundfarbe
+bool title;     // Titeltext vorhanden?
+char ttext[STR_LEN]; // Fenster-Titel-String
+};
+int Cursor_x;
+int Cursor_y;
+uint8_t Frame_nr; // Die Variable für das aktuell aktive Fenster
+// Instanziierung eines Arrays für 5 Fenster
+Frame frames[MAX_FRAMES];
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 short int onoff = 1;          //Cursor status
@@ -2395,8 +2405,8 @@ void list_out()
     syntaxerror(syntaxmsg);
     return;
   }
-
-
+  onoff = false;
+  Terminal.enableCursor(false); 
   list_line = findline();                                                 // Finde Zeile
   while (list_line != program_end) {
 
@@ -2413,6 +2423,8 @@ void list_out()
   }
   line_terminator();
   warmstart();
+  Terminal.enableCursor(true);            
+  onoff = true;                                                           //nach List ist der Cursor immer an
   return;
 }
 //--------------------------------------------- Unterprogramm - Neustart nach Fehler --------------------------------------------------------------
@@ -4655,31 +4667,30 @@ static int pset()
 //#######################################################################################################################################
 //--------------------------------------------- COL - Befehl ----------------------------------------------------------------------------
 //#######################################################################################################################################
-
 static int color()
 {
   short int fc, bc;
+  // Work out where to put it
   expression_error = 0;
   fc = get_value();
   if (expression_error) return 1;
   if (Test_char(',')) return 1;
-
   expression_error = 0;
   bc = get_value();
   if (expression_error) return 1;
-
   if (*txtpos != NL && *txtpos != ':') return 1;
-
   Vordergrund = fc;
   Hintergrund = bc;
   fbcolor(fc, bc);
-  if (!Frame_nr) {
-    Frame_vcol[0] = Vordergrund;
-    Frame_hcol[0] = Hintergrund;
+
+  if (Frame_nr == 0) {
+    // Hauptfenster: Keine Zuweisung an das Array nötig,
+    // da Vordergrund und Hintergrund bereits oben gesetzt wurden.
   }
-  else {
-    Frame_vcol[Frame_nr] = Vordergrund;
-    Frame_hcol[Frame_nr] = Hintergrund;
+  else if (Frame_nr >= 1 && Frame_nr <= MAX_FRAMES) {
+    // Subfenster 1 bis 5: Werte in der Struktur speichern (Index-Verschiebung -1)
+    frames[Frame_nr - 1].vcol = Vordergrund;
+    frames[Frame_nr - 1].hcol = Hintergrund;
   }
   return 0;
 }
@@ -4689,8 +4700,8 @@ static int color()
 void fbcolor(int fc, int bc)
 {
   if (!Frame_nr) {
-    Frame_vcol[0] = fc;
-    Frame_hcol[0] = bc;
+    Vordergrund = fc;
+    Hintergrund = bc;
   }
 
   fcolor(fc);
@@ -5168,7 +5179,6 @@ inchar_loadfinish:
 //#######################################################################################################################################
 //--------------------------------------------- Unterprogramm Zeichen zum Bildschirm oder in Datei schreiben ----------------------------
 //#######################################################################################################################################
-
 static void outchar(char c)
 {
   int x_pos, y_pos;
@@ -5176,48 +5186,61 @@ static void outchar(char c)
   if ( inhibitOutput ) return;
 
   if ( outStream == kStreamFile ) {
-    fp.write( c );                       //Char in Datei schreiben
+    fp.write( c );                       // Char in Datei schreiben
   }
   else {
     if (ser_marker && list_send) {
-      Serial1.write(c);                 //User-Seriellschnittstelle
-      delay(2);                         //kurzes Delay nach jeder Zeile, sonst läuft der RX-Buffer über
+      Serial1.write(c);                 // User-Seriellschnittstelle
+      delay(2);                         // kurzes Delay nach jeder Zeile, sonst läuft der RX-Buffer über
     }
 
-    else if (Frame_nr) {                                 //************************** im Fenster schreiben ******************
+    else if (Frame_nr >= 1 && Frame_nr <= MAX_FRAMES) {  // ************************** im Fenster schreiben ******************
+
+      // Zeiger auf das entsprechende Fenster im Array (Index-Verschiebung -1)
+      Frame* currentFrame = &frames[Frame_nr - 1];
 
       x_pos = tc.getCursorCol();
       y_pos = tc.getCursorRow();
 
-      if ((x_pos > (Frame_xx[Frame_nr] / x_char[fontsatz]) - 1)) {        //Zeilenende
-        y_pos += 1;
-        x_pos = Frame_curx[Frame_nr];
+      // Berechnen, wie viele Zeichen maximal in eine Zeile des Fensters passen
+      int max_chars_per_row = (currentFrame->xx / x_char[fontsatz]) - 1;
 
-        if (y_pos > (Frame_yy[Frame_nr] / y_char[fontsatz]) - 1) {        //eine Zeile hochscrollen
+      if (x_pos > max_chars_per_row) {        // Automatisches Zeilenende durch Textlänge
+        y_pos += 1;
+        x_pos = currentFrame->curx;
+
+        int max_rows_per_window = (currentFrame->yy / y_char[fontsatz]) - 1;
+        if (y_pos > max_rows_per_window) {    // Eine Zeile hochscrollen
           y_pos -= 1;
-          x_pos = Frame_curx[Frame_nr];
+          x_pos = currentFrame->curx;
           move_up(Frame_nr);
         }
         tc.setCursorPos(x_pos, y_pos);
       }
-      if (c == CR) {
-        y_pos = tc.getCursorRow();
-        if (y_pos > (Frame_yy[Frame_nr] / y_char[fontsatz]) - 1) {
-          y_pos -= 1;
-
-          move_up(Frame_nr);                                              //Window scrollen
-
+      // Behandlung von Zeilenumbrüchen (CR und LF)
+      if (c == CR || c == NL) {
+        // Ignoriere ein direkt folgendes LF, wenn gerade ein CR verarbeitet wurde (CRLF-Paar)
+        static bool last_was_cr = false;
+        if (c == NL && last_was_cr) {
+          last_was_cr = false;
+          return; 
         }
-        tc.setCursorPos(Frame_curx[Frame_nr], y_pos);
-        return;
+        last_was_cr = (c == CR);
+        y_pos = tc.getCursorRow() + 1; // Cursor eine Zeile nach unten setzen
+        int max_rows_per_window = (currentFrame->yy / y_char[fontsatz]) - 1;
+        
+        if (y_pos > max_rows_per_window) {
+          y_pos = max_rows_per_window; // Bleibe auf der letzten Zeile
+          move_up(Frame_nr);           // Und scrolle das Fenster hoch
+        }
+        // Cursor an den Anfang der (neuen) Zeile innerhalb des Fensters setzen
+        tc.setCursorPos(currentFrame->curx, y_pos);
+        return; // Wichtig: Nicht an Terminal.write weitergeben!
       }
-    }                                                    //************************** im Fenster schreiben ******************
-    Terminal.write(c);                                   //auf FabGl VGA-Terminal schreiben----------------------------------
+    }                                                    // ************************** im Fenster schreiben ******************
+    Terminal.write(c);                                   // auf FabGl VGA-Terminal schreiben----------------------------------
   }
 }
-
-
-
 //############################################# Dateioperationen auf der SD-Karte #######################################################
 //--------------------------------------------- Unterprogramm SD-Karte initialisieren ---------------------------------------------------
 //#######################################################################################################################################
@@ -5238,7 +5261,7 @@ static int initSD()
   outStream = kStreamTerminal;                              //Ein-und Ausgabe-Stream auf Terminal setzen
   inStream = kStreamTerminal;
   inhibitOutput = false;
-  
+
   if (!SD.open(String(sd_pfad)))                          //Überprüfung, ob Pfad gültig
   {
     printmsg(dirnotfound, 1);
@@ -6256,12 +6279,12 @@ int findRelopBinary() {
 
 void loadSettings() {
   prefs.begin("sys_cfg", true); // "true" öffnet im Read-Only-Modus
-  
+
   // Standardwerte (2. Parameter) werden genommen, falls noch nichts gespeichert wurde
   Vordergrund = prefs.getUChar("color_fg", 60);     // Standard: Gelb (60)
   Hintergrund = prefs.getUChar("color_bg", 1);      // Standard: Dunkelblau (1)
   fontsatz = prefs.getUChar("font", 2);             // Standard: Font 2
-  
+
   // Textpfad auslesen
   String saved_path = prefs.getString("sd_path", "/");
   saved_path.toCharArray(sd_pfad, sizeof(sd_pfad));
@@ -6281,7 +6304,7 @@ void setup()
   setupTableIndex(keywords, kw_offsets, KW_COUNT);                                  // Basic-Befehls-Index-Tabelle erstellen
   setupTableIndex(func_tab, func_offsets, FUNC_UNKNOWN);                            //Funktions-Index-Tabelle erstellen
   setupTableIndex(options_tab, opt_offsets, OPT_COUNT);                             //Index-Tabelle für Options erstellen
-  
+
   pinMode(kSD_CS, OUTPUT);
   digitalWrite(kSD_CS, HIGH);
 
@@ -6316,7 +6339,7 @@ void setup()
   }
   //-------------------------------------------------------------------------------------
   //------------------- Einstellungen laden ---------------------------------------------
-  
+
   loadSettings();   //eventuell gespeicherte Werte einlesen (Fontsatz, Farben, Pfad)
   //-------------------------------------------------------------------------------------
 
@@ -6345,8 +6368,7 @@ void setup()
   tc.setCursorPos(1, 1);
   GFX.clear();
 
-  if (Theme_marker) set_theme(Theme_state, user_font);                                           //Theme setzen, wenn im EEprom gespeichert
-  else set_font(fontsatz);
+  set_font(fontsatz);
 
   PS2Controller.keyboard()-> onVirtualKey = [&](VirtualKey * vk, bool keyDown) {
     if (keyDown) {
@@ -6689,10 +6711,10 @@ int Array_Dim(void) {
 //#######################################################################################################################################
 //----------------------------------------------------------- OPTION-Befehl -------------------------------------------------------------
 //#######################################################################################################################################
-int Option(void) {
+int Option() {
   table_index = findOption(); // Optionstabelle lesen
   char fu = table_index;
-  
+
   // Fehlerbehandlung direkt am Anfang (Early Exit)
   if (fu == OPT_COUNT) {
     syntaxerror(syntaxmsg);
@@ -6705,57 +6727,57 @@ int Option(void) {
   switch (fu) {
 
     case OPT_FONT: {
-      byte font_num = get_value();
-      prefs.putUChar("font", font_num);     // Fontsatz
-      prefs.remove("theme_set");            // Löscht THEME-Marker 
-      set_font(font_num);                   // setze Font
-      break;
-    }
+        byte font_num = get_value();
+        prefs.putUChar("font", font_num);     // Fontsatz
+        prefs.remove("theme_set");            // Löscht THEME-Marker
+        set_font(font_num);                   // setze Font
+        break;
+      }
 
     case OPT_KEYBOARD: {
-      byte kb_layout = get_value();
-      prefs.putUChar("keyboard", kb_layout); 
-      prefs.end();                          // Preferences sauber schließen vor Reboot
-      Terminal.println("For take effect now reboot!");
-      delay(1000);
-      ESP.restart();
-      return 0;
-    }
+        byte kb_layout = get_value();
+        prefs.putUChar("keyboard", kb_layout);
+        prefs.end();                          // Preferences sauber schließen vor Reboot
+        Terminal.println("For take effect now reboot!");
+        delay(1000);
+        ESP.restart();
+        return 0;
+      }
 
     case OPT_COLOR: {
-      byte fg = get_value();
-      if (Test_char(',')) {
-        prefs.end();
-        return 1;
+        byte fg = get_value();
+        if (Test_char(',')) {
+          prefs.end();
+          return 1;
+        }
+        byte bg = get_value();
+
+        prefs.putUChar("color_fg", fg);       // Ersetzt Platz 0
+        prefs.putUChar("color_bg", bg);       // Ersetzt Platz 1
+        prefs.remove("theme_set");            // Löscht THEME-Marker
+
+        Vordergrund = fg;
+        Hintergrund = bg;
+        fbcolor(Vordergrund, Hintergrund);    // Farben setzen
+        break;
       }
-      byte bg = get_value();
-      
-      prefs.putUChar("color_fg", fg);       // Ersetzt Platz 0
-      prefs.putUChar("color_bg", bg);       // Ersetzt Platz 1
-      prefs.remove("theme_set");            // Löscht THEME-Marker 
-      
-      Vordergrund = fg;
-      Hintergrund = bg;
-      fbcolor(Vordergrund, Hintergrund);    // Farben setzen
-      break;
-    }
 
     case OPT_THEME: {
-      byte theme_num = get_value();
-      prefs.putUChar("theme_num", theme_num); // Theme nummer
-      prefs.putBool("theme_set", true);       // THEME_SET-Marker
-      set_theme(theme_num, -1);
-      prefs.putUChar("color_fg", Vordergrund);       // Farbe setzen
-      prefs.putUChar("color_bg", Hintergrund);       // Farbe setzen
-      prefs.putUChar("font", (byte)fontsatz); // Ersetzt Platz 2
-      break;
-    }
+        byte theme_num = get_value();
+        prefs.putUChar("theme_num", theme_num); // Theme nummer
+        prefs.putBool("theme_set", true);       // THEME_SET-Marker
+        set_theme(theme_num, -1);
+        prefs.putUChar("color_fg", Vordergrund);       // Farbe setzen
+        prefs.putUChar("color_bg", Hintergrund);       // Farbe setzen
+        prefs.putUChar("font", (byte)fontsatz); // Ersetzt Platz 2
+        break;
+      }
 
-    case OPT_PATH: { 
-      cmd_chdir();
-      prefs.putString("sd_path", sd_pfad);   // Speichert den Pfad 
-      break;
-    }
+    case OPT_PATH: {
+        cmd_chdir();
+        prefs.putString("sd_path", sd_pfad);   // Speichert den Pfad
+        break;
+      }
 
     default:
       prefs.end();
@@ -7921,17 +7943,18 @@ void drawing_text(int fnt, int x_text, int y_text)
 //#######################################################################################################################################
 //------------------------------------------------ Befehl WIN(nr,x,y,xx,yy,color) -------------------------------------------------------
 //#######################################################################################################################################
-
-int win(void) {
+int win() {
   char c;
   int nr, a, vv, vh;
 
   vv = GFX.getHeight();
   vh = GFX.getWidth();
-  if (*txtpos == NL || *txtpos == ':') {                   //WINDOW ohne Parameter setzt das Hauptfenster
-    if (Frame_nr) {                                        //befinde ich mich in einem Fenster? dann Cursor-Positon merken
-      Frame_curtmpx[Frame_nr] = tc.getCursorCol();
-      Frame_curtmpy[Frame_nr] = tc.getCursorRow();
+
+  if (*txtpos == NL || *txtpos == ':') {                   // WINDOW ohne Parameter setzt das Hauptfenster
+    if (Frame_nr > 0) {                                    // Befinde ich mich in einem aktiven Fenster (1-5)?
+      // Cursor-Position im struct merken (Index verschoben um -1)
+      frames[Frame_nr - 1].curtmpx = tc.getCursorCol();
+      frames[Frame_nr - 1].curtmpy = tc.getCursorRow();
     }
 
     Frame_nr = 0;
@@ -7939,12 +7962,14 @@ int win(void) {
     return 0;
   }
 
-  if (Test_char('(')) return 1;                             //Window(nr) ->setze Fenster
-  if (Frame_nr) {                                           //befinde ich mich in einem Fenster? dann Cursor-Positon merken
-    Frame_curtmpx[Frame_nr] = tc.getCursorCol();
-    Frame_curtmpy[Frame_nr] = tc.getCursorRow();
+  if (Test_char('(')) return 1;                            // Window(nr) -> setze Fenster
+
+  if (Frame_nr > 0) {                                      // Befinde ich mich in einem aktiven Fenster?
+    frames[Frame_nr - 1].curtmpx = tc.getCursorCol();
+    frames[Frame_nr - 1].curtmpy = tc.getCursorRow();
   }
-  nr = abs(get_value());                                    //Fensternummer empfangen
+
+  nr = abs(get_value());                                   // Fensternummer empfangen (1 bis 5)
 
   if (nr < 0) {
     syntaxerror(valmsg);
@@ -7952,155 +7977,176 @@ int win(void) {
   }
 
   if (nr > 5) nr = 5;
-  Frame_nr = nr;                                            //setze aktuelles Fenster
+  Frame_nr = nr;                                           // Setze aktuell gewähltes Fenster (0=Haupt, 1-5=Subfenster)
+  Frame* currentFrame = (nr > 0) ? &frames[nr - 1] : nullptr;
+
   if (*txtpos == ')') {
     txtpos++;
 
-    if (nr == 0) {                                          //Window(0) setzt ebenfalls das Hauptfenster
+    if (nr == 0) {                                         // Window(0) setzt ebenfalls das Hauptfenster
       Frame_nr = 0;
       win_set_cursor(0);
       return 0;
     }
 
-    Terminal.enableCursor(false);                           //Cursor ausschalten um Fehldarstellungen zu verhindern
-    make_win(nr, Frame_col[nr]);                            //fenster neu zeichnen
-    fbcolor(Frame_vcol[nr], Frame_hcol[nr]);                //Vordergrund und Hintergrundfarbe des Fensters setzen
-    if (Frame_title[nr]) {
-      strcpy(tempstring, Frame_ttext[nr]);
-      drawing_text(fontsatz, Frame_x[nr] + x_char[fontsatz], Frame_y[nr] - 3);
+    Terminal.enableCursor(false);                          // Cursor ausschalten um Fehldarstellungen zu verhindern
+    make_win(nr, currentFrame->col);                       // Fenster neu zeichnen
+    fbcolor(currentFrame->vcol, currentFrame->hcol);       // Vordergrund und Hintergrundfarbe des Fensters setzen
+
+    if (currentFrame->title) {
+      strcpy(tempstring, currentFrame->ttext);
+      drawing_text(fontsatz, currentFrame->x + x_char[fontsatz], currentFrame->y - 3);
     }
-    tc.setCursorPos(Frame_curtmpx[nr], Frame_curtmpy[nr]);  //Cursorposition setzen
-    Terminal.enableCursor(onoff);                           //Cursor in vorherigen Zustand setzen
+
+    tc.setCursorPos(currentFrame->curtmpx, currentFrame->curtmpy); // Cursorposition setzen
+    Terminal.enableCursor(onoff);                          // Cursor in vorherigen Zustand setzen
     return 0;
   }
 
   if (Test_char(',')) return 1;
+  if (nr == 0) return 1;                                    //Hauptfenster? dann zurück
+
   a = get_value();
-  Frame_x[nr] = abs(a * x_char[fontsatz]);
-  if (Frame_x[nr] > vh) Frame_xx[nr] = vh;
+  currentFrame->x = abs(a * x_char[fontsatz]);
+  if (currentFrame->x > vh) currentFrame->xx = vh; // Hinweis: Im Original stand hier x > vh -> xx = vh. So beibehalten.
 
   if (Test_char(',')) return 1;
 
   a = get_value();
-  Frame_y[nr] = abs(a * y_char[fontsatz]);
-  if (Frame_y[nr] > vv ) Frame_y[nr] = vv;
+  currentFrame->y = abs(a * y_char[fontsatz]);
+  if (currentFrame->y > vv) currentFrame->y = vv;
 
-  if (Test_char(',')) return 1;                             //Fenster erstellen
+  if (Test_char(',')) return 1;                            // Fenster Dimensionen weiter einlesen
 
   a = get_value();
-  Frame_xx[nr] = abs(a * x_char[fontsatz]);
-  if (Frame_xx[nr] > vh) Frame_xx[nr] = vh;
+  currentFrame->xx = abs(a * x_char[fontsatz]);
+  if (currentFrame->xx > vh) currentFrame->xx = vh;
 
   if (Test_char(',')) return 1;
 
   a = get_value();
-  Frame_yy[nr] = abs(a * y_char[fontsatz]);
-  if (Frame_yy[nr] > vv ) Frame_y[nr] = vv;
+  currentFrame->yy = abs(a * y_char[fontsatz]);
+  if (currentFrame->yy > vv) currentFrame->y = vv;         // Hinweis: Im Original stand hier y = vv. So beibehalten.
 
-  if (*txtpos == ',') {                                                //optionale Werte
+  if (*txtpos == ',') {                                    // Optionale Werte
     txtpos++;
-    Frame_col[nr] = get_value();                                       //optionale Rahmen-Farbe
+    currentFrame->col = get_value();                       // Optionale Rahmen-Farbe
 
     if (*txtpos == ',') {
       txtpos++;
-      get_value();                                                     //optionaler Fenstertitel
-      Frame_title[nr] = true;
-      strcpy(Frame_ttext[nr], tempstring);
+      get_value();                                         // Optionaler Fenstertitel (wird in tempstring geladen)
+      currentFrame->title = true;
+      strcpy(currentFrame->ttext, tempstring);
     }
   }
   if (Test_char(')')) return 1;
 
-  Frame_vcol[nr] = Vordergrund;                                        //Vordergrund und Hintergrundfarbe wie Hauptfenster
-  Frame_hcol[nr] = Hintergrund;
+  currentFrame->vcol = Vordergrund;                        // Vordergrund und Hintergrundfarbe wie Hauptfenster
+  currentFrame->hcol = Hintergrund;
 
-  make_win(nr, Frame_col[Frame_nr]);                                   //Fenster erstellen
-  win_cls(nr);                                                         //Fensterinhalt löschen
-  fbcolor(Frame_vcol[nr], Frame_hcol[nr]);                             //Vordergrund und Hintergrundfarbe des Fensters setzen
-  if (Frame_title[nr]) {
-    drawing_text(fontsatz, Frame_x[nr] + x_char[fontsatz], Frame_y[nr] - (y_char[fontsatz] / 2) + 1);
+  make_win(nr, currentFrame->col);                         // Fenster erstellen
+  win_cls(nr);                                             // Fensterinhalt löschen
+  fbcolor(currentFrame->vcol, currentFrame->hcol);         // Vordergrund und Hintergrundfarbe des Fensters setzen
+
+  if (currentFrame->title) {
+    drawing_text(fontsatz, currentFrame->x + x_char[fontsatz], currentFrame->y - (y_char[fontsatz] / 2) + 1);
   }
 
-  win_dimension(nr);                                                   //Cursorposition errechnen
-  win_set_cursor(Frame_nr);                                            //Cursor setzen
+  win_dimension(nr);                                       // Cursorposition errechnen
+  win_set_cursor(Frame_nr);                                // Cursor setzen
 
   return 0;
-
 }
 
 //----------------------------------------------- Window-Cursor-Initialwerte errechnen --------------------------------------------------
-
-void win_dimension(int nr)                                            //Cursor-Initial-Koordinaten errechnen
+void win_dimension(int nr) // Cursor-Initial-Koordinaten errechnen
 {
-  Frame_curx[nr] = (Frame_x[nr] / x_char[fontsatz]) + 2;
-  Frame_cury[nr] = (Frame_y[nr] / y_char[fontsatz]) + 2;
+  if (nr < 1 || nr > MAX_FRAMES) return;
+  Frame* currentFrame = &frames[nr - 1];
+  currentFrame->curx = (currentFrame->x / x_char[fontsatz]) + 2;
+  currentFrame->cury = (currentFrame->y / y_char[fontsatz]) + 2;
 }
-
 //----------------------------------------------- Window-Rahmen erstellen ---------------------------------------------------------------
-void make_win(int nr, int col) {                                      //Fensterrahmen erstellen
-  if (col > -1) {                                                     //Werte > -1 erzeugen einen farbigen Rahmen, -1=Rahmen unsichtbar
+void make_win(int nr, int col) {                                      // Fensterrahmen erstellen
+  if (nr < 1 || nr > MAX_FRAMES) return;
+  Frame* currentFrame = &frames[nr - 1];
+
+  if (col > -1) {                                                     // Werte > -1 erzeugen einen farbigen Rahmen, -1=Rahmen unsichtbar
     fcolor(col);
-    GFX.drawRectangle(Frame_x[nr], Frame_y[nr], Frame_xx[nr], Frame_yy[nr]);
+    GFX.drawRectangle(currentFrame->x, currentFrame->y, currentFrame->xx, currentFrame->yy);
     fcolor(Vordergrund);
   }
 }
 
 //----------------------------------------------- Window-Cursor setzen ------------------------------------------------------------------
-
-void win_set_cursor(int nr) {                                         //Cursor im Fenster setzen
-  fbcolor(Frame_vcol[nr], Frame_hcol[nr]);
-  Frame_curtmpx[nr] = Frame_curx[nr];
-  Frame_curtmpy[nr] = Frame_cury[nr];
-  tc.setCursorPos(Frame_curx[nr], Frame_cury[nr]);
+void win_set_cursor(int nr) {                                         // Cursor im Fenster setzen
+  if (nr == 0) {
+    // Sonderfall Hauptfenster: Nutzt globale Farbvariablen
+    fbcolor(Vordergrund, Hintergrund);
+    tc.setCursorPos(0, 0);
+  }
+  else if (nr >= 1 && nr <= MAX_FRAMES) {
+    // Subfenster 1 bis 5: Nutzt die Struktur (Index-Verschiebung -1)
+    Frame* currentFrame = &frames[nr - 1];
+    fbcolor(currentFrame->vcol, currentFrame->hcol);
+    currentFrame->curtmpx = currentFrame->curx;
+    currentFrame->curtmpy = currentFrame->cury;
+    tc.setCursorPos(currentFrame->curx, currentFrame->cury);
+  }
 }
 
 //----------------------------------------------- Window-Parameter löschen --------------------------------------------------------------
-void del_window(void) {                                             //Fensterparameter löschen
-  for (int i = 1; i < 6; i++) {
-    Frame_x[i]        = 0;
-    Frame_y[i]        = 0;
-    Frame_xx[i]       = 0;
-    Frame_yy[i]       = 0;
-    Frame_curx[i]     = 0;              //X-Cursor Initialwert
-    Frame_curtmpx[i]  = 0;              //X-Cursor temporärer Wert
-    Frame_curtmpy[i]  = 0;              //Y-Cursor temporärer Wert
-    Frame_cury[i]     = 0;              //Y-Cursor Initialwert
-    Frame_col[i]      = 0;
-    Frame_vcol[i]     = Vordergrund;
-    Frame_hcol[i]     = Hintergrund;
-    Frame_title[i]    = false;
-    memset(Frame_ttext[i], '\0', sizeof(Frame_ttext[i]));  //Fenster-Titel-String
+void del_window(void) {                                             // Fensterparameter löschen
+  for (int i = 0; i < MAX_FRAMES; i++) {
+    frames[i].x        = 0;
+    frames[i].y        = 0;
+    frames[i].xx       = 0;
+    frames[i].yy       = 0;
+    frames[i].curx     = 0;              // X-Cursor Initialwert
+    frames[i].curtmpx  = 0;              // X-Cursor temporärer Wert
+    frames[i].curtmpy  = 0;              // Y-Cursor temporärer Wert
+    frames[i].cury     = 0;              // Y-Cursor Initialwert
+    frames[i].col      = 0;
+    frames[i].vcol     = Vordergrund;
+    frames[i].hcol     = Hintergrund;
+    frames[i].title    = false;
+    memset(frames[i].ttext, '\0', sizeof(frames[i].ttext));  // Fenster-Titel-String leeren
   }
 }
 
 //----------------------------------------------- Window-Fensterinhalt eine Zeile nach oben scrollen ------------------------------------
 void move_up(int nr) {
+  if (nr < 1 || nr > MAX_FRAMES) return;
+  Frame* currentFrame = &frames[nr - 1];
   int vx, vy, bx, by, cx, cy;
-  fbcolor(Frame_vcol[nr], Frame_hcol[nr]);                                                                //Fensterfarben setzen
-  Terminal.enableCursor(false);                                                                           //Cursor abschalten
-  vx = Frame_x[nr] + x_char[fontsatz];
-  vy = Frame_y[nr] + y_char[fontsatz] + y_char[fontsatz];
-  bx = Frame_x[nr] + x_char[fontsatz];
-  by = Frame_y[nr] + y_char[fontsatz];
-  cx = Frame_xx[nr] - Frame_x[nr];
-  cy = Frame_yy[nr] - Frame_y[nr] - y_char[fontsatz] - y_char[fontsatz];
-  GFX.copyRect(vx, vy, bx, by, cx, cy);                                                                   //Bereich 2.Zeile bis letzte Zeile eine Zeile höher kopieren
-  GFX.fillRectangle(Frame_x[nr] + 1, Frame_yy[nr] - y_char[fontsatz], Frame_xx[nr] - 1, Frame_yy[nr] - 1); //letzte Zeile löschen
-  Terminal.enableCursor(onoff);                                                                           //Cursor wieder in vorherigen Zustand versetzen
+  // Fensterfarben setzen
+  fbcolor(currentFrame->vcol, currentFrame->hcol);
+  Terminal.enableCursor(false); // Cursor abschalten
+  vx = currentFrame->x + x_char[fontsatz];
+  vy = currentFrame->y + y_char[fontsatz] + y_char[fontsatz];
+  bx = currentFrame->x + x_char[fontsatz];
+  by = currentFrame->y + y_char[fontsatz];
+  cx = currentFrame->xx - currentFrame->x;
+  cy = currentFrame->yy - currentFrame->y - y_char[fontsatz] - y_char[fontsatz];
+  // Bereich 2. Zeile bis letzte Zeile eine Zeile höher kopieren
+  GFX.copyRect(vx, vy, bx, by, cx, cy);
+  // Letzte Zeile löschen
+  GFX.fillRectangle(currentFrame->x + 1, currentFrame->yy - y_char[fontsatz], currentFrame->xx - 1, currentFrame->yy - 1);
+  Terminal.enableCursor(onoff); // Cursor wieder in vorherigen Zustand versetzen
 }
-
 //------------------------------------------------ CLS im Window ------------------------------------------------------------------------
-
 void win_cls(int nr) {
-  int zeilen;
-  fbcolor(Frame_vcol[nr], Frame_hcol[nr]);
-  Terminal.enableCursor(false);                                                             //Cursor abschalten um Fehldarstellungen zu verhindern
-  GFX.fillRectangle(Frame_x[nr] + 1, Frame_y[nr] + 1, Frame_xx[nr] - 1, Frame_yy[nr] - 1);  //Fensterbereich innerhalb des Rahmens löschen
-  if (Frame_title[nr]) {                                                                    //Titel vorhanden?
-    strcpy(tempstring, Frame_ttext[nr]);                                                    //Titeltext nach tempstring kopieren
-    drawing_text(fontsatz, Frame_x[nr] + x_char[fontsatz], Frame_y[nr] - 3);                //Titeltext ausgeben
+  if (nr < 1 || nr > MAX_FRAMES) return;
+  Frame* currentFrame = &frames[nr - 1];
+  fbcolor(currentFrame->vcol, currentFrame->hcol);
+  Terminal.enableCursor(false);                                                             // Cursor abschalten um Fehldarstellungen zu verhindern
+  GFX.fillRectangle(currentFrame->x + 1, currentFrame->y + 1, currentFrame->xx - 1, currentFrame->yy - 1);
+  if (currentFrame->title) {                                                                // Titel vorhanden?
+    strcpy(tempstring, currentFrame->ttext);                                                // Titeltext nach tempstring kopieren
+    drawing_text(fontsatz, currentFrame->x + x_char[fontsatz], currentFrame->y - 3);        // Titeltext ausgeben
   }
-  win_set_cursor(nr);                                                                       //initial Cursorposition im Fenster setzen
-  Terminal.enableCursor(onoff);                                                             //Cursor wieder setzen
+  win_set_cursor(nr);                                                                       // Initial Cursorposition im Fenster setzen
+  Terminal.enableCursor(onoff);                                                             // Cursor wieder setzen
 }
 
 
