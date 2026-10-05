@@ -1,0 +1,104 @@
+SMS/GG Emulator for TTGO VGA32 - Summary of Changes
+====================================================
+
+This document lists all modifications made to pre-existing files from the original emulator source code to adapt it for the TTGO VGA32 board with VGA output, PS/2 keyboard input, and DAC audio.
+
+-------------------------------------------------------------------------------
+FILE: render.c
+-------------------------------------------------------------------------------
+
+CHANGES:
+- Added #include directives for VGA integration
+- Added global variable: void* g_vga_display = NULL
+- Added static function: render_to_vga() - converts line buffer to VGA format
+- Modified palette_sync() - now calls vga_update_palette() to sync colors with VGA display
+- Added render_set_vga_mode() function to enable/disable VGA output
+- Integrated VGA draw call in render_line() when VGA mode is enabled
+
+PURPOSE:
+Connect the SMS renderer to the VGA output system and enable real-time palette updates.
+
+-------------------------------------------------------------------------------
+FILE: sms.c
+-------------------------------------------------------------------------------
+
+CHANGES:
+- Added vga_display pointer to t_sms structure (implicitly via shared.h extension)
+- Added function: sms_set_vga_display(void* display)
+- Modified sms_init() to initialize vga_display to NULL
+- Added global g_vga_display reference
+
+PURPOSE:
+Allow the SMS core to know about and communicate with the VGA display object.
+
+-------------------------------------------------------------------------------
+FILE: system.c
+-------------------------------------------------------------------------------
+
+CHANGES:
+- Modified audio_init() to use SMS-specific sample rate (15720 Hz for NTSC)
+- Changed buffer size calculation: rate == 15720 ? 262 : 312 samples
+- Removed I2S audio initialization (moved to main sketch)
+- Simplified snd structure initialization
+
+PURPOSE:
+Configure audio for native SMS timing rather than generic rates.
+
+-------------------------------------------------------------------------------
+FILE: sn76496.c
+-------------------------------------------------------------------------------
+
+CHANGES:
+- Replaced generic volume table with PSGVolumeValues[] measured from real SMS hardware
+- Removed 4x volume multiplier that was causing audio distortion
+- PSGVolumeValues range: 32767 down to 0 (15 steps)
+- Maintained proper noise channel feedback (FB_WNOISE = 0x12000, FB_PNOISE = 0x08000)
+
+PURPOSE:
+Achieve authentic PSG audio volume levels matching original Sega Master System hardware.
+
+
+-------------------------------------------------------------------------------
+FILE: vga_6bit.cpp
+-------------------------------------------------------------------------------
+
+CHANGES:
+- Modified set_active_framebuffer() to support screen offset parameter
+- Added vga_set_buffer_needs_update() function
+- Optimized DMA descriptor linking for smoother video output
+- Removed unnecessary delays in buffer swapping
+
+PURPOSE:
+Improve VGA output stability and add support for horizontal screen offset adjustments.
+
+-------------------------------------------------------------------------------
+FILE: vga_6bit.h
+-------------------------------------------------------------------------------
+
+CHANGES:
+- Added vga_set_buffer_needs_update() declaration
+- Added inline comments for 6-bit color definitions specific to TTGO VGA32
+- Documented pin mapping expectations
+
+PURPOSE:
+Provide updated API for buffer management.
+
+
+-------------------------------------------------------------------------------
+SUMMARY BY CATEGORY
+-------------------------------------------------------------------------------
+
+Core Emulator Modifications (7 files):
+- render.c
+- sms.c
+- system.c
+- sn76496.c
+
+VGA Library Modifications (2 files):
+- vga_6bit.cpp
+- vga_6bit.h
+
+
+-------------------------------------------------------------------------------
+END OF DOCUMENT
+-------------------------------------------------------------------------------

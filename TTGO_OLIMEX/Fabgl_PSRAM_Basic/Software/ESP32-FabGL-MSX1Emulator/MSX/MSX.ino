@@ -96,7 +96,7 @@
 
 #define USE_FDC
 
-// TTGO VGA32, 
+// TTGO VGA32, Olimex-SBC
 #define SD_SCLK 14
 #define SD_MISO 35 //2
 #define SD_MOSI 12
@@ -1407,6 +1407,10 @@ String showFileSelector(const char* title, const char* dirPath, const char* ext)
   while (File file = dir.openNextFile()) {
     if (!file.isDirectory()) {
       String name = file.name();
+      if (name.startsWith("._")) {   //Mac-Dateifilter
+        file.close();
+        continue; 
+      }
       String lowerName = name;
       lowerName.toLowerCase();
       String lowerExt = String(ext);
