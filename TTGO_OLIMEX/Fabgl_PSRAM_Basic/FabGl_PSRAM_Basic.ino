@@ -10,7 +10,7 @@
 //      PS2Controller IRQ (clock) to ESP32 pin 33;                                                                                                //
 //      VGA RGB to ESP32 pin 21,22, 18,19 und 4,5                                                                                                 //
 //      VGA Hsync und Vsync am ESP32 pins 23 und 15                                                                                               //
-//      SD-Card 14, 35, 12, 13 (SCK, MISO, MOSI, CS)             OLIMEX-SBC   siehe cfg.h                                                         //
+//      SD-Card 14,35, 12, 13 (SCK, MISO, MOSI, CS)             OLIMEX-SBC   siehe cfg.h                                                          //
 //      SD-Card 14, 2, 12, 13 (SCK, MISO, MOSI, CS)              TTGO 1.4                                                                         //
 //                                                                                                                                                //
 //      Compiler-Einstellungen : CPU-Freq=240MHz, PSRAM=Enabled, Partitionscheme=Minimal SPIFFS 1,9MB with OTA/190kB SPIFFS                       //
@@ -56,6 +56,7 @@
 //                            -Fehler in Renum-Befehl behoben - load_adress hatte falschen wert (0x0 statt 0x10000)
 //                            -dadurch wurde nach der Renumfunktion der Bearbeitungsspeicher in den Ram geladen statt des geänderten Programms (an Adresse 0x10000)
 //                            -Window-Parameter auf struct umgestellt
+//                            -Erweiterung Datei-Explorer -> Anzeige der Dateigrössen
 //                            -42318 Zeilen/sek.
 //
 //
@@ -150,6 +151,13 @@ SPIClass spiSD(HSPI);
 File fp;
 #include <vector>
 #include <algorithm>
+
+struct Eintrag {
+  String name;
+  bool istOrdner;
+  String groesseStr;
+};
+std::vector<Eintrag> combinedList;
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 //------------------------------------- OTA-Update-Lib --------------------------------------------------------------------------------------------
 #include <Update.h>
@@ -5713,7 +5721,8 @@ void zeichneGeruest() {
 }
 
 
-void zeichneCustomExplorer(const std::vector<String>& dateiListe, int ausgewaehlterIndex, int startSchnitt) {
+
+void zeichneCustomExplorer(const std::vector<Eintrag>& dateiListe, int ausgewaehlterIndex, int startSchnitt) {
   int maxSichtbar = 16;
   bcolor(3);
   // 1. Hintergrund löschen, wenn gescrollt wurde ODER der Explorer frisch geöffnet wurde
@@ -5739,7 +5748,8 @@ void zeichneCustomExplorer(const std::vector<String>& dateiListe, int ausgewaehl
       }
       // Text zeichnen
       if (letzterAusgewaehlterIndex == -1 || (int)i == ausgewaehlterIndex || (int)i == letzterAusgewaehlterIndex) {
-        GFX.drawText(&fabgl::FONT_6x8, 35, yPos, dateiListe[i].c_str());
+        GFX.drawText(&fabgl::FONT_6x8, 35, yPos, combinedList[i].name.c_str());
+        GFX.drawText(&fabgl::FONT_6x8, 220, yPos, combinedList[i].groesseStr.c_str());
       }
       // Neuen Auswahlbalken setzen
       if ((int)i == ausgewaehlterIndex && ausgewaehlterIndex != letzterAusgewaehlterIndex) {
@@ -5764,7 +5774,7 @@ bool starteGrafischenExplorer(char ext[]) {
     return false;
   }
 
-  std::vector<String> combinedList;
+   //std::vector<String> combinedList;
   int aktuellerIndex = 0;
   int maxSichtbar = 16;
   int startSchnitt = 0;
@@ -5794,8 +5804,10 @@ verzeichnis_laden:
   }
   dir.seek(0);
 
-  std::vector<String> folderList;
-  std::vector<String> fileList;
+  //std::vector<String> folderList;
+  //std::vector<String> fileList;
+  std::vector<Eintrag> folderList;
+  std::vector<Eintrag> fileList;
   int anzahlOrdner = 0;
   int anzahlDateien = 0;
 
@@ -5820,20 +5832,38 @@ verzeichnis_laden:
       entry.close();
       continue;
     }
+    
+    Eintrag neuerEintrag;
     if (entry.isDirectory()) {
-      folderList.push_back("[" + cbuf + "]"); // Ordner optisch kennzeichnen
+      neuerEintrag.name = "[" + cbuf + "]"; // Ordner optisch kennzeichnen
+      neuerEintrag.istOrdner = true;
+      neuerEintrag.groesseStr = "<DIR>";
+      folderList.push_back(neuerEintrag);
       anzahlOrdner++;
     } else {
-      fileList.push_back(cbuf);
+      neuerEintrag.name = cbuf;
+      neuerEintrag.istOrdner = false;
+      
+      // Dateigröße auslesen und lesbar formatieren
+      uint32_t bytes = entry.size();
+      if (bytes < 1024) {
+        neuerEintrag.groesseStr = String(bytes) + " B";
+      } else if (bytes < 1024 * 1024) {
+        neuerEintrag.groesseStr = String((float)bytes / 1024.0, 1) + " KB";
+      } else {
+        neuerEintrag.groesseStr = String((float)bytes / (1024.0 * 1024.0), 1) + " MB";
+      }
+      
+      fileList.push_back(neuerEintrag);
       anzahlDateien++;
     }
     entry.close();
     yield();
   }
 
-  auto compCaseInsensitive = [](const String & a, const String & b) {
-    String a_upper = a; a_upper.toUpperCase();
-    String b_upper = b; b_upper.toUpperCase();
+  auto compCaseInsensitive = [](const Eintrag & a, const Eintrag & b) {//(const String & a, const String & b) {
+    String a_upper = a.name; a_upper.toUpperCase();
+    String b_upper = b.name; b_upper.toUpperCase();
     return a_upper < b_upper;
   };
 
@@ -5924,7 +5954,7 @@ verzeichnis_laden:
 
     // DEL-Taste zum Löschen von Dateien
     else if ( c == 0x2 ) {
-      cbuf = String(combinedList[aktuellerIndex]);
+      cbuf = String(combinedList[aktuellerIndex].name);
       cbuf.toCharArray(tempstring, cbuf.length() + 1);
       GFX.drawText(&fabgl::FONT_6x8, 55, 48, ("Delete File? y/n - " + String(tempstring)).c_str());
       if ( wait_key(false) == 'y') {
@@ -5948,7 +5978,7 @@ verzeichnis_laden:
 
     // ENTER (Datei laden ODER Ordner öffnen)
     else if (c == 13 && !combinedList.empty()) {
-      String auswahl = combinedList[aktuellerIndex];
+      String auswahl = combinedList[aktuellerIndex].name;
 
       if (auswahl.startsWith("[") && auswahl.endsWith("]")) {
         String ordnerName = auswahl.substring(1, auswahl.length() - 1);  // Ordnername extrahieren
@@ -5980,7 +6010,7 @@ verzeichnis_laden:
 
   if (erfolg) {
     // Kopiere den echten Dateinamen ohne Ordner-Klammern nach tempstring
-    cbuf = String(combinedList[aktuellerIndex]);
+    cbuf = String(combinedList[aktuellerIndex].name);
     cbuf.toCharArray(tempstring, cbuf.length() + 1);
     String vollerPfad = String(sd_pfad);
     // Falls nicht im Root "/" , Slash zwischen Ordner und Datei

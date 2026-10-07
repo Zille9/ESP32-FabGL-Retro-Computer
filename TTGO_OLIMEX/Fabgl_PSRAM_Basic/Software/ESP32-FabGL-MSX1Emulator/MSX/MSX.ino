@@ -1,4 +1,4 @@
-/*
+/*https://github.com/KureIchiro/ESP32-FabGL-MSX1Emulator/blob/main/MSX/MSX.ino
  * ============================================================================
  *  MSX Emulator for ESP32 (Work in Progress)
  * ============================================================================
@@ -82,6 +82,10 @@
 #include "tms9918a.h"
 #include "Z80.h"
 #include "KeyboardSystem.hpp"
+
+//------------------------------------- OTA-Update-Lib --------------------------------------------------------------------------------------------
+#include <Update.h>
+//-------------------------------------------------------------------------------------------------------------------------------------------------
 
 //Please select one of the following options.
 #define KEYBORD_MAP (KeyboardLayout::GERMAN)
@@ -1447,10 +1451,14 @@ String showFileSelector(const char* title, const char* dirPath, const char* ext)
       canvas->swapBuffers();
       redrawn = false;
     }
-
+    
+    canvas->drawText(20, 185, "F12 - Quit");
     if (kb) {
       while (kb->scancodeAvailable() > 0) {
         int sc = kb->getNextScancode(0);
+        
+        //Serial.println(sc);  //Tastencode anzeigen
+        
         if (sc == 0xF0) {
           isBreak = true;
           continue;
@@ -1459,10 +1467,10 @@ String showFileSelector(const char* title, const char* dirPath, const char* ext)
 
         if (!isBreak) {
           if (sc == 0x75 && cursor > 0) {
-            cursor--;
+            cursor--;               //hoch
             redrawn = true;
           } else if (sc == 0x72 && cursor < (int)files.size() - 1) {
-            cursor++;
+            cursor++;               //runter
             redrawn = true;
           } else if (sc == 0x76) {  // ESC
             clearCanvasDouble();
@@ -1472,6 +1480,8 @@ String showFileSelector(const char* title, const char* dirPath, const char* ext)
             String res = files[cursor];
             clearCanvasDouble();
             return res;
+          } else if (sc == 0x07) {  // F12 - Basic laden
+            load_binary();
           }
         }
         isBreak = false;
@@ -2111,6 +2121,40 @@ void updateAllSound() {
 //     canvas->drawRectangle(x, y + 2, x + 6, y + 5);
 //   }
 // }
+
+//------------------------------------- Loader für Bin-Dateien -----------------------------------------------------------------------------
+void performUpdate(Stream &updateSource, size_t updateSize) {
+  //timer_pause(TIMER_GROUP_0, TIMER_0);       // Stoppt den Hardware-Zähler
+  //timer_disable_intr(TIMER_GROUP_0, TIMER_0); // Deaktiviert den Alarm-Interrupt
+
+  if (Update.begin(updateSize, U_FLASH)) {
+    size_t written = Update.writeStream(updateSource);
+    if (Update.end()) {
+      if (Update.isFinished()) {
+        delay(1000);
+        ESP.restart();
+      }
+    }
+  }
+}
+//*********************************
+void load_binary() {
+
+  if ( !SD.exists("/basic.bin") ) Serial.println("Basic.bin not found!");
+  File updateBin = SD.open("/basic.bin");
+  Serial.println("load Basic...");
+  canvas->drawText(130, 185, "Load Basic...");
+  if (updateBin) {
+    size_t updateSize = updateBin.size();
+    Serial.println(updateSize, DEC);
+    if (updateSize > 0) {
+      performUpdate(updateBin, updateSize);
+    }
+    updateBin.close();
+  }
+}
+
+
 
 void loop() {
   if (frameReady) {
