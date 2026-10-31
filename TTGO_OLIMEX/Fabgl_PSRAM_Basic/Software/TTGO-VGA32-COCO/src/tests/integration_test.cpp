@@ -919,8 +919,7 @@ void CoCo3IntegrationTest::record(const char* name, bool passed) {
 bool CoCo3IntegrationTest::test_mmu_identity_map() {
     TCC1014* g = &machine->gime;
     tcc1014_reset(g);
-    g->ram = machine->ram_physical;
-    g->ram_size = COCO3_PHYSICAL_RAM;
+    tcc1014_set_ram(g, machine->ram_physical, COCO3_PHYSICAL_RAM);
 
     for (int i = 0; i < 8; i++) {
         if (g->mmu_bank[i] != (0x38 | i)) return false;
@@ -939,8 +938,7 @@ bool CoCo3IntegrationTest::test_mmu_identity_map() {
 bool CoCo3IntegrationTest::test_mmu_bank_isolation() {
     TCC1014* g = &machine->gime;
     tcc1014_reset(g);
-    g->ram = machine->ram_physical;
-    g->ram_size = COCO3_PHYSICAL_RAM;
+    tcc1014_set_ram(g, machine->ram_physical, COCO3_PHYSICAL_RAM);
     memset(machine->ram_physical, 0, COCO3_PHYSICAL_RAM);
 
     // Enable MMU
@@ -978,8 +976,7 @@ bool CoCo3IntegrationTest::test_mmu_bank_isolation() {
 bool CoCo3IntegrationTest::test_mmu_task_switch() {
     TCC1014* g = &machine->gime;
     tcc1014_reset(g);
-    g->ram = machine->ram_physical;
-    g->ram_size = COCO3_PHYSICAL_RAM;
+    tcc1014_set_ram(g, machine->ram_physical, COCO3_PHYSICAL_RAM);
 
     // Enable MMU
     tcc1014_write_register(g, 0, 0x40);  // MMUEN=1
@@ -1100,8 +1097,7 @@ bool CoCo3IntegrationTest::test_palette_rw() {
 bool CoCo3IntegrationTest::test_rom_mapping() {
     TCC1014* g = &machine->gime;
     tcc1014_reset(g);
-    g->ram = machine->ram_physical;
-    g->ram_size = COCO3_PHYSICAL_RAM;
+    tcc1014_set_ram(g, machine->ram_physical, COCO3_PHYSICAL_RAM);
 
     // After reset: INIT0=0 → COCO=0, MMUEN=0, MC1=0, MC0=0, TY=0
     // Default banks: 0x38-0x3F (identity), so $8000-$9FFF → bank 0x3C
@@ -1222,8 +1218,7 @@ bool CoCo3IntegrationTest::test_sam_compat() {
 bool CoCo3IntegrationTest::test_vdg_compat_text_rendering() {
     TCC1014* g = &machine->gime;
     tcc1014_reset(g);
-    g->ram = machine->ram_physical;
-    g->ram_size = COCO3_PHYSICAL_RAM;
+    tcc1014_set_ram(g, machine->ram_physical, COCO3_PHYSICAL_RAM);
     memset(machine->ram_physical, 0, COCO3_PHYSICAL_RAM);
 
     // Set VDG compat text mode: COCO=1, MMUEN=0
@@ -1310,8 +1305,7 @@ bool CoCo3IntegrationTest::test_palette_rgb565_mapping() {
 bool CoCo3IntegrationTest::test_scanline_output_width() {
     TCC1014* g = &machine->gime;
     tcc1014_reset(g);
-    g->ram = machine->ram_physical;
-    g->ram_size = COCO3_PHYSICAL_RAM;
+    tcc1014_set_ram(g, machine->ram_physical, COCO3_PHYSICAL_RAM);
     memset(machine->ram_physical, 0, COCO3_PHYSICAL_RAM);
 
     // Set up minimal state for rendering

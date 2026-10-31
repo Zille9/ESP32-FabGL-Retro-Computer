@@ -1,0 +1,221 @@
+   DEF	UNLOCK,SETREG,SCROLL,PAL,POKEV
+
+*	   Equates	   
+VDPWD  EQU  >8C00			   * VDP write data
+VDPWA  EQU  >8C02			   * VDP set read/write address
+FAC	   EQU	>834A
+NUMREF EQU  >200C
+
+*********************************************************************
+*
+* F18A unlock
+* CALL LINK("UNLOCK")     
+*
+UNLOCK LIMI	0
+	   MOV	R11,@SAVERT
+*	   Unlock F18A
+	   LI   R0,>391C			* VR1/57, value 00011100
+	   BL   @VWTR				* Write once
+	   BL   @VWTR				* Write twice, unlock
+	   LI   R0,>01E0			* VR1, value 11100000, a real sane setting
+	   BL   @VWTR				* Write reg
+*	   Return	   
+	   LIMI	2
+	   MOV	@SAVERT,R11
+	   B	*R11
+
+*********************************************************************
+*
+* Set register
+* CALL LINK("SETREG", REG, VALUE)     
+*
+SETREG LIMI	0
+	   MOV	R11,@SAVERT
+*	   Get parameter 1: REG	   
+	   LI	R1,1
+	   BL	@GETINT
+	   MOV	R2,R8
+	   ANDI	R8,>003F
+*	   Get parameter 2: VALUE
+	   LI	R1,2
+	   BL	@GETINT
+	   ANDI	R2,>00FF
+*	   Set register
+	   MOV	R8,R0
+	   SWPB	R0
+	   SOC	R2,R0
+	   BL	@VWTR
+*	   Return	   
+	   LIMI	2
+	   MOV	@SAVERT,R11
+	   B	*R11
+
+*********************************************************************
+*
+* Scroll
+* CALL LINK("SCROLL", X, Y)     
+*
+SCROLL LIMI	0
+	   MOV	R11,@SAVERT
+*	   Get parameter 1: X	   
+	   LI	R1,1
+	   BL	@GETINT
+	   MOV	R2,R8
+	   ANDI	R8,>00FF
+*	   Get parameter 2: Y
+	   LI	R1,2
+	   BL	@GETINT
+	   ANDI	R2,>00FF
+	   CI	R2,192
+	   JLT	SCROL1
+	   AI	R2,-192
+*	   Scroll
+SCROL1 MOV	R8,R0
+	   ORI	R0,>1B00
+	   BL   @VWTR
+	   MOV	R2,R0
+	   ORI	R0,>1C00
+	   BL   @VWTR
+*	   Return	   
+	   LIMI	2
+	   MOV	@SAVERT,R11
+	   B	*R11
+
+*********************************************************************
+*
+* Set palette
+* CALL LINK("PAL", COLOR, R, G, B)     
+*
+PAL	   LIMI	0
+	   MOV	R11,@SAVERT
+*	   Get parameter 1: COLOR	   
+	   LI	R1,1
+	   BL	@GETINT
+	   ANDI	R2,>000F
+	   MOV	R2,R0
+*	   Set data port mode
+	   ORI	R0,>2F80
+	   BL   @VWTR
+*	   Get parameter 2: R
+	   LI	R1,2
+	   BL	@GETINT
+	   ANDI	R2,>000F
+	   SWPB	R2
+	   MOV	R2,R8
+*	   Get parameter 3: G
+	   LI	R1,3
+	   BL	@GETINT
+	   ANDI	R2,>000F
+	   SLA	R2,4
+	   SOC	R2,R8
+*	   Get parameter 4: B
+	   LI	R1,4
+	   BL	@GETINT
+	   ANDI	R2,>000F
+	   SOC	R2,R8
+*	   Write palette entry
+	   MOVB	R8,@VDPWD
+	   SWPB	R8
+	   MOVB	R8,@VDPWD
+*	   Return	   
+	   LIMI	2
+	   MOV	@SAVERT,R11
+	   B	*R11
+
+*********************************************************************
+*
+* Poke VDP RAM
+* CALL LINK("POKEV", ADDR, VALUE)     
+*
+POKEV  LIMI	0
+	   MOV	R11,@SAVERT
+*	   Get parameter 1: ADDR	   	   
+	   LI	R1,1
+	   BL	@GETINT
+	   MOV	R2,R8
+	   ANDI	R8,>3FFF
+*	   Get parameter 2: VALUE
+	   LI	R1,2
+	   BL	@GETINT
+	   ANDI	R2,>00FF
+*	   Poke
+	   MOV	R8,R0
+	   MOV	R2,R1
+	   SWPB	R1
+	   BL	@VSBW
+*	   Return	   
+	   LIMI	2
+	   MOV	@SAVERT,R11
+	   B	*R11
+	   	   	   
+*********************************************************************
+*
+* Get positive integer parameter
+*
+* R1: Parameter number
+*
+* On return R2 contains the parameter value
+* R3-R7 are modified.
+* Note: does not check for overrun
+*
+GETINT CLR	R0
+	   BLWP	@NUMREF				* Get parameters in radix 100
+	   CLR	R2					* Result
+	   CLR	R4
+	   MOVB	@FAC,R4				* Get exponent
+	   SWPB	R4
+	   AI	R4,-64
+	   LI	R5,FAC+1			* Pointer to next byte
+	   LI	R6,100				* Multiplier
+GETIN1 CLR	R7
+	   MOVB	*R5+,R7				* Get next byte
+	   SWPB	R7
+	   A	R7,R2				* Add to result				   
+	   DEC	R4					* Decrement exponent
+	   JLT	GETIN2				* Break if negative
+	   MPY	R6,R2				* Multiply result by 100
+	   MOV	R3,R2				* Move result back into R2
+	   JMP	GETIN1   
+GETIN2 B	*R11
+*// GETINT
+	   
+*********************************************************************
+*
+* VDP Write To Register
+*
+* R0 MSB		VDP register to write to
+* R0 LSB		Value to write
+*
+VWTR   SWPB	R0
+	   MOVB R0,@VDPWA			* Send low byte (value) to write to VDP register
+	   SWPB	R0
+	   ORI  R0,>8000			* Set up a VDP register write operation (10)
+	   MOVB R0,@VDPWA			* Send high byte (address) of VDP register
+	   B	*R11
+*// VWTR
+
+*********************************************************************
+*
+* VDP Single Byte Write
+*
+* R0   Write address in VDP RAM
+* R1   MSB of R1 sent to VDP RAM
+*
+* R0 is modified, but can be restored with: ANDI R0,>3FFF
+*
+VSBW   SWPB	R0
+	   MOVB R0,@VDPWA        	* Send low byte of VDP RAM write address
+	   SWPB	R0
+       ORI  R0,>4000            * Set read/write bits 14 and 15 to write (01)
+       MOVB R0,@VDPWA           * Send high byte of VDP RAM write address
+       MOVB R1,@VDPWD           * Write byte to VDP RAM
+       B    *R11
+*// VSBW
+
+*********************************************************************
+*
+* Data section
+*
+SAVERT DATA	>0000
+
+	   END

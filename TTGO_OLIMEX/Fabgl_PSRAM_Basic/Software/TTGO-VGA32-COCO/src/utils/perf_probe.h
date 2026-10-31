@@ -33,6 +33,7 @@ enum PerfProbeID {
     PROBE_HAL_SCANLINE,        // hal_video_render_scanline_gime (sum)
     PROBE_PUSH_SPRITE,         // hal_video_present_gime body (pushSprite)
     PROBE_AUDIO_SCANLINE,      // hal_audio_capture_scanline (sum)
+    PROBE_SSC,                 // ssc_scanline_tick (sum), Speech/Sound Cartridge
     PROBE_COUNT
 };
 

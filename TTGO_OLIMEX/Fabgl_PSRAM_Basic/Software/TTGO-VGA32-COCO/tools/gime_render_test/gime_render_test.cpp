@@ -47,8 +47,7 @@ static uint32_t rnd(void) {
 
 static void randomize(TCC1014* g) {
     tcc1014_init(g);
-    g->ram = ram;
-    g->ram_size = RAM_SIZE;
+    tcc1014_set_ram(g, ram, RAM_SIZE);
     for (int i = 0; i < 16; i++) tcc1014_write_palette(g, i, rnd() & 0x3F);
 
     // PIA1B shadow: enable DDR then write PDR (GnA/GM2/GM1/GM0/CSS)

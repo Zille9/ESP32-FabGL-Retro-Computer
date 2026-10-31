@@ -219,15 +219,15 @@ build_bootloader() {
 
     local version_string="${VERSION_STRING:-}"
     if [[ -z "$version_string" ]]; then
-        # version.txt is the ONLY thing the bootloader uses to decide whether to
-        # reflash. Fold in `git describe` (captured before the build — see
-        # GIT_DESC above) so two builds of the same FIRMWARE_VERSION never share
-        # a string and silently skip the reflash.
-        version_string="$MENU_NAME.$VERSION${GIT_DESC:+-$GIT_DESC}"
+        # The ESP32_Bootloader requires version.txt to be the bare version
+        # (e.g. 0.12.2) — no menu-name prefix and no git-describe suffix.
+        # Bump FIRMWARE_VERSION in config.h for every build that must reflash:
+        # version.txt is the ONLY thing the bootloader compares.
+        version_string="$VERSION"
     fi
-    case "$version_string" in
+    case "$GIT_DESC" in
     *-dirty)
-        echo "WARNING: version '$version_string' has uncommitted changes — do not release it" >&2
+        echo "WARNING: working tree has uncommitted changes ($GIT_DESC) — do not release this build" >&2
         ;;
     esac
 

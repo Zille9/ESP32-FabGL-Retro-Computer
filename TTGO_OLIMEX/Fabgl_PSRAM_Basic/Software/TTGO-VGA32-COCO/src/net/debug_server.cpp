@@ -32,8 +32,11 @@
 #include "png_writer.h"
 #include "../hal/hal.h"             // hal_video_capture_*
 #include "../core/machine.h"        // g_machine_type, machine types
+#include "../core/speed_meter.h"
 #include "../supervisor/supervisor.h" // supervisor_set_machine_type
 #include "../supervisor/sv_disk.h"
+#include "../core/ssc/ssc.h"
+#include "../core/vhd.h"
 #include "../utils/debug.h"
 #include "../../config.h"           // MACHINE_NAME_COCO2/3, FW version
 
@@ -95,6 +98,10 @@ static const char* machine_name(uint8_t t) {
     return (t == 4) ? MACHINE_NAME_COCO3 : MACHINE_NAME_COCO2;
 }
 
+static const char* cpu_name(uint8_t variant) {
+    return (variant == CPU_VARIANT_HD6309) ? "6309" : "6809";
+}
+
 static void send_json(int code, const String& body) {
     s_server.send(code, "application/json", body);
 }
@@ -126,6 +133,8 @@ static void h_status() {
     String j = "{";
     j += "\"machine_type\":" + String(g_machine_type);
     j += ",\"machine\":\"" + String(machine_name(g_machine_type)) + "\"";
+    j += ",\"cpu\":\"" + String(cpu_name(g_cpu_variant)) + "\"";
+    j += ",\"coco3_ram_kb\":" + String(g_coco3_ram_kb);
     j += ",\"paused\":" + String(debug_rpc_is_paused() ? "true" : "false");
     j += ",\"firmware\":\"" FIRMWARE_VERSION "\"";
     j += ",\"api\":" + String(DEBUG_API_VERSION);
@@ -148,6 +157,53 @@ static void h_status() {
     j += ",\"int8_min\":" + String(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
     j += ",\"int8_largest\":" + String(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
     j += ",\"fps\":" + String(hal_video_get_fps(), 1);
+    // Emulated CPU speed over the last ~1 s of running frames (see speed_meter.h).
+    {
+        SpeedStats sp;
+        speed_meter_get(&sp);
+        j += ",\"speed\":{\"mhz\":" + String(sp.mhz, 4);
+        j += ",\"target_mhz\":" + String(sp.target_mhz, 4);
+        j += ",\"ratio\":" + String(sp.target_mhz > 0 ? sp.mhz / sp.target_mhz : 0.0f, 3);
+        j += ",\"fps\":" + String(sp.fps, 2);
+        j += ",\"rate\":" + String(sp.rate);
+        j += ",\"cycles_per_frame\":" + String(sp.cycles_per_frame);
+        j += ",\"frame_us_avg\":" + String(sp.frame_us_avg);
+        j += ",\"frame_us_max\":" + String(sp.frame_us_max);
+        j += ",\"windows\":" + String(sp.windows) + "}";
+    }
+    // Audio queue diagnostics; ?audio_reset=1 clears them after this read.
+    {
+        HalAudioStats a;
+        hal_audio_get_stats(&a);
+        float mhz = (float)getCpuFrequencyMhz();
+        j += ",\"audio\":{\"commits\":" + String(a.commits);
+        j += ",\"underruns\":" + String(a.underruns);
+        j += ",\"hold_ticks\":" + String(a.hold_ticks);
+        j += ",\"catchup_ticks\":" + String(a.catchup_ticks);
+        j += ",\"overruns\":" + String(a.overruns);
+        j += ",\"fill\":" + String(a.fill);
+        j += ",\"fill_min\":" + String(a.fill_min);
+        j += ",\"fill_max\":" + String(a.fill_max);
+        j += ",\"stride_adj\":" + String(a.stride_adj);
+        j += ",\"commit_us_min\":" + String(a.commit_us_min);
+        j += ",\"commit_us_max\":" + String(a.commit_us_max);
+        j += ",\"isr_us_max\":" + String(a.isr_cyc_max / mhz, 2);
+        j += ",\"isr_gap_us_min\":" + String(a.isr_gap_cyc_min / mhz, 2);
+        j += ",\"isr_gap_us_max\":" + String(a.isr_gap_cyc_max / mhz, 2) + "}";
+        if (s_server.arg("audio_reset") == "1") hal_audio_reset_stats();
+    }
+    // Speech/Sound Cartridge: off, or its counters (see docs/ssc.md).
+    j += ",\"ssc\":{\"enabled\":" + String(ssc_enabled() ? "true" : "false");
+    if (ssc_enabled()) {
+        j += ",\"busy\":" + String(ssc_busy() ? "true" : "false");
+        j += ",\"commands\":" + String(ssc_command_count());
+        j += ",\"allophones\":" + String(ssc_ald_speech_count());
+        j += ",\"ay_writes\":" + String(ssc_ay_write_count());
+        j += ",\"underruns\":" + String(ssc_underruns());
+        j += ",\"queued\":" + String(ssc_queued());
+        j += ",\"stack_free\":" + String(ssc_stack_free());
+    }
+    j += "}";
     // Unused stack of this server task, lowest since boot (bytes).
     j += ",\"srv_stack_free\":" + String(uxTaskGetStackHighWaterMark(nullptr));
     // Emulator/OSD task (Arduino loopTask), lowest unused stack since boot.
@@ -224,6 +280,18 @@ static void h_get_disk() {
         j += "}";
     }
     sv_disk_unlock();
+    // Hard disks: plain fields, changed only by mounts on core 1.
+    j += "],\"hd_enabled\":" + String(vhd_enabled() ? "true" : "false") + ",\"hard_disks\":[";
+    for (int d = 0; d < VHD_NUM_DRIVES; d++) {
+        bool mounted = vhd_is_mounted(d);
+        if (d) j += ",";
+        j += "{\"drive\":\"hd" + String(d) + "\",\"mounted\":" + (mounted ? "true" : "false");
+        if (mounted) {
+            j += ",\"path\":\"" + String(vhd_get_path(d)) + "\"";
+            j += ",\"read_only\":" + String(vhd_is_read_only(d) ? "true" : "false");
+        }
+        j += "}";
+    }
     j += "]}";
     send_json(200, j);
 }
@@ -232,7 +300,10 @@ static void h_post_disk() {
     String op = s_server.arg("op");
     DebugCmd c = {};
     c.type = DBG_CMD_DISK;
-    c.addr = arg_u32("drive", 0);
+    // drive=0-3 for the floppies, drive=hd0 / hd1 for the hard disks
+    String drive = s_server.arg("drive");
+    if (drive.startsWith("hd")) c.addr = SV_DISK_MAX_DRIVES + drive.substring(2).toInt();
+    else                        c.addr = arg_u32("drive", 0);
     String path = s_server.arg("path");
     if (op == "mount") {
         if (path.length() == 0) { send_err(400, "mount needs path"); return; }
@@ -277,6 +348,13 @@ static void h_get_registers() {
     j += ",\"V\":" + String((c.cc & 0x02) ? 1 : 0);
     j += ",\"C\":" + String((c.cc & 0x01) ? 1 : 0);
     j += "}";
+    j += ",\"cpu\":\"" + String(c.cpu == CPU_VARIANT_HD6309 ? "6309" : "6809") + "\"";
+    if (c.cpu == CPU_VARIANT_HD6309) {
+        // E/F are the halves of W; MD bits: 7 div-by-zero, 6 illegal op, 1 FIRQ mode, 0 native
+        j += ",\"e\":" + String(c.w >> 8) + ",\"f\":" + String(c.w & 0xFF) + ",\"w\":" + String(c.w);
+        j += ",\"v\":" + String(c.v) + ",\"md\":" + String(c.md);
+        j += ",\"native\":" + String((c.md & HD6309_MD_NM) ? 1 : 0);
+    }
     j += ",\"cycles\":" + String(c.cycles);
     j += "}";
     send_json(200, j);
@@ -299,6 +377,11 @@ static void h_post_registers() {
     if (s_server.hasArg("s"))  { c.s  = (uint16_t)arg_u32("s",  c.s);  mask |= DBG_REG_S; }
     if (s_server.hasArg("dp")) { c.dp = (uint8_t) arg_u32("dp", c.dp); mask |= DBG_REG_DP; }
     if (s_server.hasArg("cc")) { c.cc = (uint8_t) arg_u32("cc", c.cc); mask |= DBG_REG_CC; }
+    if (s_server.hasArg("w"))  { c.w  = (uint16_t)arg_u32("w",  c.w);  mask |= DBG_REG_W; }
+    if (s_server.hasArg("e"))  { c.w  = (uint16_t)((arg_u32("e", c.w >> 8) << 8) | (c.w & 0xFF)); mask |= DBG_REG_W; }
+    if (s_server.hasArg("f"))  { c.w  = (uint16_t)((c.w & 0xFF00) | (arg_u32("f", c.w & 0xFF) & 0xFF)); mask |= DBG_REG_W; }
+    if (s_server.hasArg("v"))  { c.v  = (uint16_t)arg_u32("v",  c.v);  mask |= DBG_REG_V; }
+    if (s_server.hasArg("md")) { c.md = (uint8_t) arg_u32("md", c.md); mask |= DBG_REG_MD; }
 
     if (mask == 0) { send_err(400, "no registers given"); return; }
 
@@ -389,7 +472,9 @@ static void h_reset() {
 
 static void h_get_machine() {
     String j = String("{\"machine_type\":") + g_machine_type +
-               ",\"machine\":\"" + machine_name(g_machine_type) + "\"}";
+               ",\"machine\":\"" + machine_name(g_machine_type) +
+               "\",\"cpu\":\"" + cpu_name(g_cpu_variant) +
+               "\",\"coco3_ram_kb\":" + g_coco3_ram_kb + "}";
     send_json(200, j);
 }
 
@@ -397,15 +482,33 @@ static void h_post_machine() {
     if (!s_server.hasArg("type")) { send_err(400, "missing type (3=CoCo2,4=CoCo3)"); return; }
     uint8_t t = (uint8_t)arg_u32("type", g_machine_type);
     if (t != 3 && t != 4) { send_err(400, "type must be 3 or 4"); return; }
-    if (t == g_machine_type) { h_get_machine(); return; }
+
+    // Optional cpu=6809|6309; like the machine type it takes effect at boot.
+    uint8_t cpu = g_cpu_variant;
+    if (s_server.hasArg("cpu")) {
+        uint32_t c = arg_u32("cpu", 0);
+        if (c != 6809 && c != 6309) { send_err(400, "cpu must be 6809 or 6309"); return; }
+        cpu = (c == 6309) ? CPU_VARIANT_HD6309 : CPU_VARIANT_MC6809;
+    }
+    // Optional ram=128|512|1024|2048: CoCo 3 memory in KB, also applied at boot.
+    uint16_t ram = g_coco3_ram_kb;
+    if (s_server.hasArg("ram")) {
+        uint32_t kb = arg_u32("ram", 0);
+        if (!coco3_ram_kb_valid(kb)) { send_err(400, "ram must be 128, 512, 1024 or 2048"); return; }
+        ram = (uint16_t)kb;
+    }
+    if (t == g_machine_type && cpu == g_cpu_variant && ram == g_coco3_ram_kb) { h_get_machine(); return; }
 
     // Respond BEFORE switching: supervisor_set_machine_type() reboots and
     // never returns. Freeze core 1 first to avoid touching emulator state
     // mid-frame during the disk-cache flush + state save.
-    send_json(200, String("{\"rebooting\":true,\"machine_type\":") + t + "}");
+    send_json(200, String("{\"rebooting\":true,\"machine_type\":") + t +
+                   ",\"cpu\":\"" + cpu_name(cpu) + "\",\"coco3_ram_kb\":" + ram + "}");
     delay(200);
     debug_rpc_set_paused(true);
     delay(50);
+    supervisor_save_cpu_variant(cpu);
+    supervisor_save_coco3_ram(ram);
     supervisor_set_machine_type(t);   // flushes caches, saves state, esp_restart()
 }
 

@@ -98,19 +98,26 @@ static void status_render(Supervisor_t* sv) {
     // --- CPU Registers ---
     MC6809* cpu = &m->cpu;
     tft->setTextColor(SVW_DKBLUE, SVW_GREEN);
-    tft->drawString("CPU Registers", x, y);
+    tft->drawString(cpu->variant == CPU_VARIANT_HD6309 ? "CPU Registers (HD6309)" : "CPU Registers", x, y);
     y += lh + 2;
 
+    // An HD6309 adds W, V and MD at the end of the three register lines.
+    bool h6309 = (cpu->variant == CPU_VARIANT_HD6309);
+    char ext[12] = "";
+
     tft->setTextColor(SVW_BLACK, SVW_GREEN);
-    snprintf(buf, sizeof(buf), "PC=%04X  S=%04X  U=%04X",
-             cpu->pc, cpu->s, cpu->u);
+    if (h6309) snprintf(ext, sizeof(ext), "  W=%04X", cpu->w);
+    snprintf(buf, sizeof(buf), "PC=%04X  S=%04X  U=%04X%s",
+             cpu->pc, cpu->s, cpu->u, ext);
     dbg_text(tft, x, y, buf); y += lh;
 
-    snprintf(buf, sizeof(buf), " X=%04X  Y=%04X  D=%04X",
-             cpu->x, cpu->y, cpu->d);
+    if (h6309) snprintf(ext, sizeof(ext), "  V=%04X", cpu->v);
+    snprintf(buf, sizeof(buf), " X=%04X  Y=%04X  D=%04X%s",
+             cpu->x, cpu->y, cpu->d, ext);
     dbg_text(tft, x, y, buf); y += lh;
 
-    snprintf(buf, sizeof(buf), "DP=%02X  CC=%02X [%c%c%c%c%c%c%c%c]",
+    if (h6309) snprintf(ext, sizeof(ext), "  MD=%02X", cpu->md);
+    snprintf(buf, sizeof(buf), "DP=%02X  CC=%02X [%c%c%c%c%c%c%c%c]%s",
              cpu->dp, cpu->cc,
              (cpu->cc & 0x80) ? 'E' : '-',
              (cpu->cc & 0x40) ? 'F' : '-',
@@ -119,7 +126,7 @@ static void status_render(Supervisor_t* sv) {
              (cpu->cc & 0x08) ? 'N' : '-',
              (cpu->cc & 0x04) ? 'Z' : '-',
              (cpu->cc & 0x02) ? 'V' : '-',
-             (cpu->cc & 0x01) ? 'C' : '-');
+             (cpu->cc & 0x01) ? 'C' : '-', ext);
     dbg_text(tft, x, y, buf); y += lh;
 
     snprintf(buf, sizeof(buf), "HALT=%d CWAI=%d NMI=%d IRQ=%d FIRQ=%d",
@@ -192,6 +199,10 @@ static void status_dump_to_serial(Supervisor_t* sv) {
                   (cpu->cc & 0x20) ? 'H' : '-', (cpu->cc & 0x10) ? 'I' : '-',
                   (cpu->cc & 0x08) ? 'N' : '-', (cpu->cc & 0x04) ? 'Z' : '-',
                   (cpu->cc & 0x02) ? 'V' : '-', (cpu->cc & 0x01) ? 'C' : '-');
+    if (cpu->variant == CPU_VARIANT_HD6309) {
+        Serial.printf("HD6309: W=%04X V=%04X MD=%02X (%s mode)\n", cpu->w, cpu->v, cpu->md,
+                      (cpu->md & HD6309_MD_NM) ? "native" : "emulation");
+    }
     Serial.printf("HALT=%d CWAI=%d NMI=%d IRQ=%d FIRQ=%d\n",
                   cpu->halted, cpu->wait_for_interrupt,
                   cpu->nmi_pending, cpu->irq_pending, cpu->firq_pending);
@@ -494,7 +505,7 @@ void sv_debug_render(Supervisor_t* sv) {
 // Writes two files under /DUMPS/ on the SD card:
 //   <NAME>-CPU.txt  64KB CPU address space as the 6809 sees it now
 //                   (RAM via the current MMU map + mapped ROM + I/O).
-//   <NAME>-RAM.txt  full physical RAM: 512KB on CoCo 3, 64KB on CoCo 2.
+//   <NAME>-RAM.txt  full physical RAM: the CoCo 3's 128KB-2MB, 64KB on CoCo 2.
 // Both use the same "AAAAA: bb bb ... |ascii|" layout as the serial dump.
 // ============================================================
 
@@ -507,13 +518,13 @@ void sv_debug_render(Supervisor_t* sv) {
 #define DUMP_BUF_SIZE 4096
 static char* s_dump_buf = nullptr;
 
-// Format one 16-byte hex line into out[]. five=true uses a 5-digit address
-// column (physical RAM up to $7FFFF); false uses 4 digits (64KB CPU space).
-// Returns the number of characters written (max ~74, so out must be >= 80).
+// Format one 16-byte hex line into out[] with a `digits`-wide address column
+// (4 for the 64KB CPU space, 5 up to 1MB, 6 for 2MB of physical RAM).
+// Returns the number of characters written (max ~76, so out must be >= 80).
 static int fmt_hex_line(char* out, uint32_t addr, const uint8_t* bytes,
-                        int n, bool five) {
+                        int n, int digits) {
     int p = 0;
-    p += snprintf(out + p, 9, five ? "%05X: " : "%04X: ", addr);
+    p += snprintf(out + p, 10, "%0*X: ", digits, (unsigned)addr);
     char ascii[17];
     for (int i = 0; i < 16; i++) {
         if (i < n) {
@@ -530,13 +541,55 @@ static int fmt_hex_line(char* out, uint32_t addr, const uint8_t* bytes,
     return p;
 }
 
+// Progress bar on the "Saving..." screen, advanced from the write loops.
+// FabGL draws queued primitives in the background, so it updates while the
+// dump blocks. Redrawn only when the percentage changes.
+#define DUMP_BAR_W  400
+#define DUMP_BAR_H  12
+static uint32_t s_prog_total = 0;          // bytes of memory to dump (both files)
+static uint32_t s_prog_done  = 0;
+static int      s_prog_pct   = -1;
+static int      s_prog_x = 0, s_prog_y = 0;
+
+static void dump_progress_draw(void) {
+    OSDCanvas* tft = hal_video_get_canvas();
+    if (!tft || !s_prog_total) return;
+    int pct = (int)((uint64_t)s_prog_done * 100 / s_prog_total);
+    if (pct > 100) pct = 100;
+    if (pct == s_prog_pct) return;
+    s_prog_pct = pct;
+    tft->drawRect(s_prog_x, s_prog_y, DUMP_BAR_W, DUMP_BAR_H, SVW_BLACK);
+    int fill = (DUMP_BAR_W - 4) * pct / 100;
+    if (fill > 0) tft->fillRect(s_prog_x + 2, s_prog_y + 2, fill, DUMP_BAR_H - 4, SVW_DKBLUE);
+    char t[8];
+    snprintf(t, sizeof(t), "%3d%%", pct);
+    tft->setTextFont(1);
+    tft->setTextDatum(TL_DATUM);
+    tft->setTextColor(SVW_BLACK, SVW_GREEN);
+    tft->drawString(t, s_prog_x + DUMP_BAR_W + 8, s_prog_y + 2);
+}
+
+// Count 16 dumped bytes; redraw every 4KB of memory.
+static inline void dump_progress_step(void) {
+    s_prog_done += 16;
+    if ((s_prog_done & 0xFFF) == 0) dump_progress_draw();
+}
+
 // Flush helper: append a formatted line to the batch buffer, flushing to the
 // file when the buffer would overflow. Returns false on a write error.
+// Bytes written to the current file. File::size() reads 0 on a file still
+// open for writing, so the dump counts what it writes.
+static long s_file_bytes = 0;
+
+static bool dump_flush(File& f, int& blen) {
+    if (blen && f.write((const uint8_t*)s_dump_buf, blen) != (size_t)blen) return false;
+    s_file_bytes += blen;
+    blen = 0;
+    return true;
+}
+
 static bool dump_emit(File& f, int& blen, const char* line, int ll) {
-    if (blen + ll > DUMP_BUF_SIZE) {
-        if (f.write((const uint8_t*)s_dump_buf, blen) != (size_t)blen) return false;
-        blen = 0;
-    }
+    if (blen + ll > DUMP_BUF_SIZE && !dump_flush(f, blen)) return false;
     memcpy(s_dump_buf + blen, line, ll);
     blen += ll;
     return true;
@@ -544,23 +597,21 @@ static bool dump_emit(File& f, int& blen, const char* line, int ll) {
 
 // Write a flat memory buffer as hex text. Returns bytes written, or -1 on error.
 static long write_hex_buffer(const char* path, const uint8_t* mem,
-                             uint32_t size, bool five) {
+                             uint32_t size, int digits) {
     File f = SD.open(path, FILE_WRITE);
     if (!f) return -1;
+    s_file_bytes = 0;
     int blen = 0;
     char line[80];
     for (uint32_t a = 0; a < size; a += 16) {
         int n = (size - a >= 16) ? 16 : (int)(size - a);
-        int ll = fmt_hex_line(line, a, mem + a, n, five);
+        int ll = fmt_hex_line(line, a, mem + a, n, digits);
         if (!dump_emit(f, blen, line, ll)) { f.close(); return -1; }
+        dump_progress_step();
     }
-    if (blen && f.write((const uint8_t*)s_dump_buf, blen) != (size_t)blen) {
-        f.close();
-        return -1;
-    }
-    long total = (long)f.size();
+    if (!dump_flush(f, blen)) { f.close(); return -1; }
     f.close();
-    return total;
+    return s_file_bytes;
 }
 
 // Write the 64KB CPU address space as hex text, fetched via machine_read so
@@ -568,22 +619,20 @@ static long write_hex_buffer(const char* path, const uint8_t* mem,
 static long write_hex_cpu(const char* path) {
     File f = SD.open(path, FILE_WRITE);
     if (!f) return -1;
+    s_file_bytes = 0;
     int blen = 0;
     char line[80];
     uint8_t bytes[16];
     for (uint32_t a = 0; a <= 0xFFFF; a += 16) {
         for (int i = 0; i < 16; i++)
             bytes[i] = machine_read((uint16_t)(a + i));
-        int ll = fmt_hex_line(line, a, bytes, 16, false);
+        int ll = fmt_hex_line(line, a, bytes, 16, 4);
         if (!dump_emit(f, blen, line, ll)) { f.close(); return -1; }
+        dump_progress_step();
     }
-    if (blen && f.write((const uint8_t*)s_dump_buf, blen) != (size_t)blen) {
-        f.close();
-        return -1;
-    }
-    long total = (long)f.size();
+    if (!dump_flush(f, blen)) { f.close(); return -1; }
     f.close();
-    return total;
+    return s_file_bytes;
 }
 
 static void dump_addline(const char* fmt, ...) {
@@ -625,18 +674,24 @@ static void perform_dump(Supervisor_t* sv) {
 
     char path[40];
     long cpu_bytes, ram_bytes;
+    uint32_t ram_size = (g_machine_type == 4) ? (uint32_t)m->ram_size : 0x10000;
+    s_prog_total = 0x10000 + ram_size;
+    s_prog_done  = 0;
+    s_prog_pct   = -1;
+    dump_progress_draw();
 
     Serial.printf("\n[DUMP] Writing CPU space to /DUMPS/%s-CPU.txt ...\n",
                   dbg.dump_name);
     snprintf(path, sizeof(path), "/DUMPS/%s-CPU.txt", dbg.dump_name);
     cpu_bytes = write_hex_cpu(path);
 
-    uint32_t ram_size = (g_machine_type == 4) ? COCO3_PHYSICAL_RAM : 0x10000;
     Serial.printf("[DUMP] Writing %u KB physical RAM to /DUMPS/%s-RAM.txt ...\n",
                   (unsigned)(ram_size / 1024), dbg.dump_name);
     snprintf(path, sizeof(path), "/DUMPS/%s-RAM.txt", dbg.dump_name);
     ram_bytes = write_hex_buffer(path, m->ram_physical, ram_size,
-                                 ram_size > 0x10000);
+                                 ram_size > 0x100000 ? 6 : ram_size > 0x10000 ? 5 : 4);
+    s_prog_done = s_prog_total;
+    dump_progress_draw();
 
     Serial.printf("[DUMP] Done. CPU=%ld RAM=%ld bytes\n", cpu_bytes, ram_bytes);
 
@@ -657,11 +712,29 @@ static void perform_dump(Supervisor_t* sv) {
     dump_addline("Press any key to return");
 }
 
+// Physical RAM the dump will write, in KB (as perform_dump() sizes it).
+static unsigned dump_ram_kb(Supervisor_t* sv) {
+    if (g_machine_type != 4) return 64;
+    if (sv->machine) return (unsigned)(sv->machine->ram_size / 1024);
+    return (unsigned)g_coco3_ram_kb;
+}
+
+// Suggested name: the first DUMPnnn not already on the card, so a repeated
+// dump doesn't overwrite the last one.
+static void dump_default_name(void) {
+    char path[40];
+    for (int n = 1; n <= 999; n++) {
+        snprintf(dbg.dump_name, sizeof(dbg.dump_name), "DUMP%03d", n);
+        snprintf(path, sizeof(path), "/DUMPS/%s-RAM.txt", dbg.dump_name);
+        if (!hal_storage_is_ready() || !SD.exists(path)) return;
+    }
+}
+
 void sv_debug_begin_dump(Supervisor_t* sv) {
     dbg.dump_phase = SV_DUMP_INPUT;
-    strncpy(dbg.dump_name, "COCODUMP", sizeof(dbg.dump_name));
-    dbg.dump_name[SV_DUMP_NAME_MAX] = 0;
+    dump_default_name();
     dbg.dump_name_len = (uint8_t)strlen(dbg.dump_name);
+    dbg.dump_name_default = true;
     dbg.dump_result_lines = 0;
     sv->state = SV_DEBUG_DUMP_NAME;
     sv->needs_redraw = true;
@@ -699,17 +772,18 @@ void sv_debug_dump_on_key(Supervisor_t* sv, uint8_t hid_usage, bool pressed) {
         break;
 
     case HID_BACKSPACE:
+        dbg.dump_name_default = false;      // editing the default keeps the rest
         if (dbg.dump_name_len > 0) {
             dbg.dump_name[--dbg.dump_name_len] = 0;
-            sv->needs_redraw = true;
         }
+        sv->needs_redraw = true;
         break;
 
     default: {
         // The supervisor HID route delivers uppercase letters (0x04-0x1D) and
         // digits (0x1E-0x27); symbols are dropped upstream, which keeps names
-        // FAT-friendly. Append until the 8-char cap.
-        if (dbg.dump_name_len >= SV_DUMP_NAME_MAX) break;
+        // FAT-friendly. The first character typed over the suggested default
+        // replaces it; after that, append until the 8-char cap.
         char c = 0;
         if (hid_usage >= 0x04 && hid_usage <= 0x1D)
             c = 'A' + (hid_usage - 0x04);
@@ -717,7 +791,12 @@ void sv_debug_dump_on_key(Supervisor_t* sv, uint8_t hid_usage, bool pressed) {
             c = '1' + (hid_usage - 0x1E);
         else if (hid_usage == 0x27)
             c = '0';
-        if (c) {
+        if (c && dbg.dump_name_default) {
+            dbg.dump_name_default = false;
+            dbg.dump_name_len = 0;
+            dbg.dump_name[0] = 0;
+        }
+        if (c && dbg.dump_name_len < SV_DUMP_NAME_MAX) {
             dbg.dump_name[dbg.dump_name_len++] = c;
             dbg.dump_name[dbg.dump_name_len] = 0;
             sv->needs_redraw = true;
@@ -742,9 +821,13 @@ void sv_debug_dump_render(Supervisor_t* sv) {
             tft->setTextColor(SVW_DKBLUE, SVW_GREEN);
             tft->drawString("Saving to SD card, please wait...", x, y); y += 16;
             tft->setTextColor(SVW_BLACK, SVW_GREEN);
-            tft->drawString("Writing full RAM as hex (~512KB).", x, y); y += 12;
-            tft->drawString("This can take ~30s. Do not remove card.", x, y);
+            char l[48];
+            snprintf(l, sizeof(l), "Writing 64KB CPU space + %uKB RAM as hex.", dump_ram_kb(sv));
+            tft->drawString(l, x, y); y += 12;
+            tft->drawString("Do not remove the card.", x, y); y += 20;
         }
+        s_prog_x = x;
+        s_prog_y = y;
         perform_dump(sv);
         dbg.dump_phase = SV_DUMP_RESULT;
         sv->needs_redraw = true;
@@ -774,7 +857,9 @@ void sv_debug_dump_render(Supervisor_t* sv) {
     tft->setTextDatum(TL_DATUM);
 
     tft->setTextColor(SVW_DKBLUE, SVW_GREEN);
-    tft->drawString("Enter filename (max 8 chars):", x, y);
+    dbg_text(tft, x, y, dbg.dump_name_default
+                 ? "Type a new name (max 8), or ENTER to keep:"
+                 : "Enter filename (max 8 chars):");
     y += 16;
 
     // Name field: white on an accent bar, underscore cursor while there is room
@@ -795,7 +880,7 @@ void sv_debug_dump_render(Supervisor_t* sv) {
     dbg_text(tft, x, y, l); y += 10;
     snprintf(l, sizeof(l), "  %s-RAM.txt  %uKB physical RAM",
              dbg.dump_name_len ? dbg.dump_name : "NAME",
-             (unsigned)(((g_machine_type == 4) ? COCO3_PHYSICAL_RAM : 0x10000) / 1024));
+             dump_ram_kb(sv));
     dbg_text(tft, x, y, l); y += 14;
     tft->drawString("Machine is paused during the dump.", x, y);
 }

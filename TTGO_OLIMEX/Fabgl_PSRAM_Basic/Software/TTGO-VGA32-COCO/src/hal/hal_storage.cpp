@@ -211,3 +211,12 @@ bool hal_storage_file_exists(const char* path) {
     return exists;
 }
 
+size_t hal_storage_file_size(const char* path) {
+    if (!storage_ready) return 0;
+    File file = SD.open(path, FILE_READ);
+    if (!file) return 0;
+    size_t size = file.isDirectory() ? 0 : file.size();
+    file.close();
+    return size;
+}
+

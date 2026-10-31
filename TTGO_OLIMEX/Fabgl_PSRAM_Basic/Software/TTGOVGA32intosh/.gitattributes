@@ -1,0 +1,12 @@
+# Keep LF line endings in the repo and working tree (project was started on Windows)
+* text=auto eol=lf
+
+# Binary data
+*.bin binary
+*.BIN binary
+*.ROM binary
+*.dsk binary
+*.img binary
+*.3mf binary
+*.png binary
+*.jpg binary

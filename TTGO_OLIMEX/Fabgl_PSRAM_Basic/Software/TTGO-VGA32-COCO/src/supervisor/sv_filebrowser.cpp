@@ -16,15 +16,21 @@
  *
  * Browses FAT32 SD card directories.
  * Supports .DSK (JVC) and .VDK files. DMK is listed dimmed, not mountable.
+ * With the hard disk on (Settings > Multi-Pak), .VHD images mount on HD0/HD1.
  *
  * Disk Manager screen: drive buttons on top, file list below, popups for
  * mount / replace / unmount. Drawn in the wide green frame.
+ *
+ * Buttons are "slots": 0-3 are the WD1793 floppy drives, FB_HD_SLOT0 + n is
+ * hard disk n. A .VHD offers only the hard disk slots, any other image only
+ * the floppy drives.
  */
 
 #include "sv_filebrowser.h"
 #include "supervisor.h"
 #include "sv_disk.h"
 #include "sv_render.h"
+#include "../core/vhd.h"
 #include "../utils/debug.h"
 #include "../../config.h"
 #include <SD.h>
@@ -51,12 +57,10 @@ extern OSDCanvas* hal_video_get_canvas(void);
 #define HID_F1      0x3A
 
 // Layout inside the wide green frame: drive buttons on top, file list below.
-#define FB_BTN_W      128
+// Four floppy buttons are 128 wide; with the two hard disk buttons all six
+// shrink to 84 (see btn_w / btn_pitch).
 #define FB_BTN_H      42
-#define FB_BTN_PITCH  134
-#define FB_BTN_X0     (SVW_BOX_X + (SVW_BOX_W - ((SV_DISK_MAX_DRIVES - 1) * FB_BTN_PITCH + FB_BTN_W)) / 2)
 #define FB_BTN_Y      (SVW_BOX_Y + 32)
-#define FB_NAME_COLS  14                    // mounted name: two lines of 14
 #define FB_LIST_X     (SVW_BOX_X + 8)
 #define FB_LIST_Y     (SVW_BOX_Y + 78)
 #define FB_LIST_W     (SVW_BOX_W - 24)
@@ -78,12 +82,42 @@ bool sv_fb_is_disk_image(const char* filename) {
             strcasecmp(ext, ".dmk") == 0);
 }
 
+static bool is_vhd(const char* filename) {
+    const char* ext = strrchr(filename, '.');
+    return ext && strcasecmp(ext, ".vhd") == 0;
+}
+
 static bool is_supported_format(const char* filename) {
+    if (is_vhd(filename)) return vhd_enabled();
     const char* ext = strrchr(filename, '.');
     if (!ext) return false;
     return (strcasecmp(ext, ".dsk") == 0 ||
             strcasecmp(ext, ".vdk") == 0);
     // DMK is recognized but not fully supported
+}
+
+// ============================================================
+// Slots: floppy drives 0-3, then the hard disks
+// ============================================================
+
+#define FB_HD_SLOT0  SV_DISK_MAX_DRIVES
+
+static int slot_count(void) {
+    return SV_DISK_MAX_DRIVES + (vhd_enabled() ? VHD_NUM_DRIVES : 0);
+}
+
+static inline bool slot_is_hd(int slot) { return slot >= FB_HD_SLOT0; }
+
+// "Drive 2" / "HD0", for popups and the debug log.
+static void slot_name(int slot, char* out, size_t size) {
+    if (slot_is_hd(slot)) snprintf(out, size, "HD%d", slot - FB_HD_SLOT0);
+    else                  snprintf(out, size, "Drive %d", slot);
+}
+
+static int btn_w(void)     { return slot_count() > SV_DISK_MAX_DRIVES ? 84 : 128; }
+static int btn_pitch(void) { return slot_count() > SV_DISK_MAX_DRIVES ? 89 : 134; }
+static int btn_x0(void) {
+    return SVW_BOX_X + (SVW_BOX_W - ((slot_count() - 1) * btn_pitch() + btn_w())) / 2;
 }
 
 static int strcasecmp_wrapper(const char* a, const char* b) {
@@ -209,7 +243,9 @@ static struct {
     int8_t      count;                  // option rows
     int8_t      sel;
     int8_t      drawn_sel;              // -1 = draw the whole window
-    uint8_t     drive;                  // drive the pending action applies to
+    uint8_t     drive;                  // slot the pending action applies to
+    uint8_t     base;                   // POP_MOUNT: first slot offered
+    uint8_t     nslots;                 // POP_MOUNT: slots offered (then Cancel)
 } pop;
 
 void sv_filebrowser_invalidate(void) {
@@ -227,7 +263,7 @@ void sv_filebrowser_init(Supervisor_t* sv) {
 }
 
 void sv_filebrowser_open(Supervisor_t* sv, const char* path, uint8_t target_drive) {
-    sv->target_drive = target_drive;
+    sv->target_drive = (target_drive < slot_count()) ? target_drive : 0;
     // path may be sv->current_path itself
     if (path != sv->current_path) {
         strncpy(sv->current_path, path, sizeof(sv->current_path) - 1);
@@ -254,6 +290,13 @@ void sv_filebrowser_open(Supervisor_t* sv, const char* path, uint8_t target_driv
 
     // Scan directory (SD reads happen here, before any rendering)
     sv->file_count = sv_fb_scan_directory(sv->current_path, sv->file_entries, SV_FB_MAX_ENTRIES);
+    // Every folder but the root lists at least "..", so nothing at all means
+    // the remembered folder is gone from this SD card: start over at the root.
+    if (sv->file_count == 0 && strcmp(sv->current_path, "/") != 0) {
+        DEBUG_PRINTF("FileBrowser: %s not found, back to /", sv->current_path);
+        strcpy(sv->current_path, "/");
+        sv->file_count = sv_fb_scan_directory(sv->current_path, sv->file_entries, SV_FB_MAX_ENTRIES);
+    }
     sv_fb_sort_entries(sv->file_entries, sv->file_count);
     fb_in_drives = (sv->file_count == 0);
 
@@ -293,11 +336,15 @@ static inline SV_DiskController* fb_fdc(Supervisor_t* sv) {
     return sv->machine ? &sv->machine->fdc : nullptr;
 }
 
-// Path of the image on a drive, or NULL when the drive is empty.
-static const char* drive_path(Supervisor_t* sv, int drive) {
+// Path of the image in a slot, or NULL when it is empty.
+static const char* drive_path(Supervisor_t* sv, int slot) {
+    if (slot_is_hd(slot)) {
+        int hd = slot - FB_HD_SLOT0;
+        return vhd_is_mounted(hd) ? vhd_get_path(hd) : nullptr;
+    }
     SV_DiskController* fdc = fb_fdc(sv);
-    if (!fdc || !sv_disk_is_mounted(fdc, drive)) return nullptr;
-    const char* path = sv_disk_get_path(fdc, drive);
+    if (!fdc || !sv_disk_is_mounted(fdc, slot)) return nullptr;
+    const char* path = sv_disk_get_path(fdc, slot);
     return path ? path : "?";
 }
 
@@ -336,9 +383,9 @@ static void confirm_open(Supervisor_t* sv, FB_Popup kind, const char* title) {
 static void popup_row(Supervisor_t* sv, int idx, char* label, size_t lsize, char* value, size_t vsize) {
     label[0] = value[0] = '\0';
     if (pop.kind == POP_MOUNT) {
-        if (idx >= SV_DISK_MAX_DRIVES) { snprintf(label, lsize, "Cancel"); return; }
-        snprintf(label, lsize, "Drive %d", idx);
-        const char* path = drive_path(sv, idx);
+        if (idx >= pop.nslots) { snprintf(label, lsize, "Cancel"); return; }
+        slot_name(pop.base + idx, label, lsize);
+        const char* path = drive_path(sv, pop.base + idx);
         if (path) disk_title(path, value, vsize);
         else      snprintf(value, vsize, "(empty)");
     } else if (pop.kind == POP_FAILED) {
@@ -348,11 +395,16 @@ static void popup_row(Supervisor_t* sv, int idx, char* label, size_t lsize, char
     }
 }
 
-static void do_mount(Supervisor_t* sv, int drive) {
-    SV_DiskController* fdc = fb_fdc(sv);
-    bool ok = fdc && sv_disk_mount(fdc, drive, selected_path);
+static void do_mount(Supervisor_t* sv, int slot) {
+    bool ok;
+    if (slot_is_hd(slot)) {
+        ok = vhd_mount(slot - FB_HD_SLOT0, selected_path);
+    } else {
+        SV_DiskController* fdc = fb_fdc(sv);
+        ok = fdc && sv_disk_mount(fdc, slot, selected_path);
+    }
     if (ok) {
-        DEBUG_PRINTF("FileBrowser: Mounted %s to drive %d", selected_path, drive);
+        DEBUG_PRINTF("FileBrowser: Mounted %s to slot %d", selected_path, slot);
         supervisor_save_state();    // for quick-mount
         popup_close(sv);
     } else {
@@ -372,20 +424,25 @@ static void mount_dialog(Supervisor_t* sv, const char* filename) {
     }
     has_selection = true;
 
+    bool hd = is_vhd(filename);
+    pop.base   = hd ? FB_HD_SLOT0 : 0;
+    pop.nslots = hd ? VHD_NUM_DRIVES : SV_DISK_MAX_DRIVES;
     int first = 0;
-    for (int d = SV_DISK_MAX_DRIVES - 1; d >= 0; d--) {
-        if (!drive_path(sv, d)) first = d;
+    for (int i = pop.nslots - 1; i >= 0; i--) {
+        if (!drive_path(sv, pop.base + i)) first = i;
     }
     snprintf(pop.msg1, sizeof(pop.msg1), "%s", filename);
     pop.msg2[0] = '\0';
-    popup_open(sv, POP_MOUNT, "Mount disk on", SV_DISK_MAX_DRIVES + 1, first);
+    popup_open(sv, POP_MOUNT, hd ? "Mount hard disk on" : "Mount disk on", pop.nslots + 1, first);
 }
 
-static void unmount_dialog(Supervisor_t* sv, int drive) {
-    const char* path = drive_path(sv, drive);
+static void unmount_dialog(Supervisor_t* sv, int slot) {
+    const char* path = drive_path(sv, slot);
     if (!path) return;
-    pop.drive = drive;
-    snprintf(pop.msg1, sizeof(pop.msg1), "Unmount Drive %d?", drive);
+    pop.drive = slot;
+    char name[12];
+    slot_name(slot, name, sizeof(name));
+    snprintf(pop.msg1, sizeof(pop.msg1), "Unmount %s?", name);
     disk_title(path, pop.msg2, sizeof(pop.msg2));
     confirm_open(sv, POP_UNMOUNT, "Unmount disk");
 }
@@ -393,28 +450,31 @@ static void unmount_dialog(Supervisor_t* sv, int drive) {
 static void popup_accept(Supervisor_t* sv) {
     switch (pop.kind) {
         case POP_MOUNT: {
-            if (pop.sel >= SV_DISK_MAX_DRIVES) { popup_close(sv); break; }    // Cancel
-            int drive = pop.sel;
-            pop.drive = drive;
-            const char* cur = drive_path(sv, drive);
+            if (pop.sel >= pop.nslots) { popup_close(sv); break; }    // Cancel
+            int slot = pop.base + pop.sel;
+            pop.drive = slot;
+            const char* cur = drive_path(sv, slot);
             if (cur && strcmp(cur, selected_path) == 0) { popup_close(sv); break; }    // already there
 
+            char name[12], other_name[12];
+            slot_name(slot, name, sizeof(name));
             // Confirm before replacing a disk or mounting the image twice.
             if (cur) {
-                snprintf(pop.msg1, sizeof(pop.msg1), "Drive %d already has a disk:", drive);
+                snprintf(pop.msg1, sizeof(pop.msg1), "%s already has a disk:", name);
                 disk_title(cur, pop.msg2, sizeof(pop.msg2));
                 confirm_open(sv, POP_REPLACE, "Replace disk?");
                 break;
             }
-            for (int o = 0; o < SV_DISK_MAX_DRIVES; o++) {
+            for (int o = pop.base; o < pop.base + pop.nslots; o++) {
                 const char* other = drive_path(sv, o);
                 if (!other || strcmp(other, selected_path) != 0) continue;
-                snprintf(pop.msg1, sizeof(pop.msg1), "Already mounted on Drive %d.", o);
-                snprintf(pop.msg2, sizeof(pop.msg2), "Mount on Drive %d as well?", drive);
+                slot_name(o, other_name, sizeof(other_name));
+                snprintf(pop.msg1, sizeof(pop.msg1), "Already mounted on %s.", other_name);
+                snprintf(pop.msg2, sizeof(pop.msg2), "Mount on %s as well?", name);
                 confirm_open(sv, POP_AGAIN, "Mount again?");
                 return;
             }
-            do_mount(sv, drive);
+            do_mount(sv, slot);
             break;
         }
 
@@ -425,7 +485,10 @@ static void popup_accept(Supervisor_t* sv) {
             break;
 
         case POP_UNMOUNT:
-            if (pop.sel == 1 && fb_fdc(sv)) {
+            if (pop.sel == 1 && slot_is_hd(pop.drive)) {
+                vhd_unmount(pop.drive - FB_HD_SLOT0);
+                supervisor_save_state();
+            } else if (pop.sel == 1 && fb_fdc(sv)) {
                 sv_disk_eject(fb_fdc(sv), pop.drive);
                 supervisor_save_state();
             }
@@ -502,7 +565,11 @@ void sv_filebrowser_on_key(Supervisor_t* sv, uint8_t hid_usage, bool pressed) {
             if (!fdc) return;
             if (!fb_in_drives) {
                 sv_disk_flush_all(fdc);
+                vhd_flush_all();
                 DEBUG_PRINT("disks: flush all drives");
+            } else if (slot_is_hd(sv->target_drive)) {
+                vhd_flush_all();
+                DEBUG_PRINT("disks: flush hard disks");
             } else if (sv_disk_is_mounted(fdc, sv->target_drive)) {
                 sv_disk_flush(fdc, sv->target_drive);
                 DEBUG_PRINTF("disks: flush Drive %d", sv->target_drive);
@@ -517,7 +584,7 @@ void sv_filebrowser_on_key(Supervisor_t* sv, uint8_t hid_usage, bool pressed) {
                 if (sv->target_drive > 0) sv->target_drive--;
                 break;
             case HID_RIGHT:
-                if (sv->target_drive < SV_DISK_MAX_DRIVES - 1) sv->target_drive++;
+                if (sv->target_drive < slot_count() - 1) sv->target_drive++;
                 break;
             case HID_DOWN:
             case HID_TAB:
@@ -566,34 +633,47 @@ static void draw_small_disk(OSDCanvas* tft, int x, int y, bool mounted) {
     tft->fillEllipse(x + 16, y + 9, 12, 5, mounted ? SVW_BLACK : SVW_DKGRAY);
 }
 
-static void draw_drive_button(OSDCanvas* tft, Supervisor_t* sv, int drive, bool focused) {
-    int x = FB_BTN_X0 + drive * FB_BTN_PITCH, y = FB_BTN_Y;
-    const char* path = drive_path(sv, drive);
+// 32x14 hard drive: case, slot, activity light. Red light when mounted.
+static void draw_small_hd(OSDCanvas* tft, int x, int y, bool mounted) {
+    tft->fillRect(x, y, 32, 14, mounted ? SVW_DKGRAY : SVW_GRAY);
+    tft->fillRect(x + 3, y + 9, 18, 2, SVW_BLACK);
+    tft->fillRect(x + 25, y + 8, 4, 4, mounted ? SVW_RED : SVW_WHITE);
+}
+
+static void draw_drive_button(OSDCanvas* tft, Supervisor_t* sv, int slot, bool focused) {
+    int w = btn_w();
+    int x = btn_x0() + slot * btn_pitch(), y = FB_BTN_Y;
+    int cols = (w - 16) / 8;                // mounted name: two lines
+    bool narrow = slot_count() > SV_DISK_MAX_DRIVES;
+    const char* path = drive_path(sv, slot);
     uint16_t bg = focused ? SVW_DKBLUE : SVW_WHITE;
     uint16_t fg = focused ? SVW_WHITE : SVW_BLACK;
     uint16_t edge = focused ? SVW_BLACK : SVW_DKBLUE;
 
-    tft->fillRect(x, y, FB_BTN_W, FB_BTN_H, bg);
-    tft->drawRect(x, y, FB_BTN_W, FB_BTN_H, edge);
-    if (focused) tft->drawRect(x + 1, y + 1, FB_BTN_W - 2, FB_BTN_H - 2, edge);
+    tft->fillRect(x, y, w, FB_BTN_H, bg);
+    tft->drawRect(x, y, w, FB_BTN_H, edge);
+    if (focused) tft->drawRect(x + 1, y + 1, w - 2, FB_BTN_H - 2, edge);
 
-    draw_small_disk(tft, x + 8, y + 5, path != nullptr);
+    if (slot_is_hd(slot)) draw_small_hd(tft, x + 8, y + 5, path != nullptr);
+    else                  draw_small_disk(tft, x + 8, y + 5, path != nullptr);
 
     char text[16];
     tft->setTextFont(1);
     tft->setTextDatum(TL_DATUM);
     tft->setTextColor(fg, bg);
-    snprintf(text, sizeof(text), "DRIVE %d", drive);
-    tft->drawString(text, x + 50, y + 8);
+    if (slot_is_hd(slot)) snprintf(text, sizeof(text), "HD%d", slot - FB_HD_SLOT0);
+    else if (narrow)      snprintf(text, sizeof(text), "D%d", slot);
+    else                  snprintf(text, sizeof(text), "DRIVE %d", slot);
+    tft->drawString(text, x + (narrow ? 46 : 50), y + 8);
 
     // image name on two lines, without its extension
     char name[64];
     if (path) disk_title(path, name, sizeof(name)); else strcpy(name, "empty");
     tft->setTextColor(path ? fg : SVW_GRAY, bg);
-    snprintf(text, sizeof(text), "%.*s", FB_NAME_COLS, name);
+    snprintf(text, sizeof(text), "%.*s", cols, name);
     tft->drawString(text, x + 8, y + 22);
-    if (strlen(name) > FB_NAME_COLS) {
-        snprintf(text, sizeof(text), "%.*s", FB_NAME_COLS, name + FB_NAME_COLS);
+    if ((int)strlen(name) > cols) {
+        snprintf(text, sizeof(text), "%.*s", cols, name + cols);
         tft->drawString(text, x + 8, y + 32);
     }
 }
@@ -681,7 +761,7 @@ void sv_filebrowser_render(Supervisor_t* sv) {
     if (!fb_drawn.valid) {
         // Whole screen: frame, every drive button, the list.
         sv_render_wide_frame("Disk Manager", "Arrows  TAB Drives/Files  ENTER  BS Up  F Flush  ESC Back");
-        for (int d = 0; d < SV_DISK_MAX_DRIVES; d++) {
+        for (int d = 0; d < slot_count(); d++) {
             draw_drive_button(tft, sv, d, fb_in_drives && d == sv->target_drive);
         }
         draw_list(tft, sv);
@@ -710,7 +790,9 @@ void sv_filebrowser_render(Supervisor_t* sv) {
         draw_popup(sv);
     } else if (fb_in_drives) {
         const char* path = drive_path(sv, sv->target_drive);
-        DEBUG_PRINTF("disks: [Drive %d] %s", sv->target_drive, path ? path : "(empty)");
+        char name[12];
+        slot_name(sv->target_drive, name, sizeof(name));
+        DEBUG_PRINTF("disks: [%s] %s", name, path ? path : "(empty)");
     } else if (sv->file_count > 0) {
         DEBUG_PRINTF("disks: file %s", sv->file_entries[sv->file_cursor].name);
     }

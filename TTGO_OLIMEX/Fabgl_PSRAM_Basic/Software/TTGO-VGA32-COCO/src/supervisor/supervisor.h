@@ -46,6 +46,12 @@ enum SV_State : uint8_t {
     SV_WIFI,             // WiFi / Debug server status + control screen
     SV_FUJINET,          // DriveWire / FujiNet bus settings screen
     SV_KEYBOARD_MENU,    // Settings -> Keyboard submenu (language, Key Mapper)
+    SV_CART_POPUP,       // popup over Multi-Pak: cartridge on/off confirm, ROM missing
+    SV_CPU_POPUP,        // popup over the Machine submenu: 6809 / 6309 picker
+    SV_MACHINE_MENU,     // Settings -> Machine submenu (machine type, CPU, CoCo 3 memory)
+    SV_SOUND_MENU,       // Settings -> Multi-Pak submenu (Orchestra-90, Speech/Sound, Hard Disk)
+    SV_RAM_SELECT,       // popup over the Machine submenu: CoCo 3 memory size, then confirm
+    SV_CART,             // Load Cart screen: pick a .ccc / .rom cartridge, or unload it
 };
 
 struct SV_FileEntry;
@@ -124,7 +130,9 @@ void       supervisor_save_serial_mode(SerialPortMode mode);
 
 // Mouse sensitivity (level 1..10) + invert-Y, persisted in NVS ("sv").
 void supervisor_save_joystick(uint8_t level, bool invert);
-void supervisor_load_joystick(void);   // reads NVS, applies to HAL
+void supervisor_load_joystick(void);   // reads NVS, applies to HAL (also Joy-Keyboard mode)
+// Joy-Keyboard Emulation mode (JOY_KBD_OFF / RIGHT / LEFT), NVS key "joy_kbd".
+void supervisor_save_joy_kbd(uint8_t mode);
 
 // PS/2 keyboard-layout persistence (NVS "sv" namespace, key "kbd_layout").
 // load returns the stored layout, or KBD_LAYOUT_FIRST_BOOT_DEFAULT if unset.
@@ -138,6 +146,40 @@ void      supervisor_save_kbd_layout(KbdLayout layout);
 // if NVS has nothing); called from setup() before the emulator runs.
 void supervisor_load_keymap(void);
 void supervisor_save_keymap(void);
+
+// CPU selection (NVS "sv" namespace, key "cpu_variant"): CPU_VARIANT_MC6809 or
+// CPU_VARIANT_HD6309. load returns the stored value, or the compile-time
+// CPU_VARIANT if none; called from setup() before machine_init() to seed
+// g_cpu_variant. save only persists: the caller restarts to apply it.
+uint8_t supervisor_load_cpu_variant(void);
+void    supervisor_save_cpu_variant(uint8_t variant);
+
+// CoCo 3 memory size in KB (NVS "sv" namespace, key "coco3_ram"): 128, 512,
+// 1024 or 2048. load returns the stored value, or the compile-time
+// COCO3_RAM_KB if none or invalid; called from setup() before machine_init()
+// to seed g_coco3_ram_kb. save only persists: the caller restarts to apply it.
+uint16_t supervisor_load_coco3_ram(void);
+void     supervisor_save_coco3_ram(uint16_t kb);
+
+// Cartridge settings (NVS "sv" namespace): key "orch90" turns the
+// Orchestra-90 DAC ports on, key "ssc" the Speech/Sound Cartridge, key
+// "vhd_en" the virtual hard disk at $FF80-$FF86 (its images are remembered
+// as "hd0_path"/"hd1_path" by supervisor_save_state), key
+// "cart_rom" names the ROM (up to 128 KB) to load at $C000 instead of Disk
+// BASIC ("" = default): a bare name in ROM_BASE_PATH, or a full SD path
+// starting with '/' (Load Cart screen). The Orchestra-90 toggle sets it to
+// ROM_ORCH90_FILE. load applies them (g_orch90_enabled, g_ssc_enabled, g_vhd_enabled,
+// g_cart_rom_request); called from setup() after dw_bus_load_config() and before machine_init(). The saves
+// only persist: the caller restarts the emulator to apply them.
+void        supervisor_load_cart_config(void);
+void        supervisor_save_orch90(bool enabled);
+void        supervisor_save_ssc(bool enabled);
+void        supervisor_save_vhd(bool enabled);
+void        supervisor_save_cart_rom(const char* name);
+// The cartridge this boot asked for, and the one stored for the next restart
+// ("" = none). They differ while a Load Cart change is waiting for a restart.
+const char* supervisor_cart_rom_boot(void);
+const char* supervisor_cart_rom_saved(void);
 
 // Access global supervisor (for disk manager sub-screens)
 Supervisor_t* supervisor_get(void);

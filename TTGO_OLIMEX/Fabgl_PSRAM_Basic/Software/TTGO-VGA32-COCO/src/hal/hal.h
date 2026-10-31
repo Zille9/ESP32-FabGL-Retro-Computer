@@ -133,11 +133,32 @@ void hal_audio_set_level(uint8_t level);
 // Call once per frame from main loop — detects end-of-sound and prints frequency debug
 void hal_audio_debug_tick(void);
 
-// Capture current audio level for the current scanline (call once per scanline)
+// Queue the current audio level for playback (call once per scanline)
 void hal_audio_capture_scanline(void);
 
-// Commit the scanline audio buffer for ISR playback (call at frame end)
+// Frame end: judge the queue fill level and steer the playback rate
 void hal_audio_commit_frame(void);
+
+// Audio queue diagnostics, counted since boot or the last reset.
+// Reported by /api/status ("audio"); ?audio_reset=1 clears them.
+struct HalAudioStats {
+    uint32_t commits;          // frames queued
+    uint32_t underruns;        // times the queue ran dry and playback paused
+    uint32_t hold_ticks;       // ISR ticks spent paused on an empty queue
+    uint32_t catchup_ticks;    // ISR periods made up after the ISR was held off
+    uint32_t overruns;         // samples dropped because the queue was full
+    uint32_t fill;             // queued samples at the last frame end
+    uint32_t fill_min;         // lowest / highest fill seen at a frame end
+    uint32_t fill_max;
+    int32_t  stride_adj;       // current rate correction, Q16 stride units
+    uint32_t commit_us_min;    // shortest / longest time between two frame ends
+    uint32_t commit_us_max;
+    uint32_t isr_cyc_max;      // longest ISR run, in CPU clock cycles
+    uint32_t isr_gap_cyc_min;  // shortest / longest time between ISR entries
+    uint32_t isr_gap_cyc_max;
+};
+void hal_audio_get_stats(HalAudioStats* out);
+void hal_audio_reset_stats(void);
 
 // ============================================================
 // Keyboard subsystem
@@ -238,6 +259,14 @@ bool    hal_joystick_get_invert_y(void);
 // Current live logical position, each axis 0..63 (center 32).
 void    hal_joystick_get_pos(uint8_t* x, uint8_t* y);
 
+// Joy-Keyboard Emulation: arrow keys + Space as a CoCo joystick.
+enum { JOY_KBD_OFF = 0, JOY_KBD_RIGHT = 1, JOY_KBD_LEFT = 2 };
+void    hal_joystick_set_kbd_mode(uint8_t mode);
+uint8_t hal_joystick_get_kbd_mode(void);
+// Feed a FabGL VirtualKey; returns true when the key belongs to the joystick
+// (mode on and an arrow / Space), so it must not reach the CoCo keyboard.
+bool    hal_joystick_kbd_key(int vk, bool pressed);
+
 // Set machine pointer for keyboard hotkeys (F2 reset, etc.)
 struct Machine;
 void hal_keyboard_set_machine(Machine* m);
@@ -283,5 +312,8 @@ bool hal_storage_load_file(const char* path, uint8_t* buffer, size_t size);
 
 // Check if a file exists
 bool hal_storage_file_exists(const char* path);
+
+// Size of a file in bytes, 0 if it is missing or storage is not ready
+size_t hal_storage_file_size(const char* path);
 
 #endif // HAL_H

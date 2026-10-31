@@ -1,0 +1,18 @@
+CREATE 80COL
+DECIMAL 15 C,  \ byte count for this array
+\ -------------------
+HEX    04 C,  \ VR1
+       70 C,  \ VR2
+       03 C,  \ VR3
+       E8 C,  \ VR4
+       01 C,  \ VR5
+       06 C,  \ VR6
+       00 C,  \ VR7
+       17 C,  \ VR8
+       88 C,  \ VR9
+       00 C,  \ VR10
+       00 C,  \ VR11
+       00 C,  \ VR12
+       94 C,  \ VR13
+       10 C,  \ VR14
+       00 C,  \ VR15

@@ -1,0 +1,23 @@
+ ; check for F18A
+       li   r0, >391c         ; unlock potential F18A
+       bl   @vwtr
+       bl   @vwtr
+       li   r0, >01c0
+       bl   @vwtr
+
+       movb @vdpsta, r1       ; check if F18A present
+       li   r0, >0f01
+       bl   @vwtr
+       movb @vdpsta, r2
+       dec  r0
+       bl   @vwtr
+       cb   r1, r2
+       jeq  powerup_cart
+
+       li   r0, sys_f18a_en   ; mark F18A available
+       mov  r0, @x_sys
+
+************************************************************
+You can reset and lock the F18A with:
+LI   R0,>3280
+BL   @VWTR

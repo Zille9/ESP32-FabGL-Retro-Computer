@@ -39,8 +39,9 @@ extern volatile SerialPortMode g_serial_mode;   // defined in hal.cpp
   never corrupted by debug output. First-ever boot defaults to
   `SERIAL_MODE_FIRST_BOOT_DEFAULT` (= DEBUG, `config.h`).
 
-The OSD presents this as two linked toggles in **Settings** (`Debug Log`,
-`RS-232 Pak`); enabling one forces the other off.
+The OSD presents this as two linked toggles: **Echo Log** in the Debug
+submenu and **RS-232 Pak** in Setup → Multi-Pak; enabling one forces the
+other off.
 
 ## Layers
 

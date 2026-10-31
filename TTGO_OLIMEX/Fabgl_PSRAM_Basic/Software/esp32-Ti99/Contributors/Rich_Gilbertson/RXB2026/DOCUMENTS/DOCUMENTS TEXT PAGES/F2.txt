@@ -1,0 +1,37 @@
+          F18            subprogram                            PAGE  F2
+          -------------------------------------------------------------
+
+          100 CALL CLEAR ! Tursi created this program for RXB demo
+          110 CALL CONFIRMF18
+
+          200 ! TEST 28 SPRITES! (F18A CAN DO ALL 32, BUT XB 28)
+          210 ! SET TO THE DEFAULT 4 SPRITES PER LINE
+          220 CALL POKER(30,4)
+          230 FOR A=1 TO 28::CALL SPRITE(#A,48+A,2,96,(A-1)*8+1)::
+              NEXT A
+          240 PRINT "4 SPRITES PER LINE - KEY"
+          250 CALL KEY("",0,K,S)
+          260 CALL CLEAR
+          270 CALL POKER(30,28)
+          280 PRINT "28 SPRITES! NO FLICKER!"
+          290 CALL KEY("",0,K,S)
+
+          300 CALL DELSPRITE(ALL)
+          310 CALL CLEAR
+          320 ! LET'S DEMONSTRATE A PALETTE BY LOADING A SMALL PROGRAM
+          340 FOR A=33 TO 147 STEP 8::I=(A-33)/8+1::CALL VCHAR(5,I,A,5)::
+              CALL CHAR(A,RPT$("F",16))::CALL COLOR(I, I+1, 1)::NEXT A
+          350 DISPLAY AT(23,1):"NORMAL COLORS - KEY"
+          360 CALL KEY("",0,K,S)
+          370 ! TRIGGER THE PROGRAM TO LOAD THE NEW PALETTE - 
+              ALL 16 COLORS CHANGED
+          380 ! THE PALETTE ITSELF... GREYSCALE WE CAN JUST CALCULATE
+          390 FOR A=0 TO 15
+          400 R=A::! RED IS EASY, IT LIVES IN ITS OWN BYTE
+          410 GB=A*16+A::! GREEN AND BLUE ARE IN THE NEXT BYTE
+          420 CALL POKEV(4116+A*2,R,GB)
+          430 NEXT A
+          440 CALL LOADPALETTE(0) 
+          450 DISPLAY AT(23,1):"GREYSCALE! THIS PERSISTS!"
+          460 CALL KEY("",0,K,S)
+          470 CALL HCHAR(23,1,32,32)

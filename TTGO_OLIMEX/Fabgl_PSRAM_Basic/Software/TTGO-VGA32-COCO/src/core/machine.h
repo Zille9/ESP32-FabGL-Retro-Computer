@@ -61,11 +61,33 @@
 // Step 1: declared but not yet branched on — all paths still use #if MACHINE_TYPE.
 extern uint8_t g_machine_type;
 
+// Runtime-active CPU (CPU_VARIANT_MC6809 / CPU_VARIANT_HD6309, see mc6809.h).
+// Initialized from NVS at boot, default = compile-time CPU_VARIANT. Read by
+// machine_init(); changing it afterwards needs a restart.
+extern uint8_t g_cpu_variant;
+
+// CoCo 3 RAM in KB (128, 512, 1024 or 2048). Initialized from NVS at boot,
+// default = compile-time COCO3_RAM_KB. Read by machine_init(), which lowers it
+// to 512 if the chosen size cannot be allocated; changing it needs a restart.
+extern uint16_t g_coco3_ram_kb;
+
+// True for the sizes above.
+static inline bool coco3_ram_kb_valid(unsigned kb) {
+    return kb == 128 || kb == 512 || kb == 1024 || kb == 2048;
+}
+
 // Cartridge ROM selection, indexed [0] = CoCo 2, [1] = CoCo 3.
 // g_cart_rom_request: file to load instead of ROM_DISK_FILE (nullptr = disk11);
-//   set before machine_load_roms() by the DriveWire bus (HDB-DOS Becker ROM).
-// g_cart_rom_loaded: file actually loaded (nullptr = none).
+//   a bare name is looked up in the ROM folder, a name starting with '/' is a
+//   full SD path (supervisor Load Cart). The CoCo 2 reads up to CART_BANK_SIZE
+//   bytes, the CoCo 3 up to CART_ROM_MAX_SIZE: a ROM larger than one bank is a
+//   bank-switched cartridge (16 KB banks at $C000, selected by writing $FF40);
+//   set before machine_load_roms() by the DriveWire bus (HDB-DOS Becker ROM)
+//   or by the supervisor's Orchestra-90 setting.
+// g_cart_rom_loaded: file actually loaded, without its folder (nullptr = none).
 // g_cart_rom_fallback: the requested ROM was missing and disk11 was loaded.
+#define CART_BANK_SIZE    16384
+#define CART_ROM_MAX_SIZE 131072
 extern const char* g_cart_rom_request[2];
 extern const char* g_cart_rom_loaded[2];
 extern bool        g_cart_rom_fallback[2];
@@ -80,7 +102,7 @@ typedef struct Machine {
     TCC1014  gime;                  // GIME (TCC1014) — replaces SAM + VDG
     uint8_t* ram_physical;          // 512KB in PSRAM
     uint8_t* rom_coco3;             // 32KB Super Extended Color BASIC
-    uint8_t* rom_disk;              // 8KB Disk BASIC (external cartridge ROM)
+    uint8_t* rom_disk;              // Disk BASIC (8KB) or cartridge ROM (up to CART_ROM_MAX_SIZE)
     bool     rom_coco3_loaded;
     bool     rom_disk_loaded;
 
@@ -108,6 +130,10 @@ typedef struct Machine {
     // --- Flags ---
     bool     initialized;
     bool     cart_inserted;
+    bool     cart_autostart;      // program cartridge (no 'DK'): pulse CART → PIA1 CB1 each frame
+    uint16_t rom_disk_end;        // CoCo 3: first address past the cartridge ROM ($E000 for 8KB, $FF00 for 16KB)
+    uint8_t* cart_bank;           // CoCo 3 bank-switched cartridge: bank now at $C000 (nullptr = not banked)
+    uint8_t  cart_bank_mask;      // bank count - 1 (count is a power of two)
     bool     ntsc;                // true = 60 Hz NTSC, false = 50 Hz PAL
     uint32_t frame_count;
 } Machine;

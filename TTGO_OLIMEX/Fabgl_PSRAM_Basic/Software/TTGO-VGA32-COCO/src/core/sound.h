@@ -43,4 +43,14 @@ void sound_set_mux_enabled(bool enabled);
 // Mux source select (0-3) — PIA0 CRA/CRB bit 3 (SEL1/SEL2).
 void sound_set_mux_source(uint8_t source);
 
+// External (cartridge) stereo level, 0-255 per channel — Orchestra-90.
+// Mixed to mono and added to the output whatever the mux selects, as XRoar's
+// sound_set_external_left/right. Not cleared by sound_reset().
+void sound_set_external(uint8_t left, uint8_t right);
+
+// Speech/Sound Cartridge output, -127..127 (bipolar). The first call turns on
+// a fixed bias so the signal fits the unipolar output; it is added at half
+// scale, like the external level. Only called while the SSC is enabled.
+void sound_set_ssc(int8_t level);
+
 #endif // SOUND_H

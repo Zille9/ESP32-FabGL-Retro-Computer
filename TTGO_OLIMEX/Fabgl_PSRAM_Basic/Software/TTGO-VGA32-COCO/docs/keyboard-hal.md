@@ -10,7 +10,7 @@ The PS/2 keyboard shares a single `fabgl::PS2Controller` with the PS/2 mouse use
 
 | File | Purpose |
 |---|---|
-| `hal_keyboard.cpp` | FabGL PS/2 init, VK → CoCo matrix mapping, hotkey intercept, deferred release |
+| `hal_keyboard.cpp` | FabGL PS/2 init, VK → CoCo matrix mapping, hotkey intercept, paced key queue |
 | `hal.cpp` | Calls `hal_keyboard_tick()` each frame |
 | `hal.h` | Public API declarations |
 
@@ -52,8 +52,8 @@ PS/2 keyboard ──GPIO33 (CLK) ──┐
                     │          Hotkey gate  │ F5 FPS, F6 quick-mount
                     │ Layer 2: VK_MAP[]     │ F1/F2 → CoCo 3 matrix
                     │          lookup       │ Letters/digits/symbols
-                    │ Layer 3: set_key /    │
-                    │          defer_release│
+                    │ Layer 3: queue_key →  │ one matrix change
+                    │          tick_key_q.  │ per frame
                     └───────────────────────┘
 ```
 
@@ -159,10 +159,10 @@ All non-F3 keys are forwarded to `supervisor_on_key(usage, pressed)`. Because th
 ```c
 bool want_shift = (item.SHIFT && !k->suppress_shift) || k->needs_shift;
 apply_shift(want_shift);
-set_key(k->col, k->row, true);
+queue_key(k->col, k->row, true);
 ```
 
-On release, `defer_release(k->col, k->row)` is called — see below.
+On release, `queue_key(k->col, k->row, false)` is called — see below.
 
 ### SHIFT Handling
 
@@ -171,26 +171,23 @@ CoCo SHIFT is a matrix position (PA6, PB7), not a modifier flag. The HAL compose
 - **PC SHIFT held + plain key** (e.g. SHIFT+A → `VK_A` with `item.SHIFT=1`): `want_shift = true` → CoCo SHIFT asserted alongside `A`.
 - **`suppress_shift`** entries (uppercase letters, `@`, `:` etc.): PC SHIFT was needed to produce the VK, but the resulting CoCo character does *not* require CoCo SHIFT — so we suppress.
 - **`needs_shift`** entries (shifted-digit symbols like `#`, `$`): the VK alone tells us the user wants a shifted CoCo character — force CoCo SHIFT regardless of `item.SHIFT`.
-- **`VK_LSHIFT`/`VK_RSHIFT`** directly toggle the CoCo SHIFT cell. Releases go through `defer_release()` to keep SHIFT held long enough for BASIC's KEYIN debounce.
+- **`VK_LSHIFT`/`VK_RSHIFT`** directly toggle the CoCo SHIFT cell. Like every matrix change they go through the paced key queue (below).
 
 ---
 
-## Deferred Key Release
+## Paced Key Queue
 
-**Problem:** CoCo BASIC's KEYIN routine scans the matrix over multiple frames with debouncing. A fast PS/2 tap (press+release inside one emulator frame) would otherwise be invisible.
+**Problem:** Color BASIC's KEYIN (`$A1CB`) keeps a rollover byte per column (`$0152`), decodes only the lowest *newly pressed* bit of a column, then debounces by re-reading that column a few ms later. If the column changed in between, the key is dropped — and since the rollover table already marks it pressed, it is never seen. Copying PS/2 events straight into the matrix lost characters three ways:
 
-**Solution:** every release schedules a delayed clear in `MIN_HOLD_FRAMES = 4` frames (≈67 ms at 60 fps).
+- a fast re-tap of the same key (the `LL` in `HELLO`) while its first release was still held stayed one continuous press;
+- two keys of one column (e.g. `A`/`I`/`Q`/`Y`) applied in the same frame — typical after a stall, when FabGL's queue is drained in one go — decoded as one;
+- a deferred release landing inside another key's debounce in the same column killed that key.
 
-```cpp
-struct DeferredRelease {
-    uint8_t col, row;
-    uint8_t frames_left;   // 0 = slot free
-};
-```
+**Solution:** every matrix change goes through a FIFO (`keyq`, 64 entries) and `tick_key_queue()` applies **at most one change per frame**:
 
-- `defer_release(col, row)` — queues a release. If the same cell is already scheduled, refresh the counter. Up to `MAX_DEFERRED = 8` slots; overflow falls back to immediate release.
-- `tick_deferred_releases()` — called once per frame from `hal_keyboard_tick()`. Decrements each non-zero counter; clears the matrix bit when it hits zero.
-- Re-pressing a key while its release is pending just resets the counter to `MIN_HOLD_FRAMES`.
+- `queue_key(col, row, pressed)` — appends a change; one that the queue already ends in (typematic repeat, SHIFT already in the wanted state) is dropped. `key_target[]` tracks the matrix as it will be once the queue drains. A full queue forces its oldest change out.
+- A release waits until the key has been down `MIN_HOLD_FRAMES = 4` frames (≈67 ms); a press waits until the key has been up `MIN_GAP_FRAMES = 2` frames, so a re-tap is always a real released→pressed edge. `cell_age[col][row]` counts frames since each cell last changed.
+- Only a key release still serving its hold time may be overtaken (by a change to another cell). Presses and SHIFT changes keep their order, so characters arrive in sequence, each with the SHIFT state it was typed with.
 
 ---
 
@@ -200,7 +197,7 @@ Called once per frame from `hal_process_input()`:
 
 ```c
 void hal_keyboard_tick(void) {
-    tick_deferred_releases();
+    tick_key_queue();
     fabgl::Keyboard* kbd = fabgl::PS2Controller::keyboard();
     if (!kbd) return;
     while (kbd->virtualKeyAvailable() > 0) {
@@ -235,8 +232,8 @@ The CoCo CPU writes the column-select pattern to PIA0 PB, then reads PA. BASIC's
 
 | Function | File | Called from | Purpose |
 |---|---|---|---|
-| `hal_keyboard_init()` | hal_keyboard.cpp | `hal_init()` | Reset matrix, init deferred releases, start FabGL PS/2 (keyboard + mouse), select layout |
-| `hal_keyboard_tick()` | hal_keyboard.cpp | `hal_process_input()` | Tick deferred releases + drain VK queue |
+| `hal_keyboard_init()` | hal_keyboard.cpp | `hal_init()` | Reset matrix and key queue, start FabGL PS/2 (keyboard + mouse), select layout |
+| `hal_keyboard_tick()` | hal_keyboard.cpp | `hal_process_input()` | Apply one queued key change + drain VK queue |
 | `hal_keyboard_scan(col)` | hal_keyboard.cpp | PIA0 port-A read | Return matrix column (active LOW) |
 | `hal_keyboard_set_machine(m)` | hal_keyboard.cpp | `setup()` | Wire Machine pointer for F4/F6 hotkeys |
 | `hal_keyboard_press(row,col)` | hal_keyboard.cpp | Test code | Software key injection |
@@ -275,7 +272,7 @@ Open the supervisor (F1) → **Settings → Keyboard** and press ENTER to cycle 
 The joystick button polarity is inverted. `hal_joystick_read_button(port)` must return **0 = not pressed**. See `joystick-hal.md` Lessons Learned.
 
 ### Keys "stick" briefly after release
-`MIN_HOLD_FRAMES = 4` frames is intentional — it gives BASIC's KEYIN routine time to scan and debounce the key. If a game feels laggy, lower it to 2 or 3 and reflash.
+`MIN_HOLD_FRAMES = 4` frames is intentional — it gives BASIC's KEYIN routine time to scan and debounce the key. If a game feels laggy, lower it to 2 or 3 and reflash. Keep `MIN_GAP_FRAMES` ≥ 1, or fast re-taps of one key merge again.
 
 ### Supervisor eats all keys
 F3 toggles supervisor on/off. When active, all non-F3 keys route to `supervisor_on_key()` — the CoCo matrix is frozen. F3 is always processed first, so it can always close the supervisor.

@@ -18,12 +18,13 @@
 
 typedef struct Supervisor_t Supervisor_t;
 
-// Open the screen (sets state, resets cursor).
 // Force the next render to repaint the whole WiFi / Debug screen.
 void sv_wifi_invalidate(void);
-void sv_wifi_open(Supervisor_t* sv);
+// Open the screen (sets state, resets cursor). from_main: opened from the
+// main-menu WiFi tile, so ESC goes back there instead of to Settings.
+void sv_wifi_open(Supervisor_t* sv, bool from_main);
 
-// HID key handler (Up/Down move, ENTER execute, ESC back to Settings).
+// HID key handler (Up/Down move, ENTER execute, ESC back to the caller).
 void sv_wifi_on_key(Supervisor_t* sv, uint8_t hid_usage, bool pressed);
 
 // Per-frame: refresh when the WiFi state or IP changes (so CONNECTING ->

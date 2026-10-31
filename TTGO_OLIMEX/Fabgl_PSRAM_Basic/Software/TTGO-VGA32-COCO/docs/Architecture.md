@@ -14,6 +14,47 @@ A single firmware image contains both machine paths. The active machine is chose
 
 ---
 
+## At a Glance
+
+The emulator runs on both cores of the ESP32-WROVER:
+
+- **Core 1** — the main loop: CPU, video scanline render, audio capture, the
+  supervisor OSD, and the hard disk and floppy file I/O.
+- **Core 0** — WiFi, the debug server task (`dbg_srv`), the DriveWire client
+  task (`dw_client`) and the Speech/Sound Cartridge task (`ssc`). VGA scan-out
+  is I2S DMA and PS/2 runs on the ULP, so neither takes CPU time.
+
+### Main Loop (`loop()` in `TTGO-VGA32-COCO.ino`)
+
+```
+loop():
+  1. hal_process_input()             — drain FabGL VK queue, tick deferred releases
+     debug_rpc_keys_poll()           — OSD keys injected over the debug API
+  2. supervisor_update_and_render()  — if the OSD is open, render it and return
+  3. debug_rpc_poll()                — one pending debug-server command
+  4. machine_run_frame()             — emulate 262 scanlines (14,916 CPU cycles), then pace
+  5. hal_render_frame()              — no-op on VGA32; FabGL DMA scans out continuously
+```
+
+### CoCo 2 Memory Map
+
+```
+$0000–$7FFF   RAM (up to 64 KB with SAM paging)
+$8000–$9FFF   Extended BASIC ROM (8 KB)
+$A000–$BFFF   Color BASIC ROM (8 KB)
+$C000–$FEFF   Cartridge / Disk BASIC ROM (16 KB)
+$FF00–$FF3F   PIA registers (keyboard, audio, VDG control)
+$FF40–$FF5F   Disk controller (WD1793)
+$FFC0–$FFDF   SAM control registers
+```
+
+The CoCo 3 map (GIME MMU, `$FF90-$FFBF` registers) is under
+[CoCo 3 Extensions](#coco-3-extensions). Cartridge devices that answer only
+when turned on: RS-232 Pak `$FF68-$FF6B`, Orchestra-90 `$FF7A/$FF7B`,
+Speech/Sound `$FF7D/$FF7E`, virtual hard disk `$FF80-$FF86`.
+
+---
+
 ## System Architecture
 
 ```
@@ -64,7 +105,7 @@ The Arduino sketch orchestrates boot and the main loop.
 5. `machine_init()` — allocate RAM/ROM from PSRAM, init CPU/PIA/VDG/GIME/SAM
 6. `machine_load_roms()` — load ROMs from SD card
 7. **SD + ROM validation** — `hal_storage_is_ready()` → if false, call `boot_halt_screen()` with "SD card not found" message and halt; check per-machine ROM flags → if any required ROM is missing, call `boot_halt_screen()` naming the missing files and halt. `boot_halt_screen()` initializes the VGA display, paints black/red/white text at Font 2 (8×14 px), mirrors to serial, and loops forever — `setup()` never resumes.
-8. `hal_video_init()` — initialize FabGL VGAController at 640×200 @ 70 Hz (only reached when validation passes)
+8. `hal_video_init()` — initialize FabGL VGAController at 640×200 @ 60 Hz (only reached when validation passes)
 9. `machine_reset()` — cold reset, read reset vector
 10. `supervisor_init()` — OSD menu, FDC, NMI wiring
 11. `supervisor_load_state()` — restore last-mounted disks from NVS
@@ -254,7 +295,7 @@ Each source can route to IRQ or FIRQ independently via the GIME enable masks at 
 
 #### Video — `hal_video.cpp`
 
-FabGL `VGAController` at **640×200 @ 70 Hz**, 64-color direct mode (RGB222, 2 bits per channel).
+FabGL `VGAController` at **640×200 @ 60 Hz**, 64-color direct mode (RGB222, 2 bits per channel).
 
 - `hal_video_init()` brings up FabGL (`begin(R1,R0,G1,G0,B1,B0,HSYNC,VSYNC)`), sets the resolution, and binds the framebuffer to the OSD canvas used by the supervisor.
 - `hal_video_render_scanline_gime()` consumes the pre-converted RGB565 line emitted by the GIME core (OPT-C4) and writes raw VGA pixel bytes via `getScanline(y)`. Each pixel is `s_vga.createRawPixel(RGB222(...))`. Widths of 320 / 640 are 1:1 or pixel-doubled to the 640 framebuffer; other widths are nearest-neighbor scaled.
@@ -268,9 +309,9 @@ FabGL `VGAController` at **640×200 @ 70 Hz**, 64-color direct mode (RGB222, 2 b
 
 ESP32 internal **DAC1 on GPIO25** driven from a hardware timer ISR.
 
-- `hal_audio_init()` calls `dac_output_enable(DAC_CHANNEL_1)`, allocates `timerBegin(0, 80, true)` for a 1 µs timer base, and arms `timerAlarmWrite(timer, 1000000 / 22050, true)` for the 22050 Hz ISR.
-- The ISR pulls one sample per fire from the active double-buffer slot and calls `dac_output_voltage(DAC_CHANNEL_1, sample)`.
-- The 262-sample-per-frame scanline capture + commit-frame double-buffer model from the S3 build is preserved unchanged — the only difference is the output stage.
+- `hal_audio_init()` calls `dac_output_enable(DAC_CHANNEL_1)`, allocates `timerBegin(0, 80, true)` for a 1 µs timer base, and arms `timerAlarmWrite(timer, 45, true)` for a 45 µs (22 222 Hz) ISR.
+- The ISR takes samples from a ring buffer with a fractional stride and calls `dac_output_voltage(DAC_CHANNEL_1, sample)`.
+- The emulation loop pushes one sample per scanline (262 per frame) into the ring; at frame end the playback rate is steered to keep the ring about 390 samples full. See `audio-hal.md`.
 
 #### Keyboard — `hal_keyboard.cpp`
 
@@ -333,7 +374,7 @@ State machine: `INACTIVE → MAIN_MENU → FILE_BROWSER | MACHINE_SELECT | SETTI
 - **Menu** (`sv_menu.cpp`) — 6-item main menu: Disk Manager, Machine type, Settings, Reset Machine, Debug, About. Reset flushes all dirty disks before calling `machine_reset()`.
 - **Disk Manager / File Browser** (`sv_filebrowser.cpp`) — unified screen: 2-row drive strip (D0–D3) above a FAT32 file list. Left/Right select active drive; Enter mounts; U ejects; F flushes to SD. After mount, OSD stays open for additional drives.
 - **Machine Select** (`sv_menu.cpp`) — CoCo 2 / CoCo 3 submenu; confirm dialog → `supervisor_set_machine_type()` flushes all dirty disks then calls `esp_restart()`.
-- **Settings** (`sv_menu.cpp`) — Debug Log / RS-232 Pak toggle (mutually exclusive; both share UART0).
+- **Settings** (`sv_menu.cpp`) — Debug Log (Debug submenu) / RS-232 Pak (Multi-Pak submenu) toggles (mutually exclusive; both share UART0).
 - **FDC** (`sv_disk.cpp`) — WD1793 command-level emulation with PSRAM cache, deferred INTRQ (byte-257 mechanism)
 - **Render** (`sv_render.cpp`) — green phosphor theme; draws via `osd_canvas` into the FabGL framebuffer; `sv_render_drive_strip()` renders the 2×2 drive status grid.
 
@@ -349,38 +390,22 @@ The supervisor's coordinate system is the framebuffer (`DISPLAY_WIDTH` × `DISPL
 |---------|-------|-------------|
 | BOARD_TYPE | BOARD_TYPE_VGA32 | TTGO VGA32 v1.4 |
 | MACHINE_TYPE | 4 (CoCo 3) or 3 (CoCo 2) | Compile-time default; runtime-switchable via NVS |
-| CPU_VARIANT | 0 | MC6809 |
+| CPU_VARIANT | 0 | MC6809 (default only; Setup → Machine → CPU selects MC6809 or HD6309 at runtime, see `cpu.md`) |
 | RAM_SIZE_KB | 512 (CoCo 3) | |
+| COCO3_RAM_KB | 512 | CoCo 3 memory default; Setup → Machine → CoCo 3 Memory selects 128 / 512 / 1024 / 2048 KB at runtime |
 | CPU_CLOCK_HZ | 895000 | 0.895 MHz NTSC |
 | TARGET_FPS | 60 | NTSC timing |
 | SCANLINES_PER_FRAME | 262 | NTSC |
 | ACTIVE_SCANLINES | 192 | Visible display lines |
 | DISPLAY_WIDTH × HEIGHT | 640 × 200 | VGA framebuffer surface |
-| AUDIO_SAMPLE_RATE | 22050 | DAC ISR rate |
+| AUDIO_ISR_PERIOD_US | 45 | DAC ISR period (`hal_audio.cpp`) |
 | USE_PSRAM | 1 | RAM/ROM in PSRAM |
 
 ---
 
 ### 6. Pin Assignments (fixed by the TTGO VGA32 v1.4 board)
 
-| Function | GPIO | Notes |
-|----------|------|-------|
-| VGA R0 / R1 | 21 / 22 | Resistor-ladder DAC |
-| VGA G0 / G1 | 18 / 19 | Resistor-ladder DAC |
-| VGA B0 / B1 | 4 / 5 | Resistor-ladder DAC |
-| VGA HSYNC | 23 | |
-| VGA VSYNC | 15 | |
-| PS/2 Keyboard CLK | 33 | |
-| PS/2 Keyboard DATA | 32 | |
-| PS/2 Mouse CLK | 26 | (unused) |
-| PS/2 Mouse DATA | 27 | (unused) |
-| SD Card CS | 13 | HSPI |
-| SD Card MOSI | 12 | HSPI |
-| SD Card MISO | 2 | HSPI (strapping pin — must not be low at boot) |
-| SD Card SCK | 14 | HSPI |
-| Audio | 25 | ESP32 internal DAC1 |
-
-Joystick GPIOs are not wired on this board; the HAL stub avoids claiming any.
+See [LilyGo TTGO VGA32 v1.4 Pinout](pinout.md).
 
 ---
 
@@ -434,8 +459,8 @@ All files below are **required**. Missing any will trigger the boot validation h
 ### 9. Performance Characteristics
 
 - CPU emulation: ~20-25 fps on CoCo 3 GIME hi-res content (sustained by emulation core, not display)
-- Display: FabGL DMA scans 640×200 @ 70 Hz continuously — no SPI push step on the critical path
-- Audio: Real-time via DAC1 timer ISR at 22050 Hz; pitch-corrected scanline buffer
+- Display: FabGL DMA scans 640×200 @ 60 Hz continuously — no SPI push step on the critical path
+- Audio: Real-time via DAC1 timer ISR every 45 µs; rate-controlled scanline sample queue
 - Memory: ~160 KB SRAM free, ~3.5 MB PSRAM free after init
 
 ---
@@ -447,7 +472,7 @@ All files below are **required**. Missing any will trigger the boot validation h
 machine_run_frame()
   for scanline = 0..261:
     sv_disk_tick()              // Deferred INTRQ countdown
-    mc6809_run(~57 cycles)      // CPU executes instructions
+    mc6809_run_variant(~57 cycles)  // CPU executes instructions (MC6809 or HD6309)
       check_interrupts()        //   NMI > FIRQ > IRQ dispatch
       execute_one()             //   Fetch-decode-execute
         machine_read/write()    //   Memory/IO dispatch
@@ -508,6 +533,9 @@ TTGO-VGA32-COCO/
     machine.cpp/.h            System integration, memory map, frame loop
     mc6809.cpp/.h             MC6809 CPU emulation
     mc6809_opcodes.h          Opcode tables
+    mc6809_core_impl.h        Interpreter body shared by the two CPU builds
+    hd6309.cpp                HD6309 build of the interpreter
+    hd6309_ops.h              HD6309-only instructions, traps, native timing
     mc6821.cpp/.h             MC6821 PIA (2 instances)
     mc6847.cpp/.h             MC6847 VDG (CoCo 2)
     sam6883.cpp/.h            SAM6883 address mux (CoCo 2)
@@ -516,7 +544,7 @@ TTGO-VGA32-COCO/
   src/hal/
     hal.h                     HAL interface
     hal.cpp                   hal_init, hal_process_input
-    hal_video.cpp             FabGL VGAController @ 640×200 @ 70 Hz
+    hal_video.cpp             FabGL VGAController @ 640×200 @ 60 Hz
     hal_audio.cpp             Internal DAC1 (GPIO25), timer ISR
     hal_keyboard.cpp          FabGL PS/2 → CoCo matrix + deferred release
     hal_joystick.cpp          Neutral stub (hardware not wired)

@@ -1,0 +1,30 @@
+                                                                          PAGE REA2
+
+                      This is a copy of the REA Configure Paths:
+
+
+                                         * CONFIGURE PATHS *
+   
+                                    1  DSK1.EDIT1
+
+
+                                    2  DSK1.ASSM1
+
+
+                                    3  DSK1.SOURCE
+
+
+                                    4  DSK1.OBJECT
+
+
+                                    5  DSK1.LIST
+
+
+                                    6  OPTIONS: L
+                                    
+                                                                   
+                                       CTRL 1 - 5 DRIVE SELECTION
+
+                                       ANY OTHER KEY TO MAIN MENU
+
+

@@ -1,0 +1,37 @@
+
+                                                                            PAGE REA5
+
+                      SYSTEM SUPPORT
+
+                      The modified version of the Editor/Assembler no longer supports
+                      the 99/4 computer. A 99/4A is required. All TI BASIC support
+                      routines (CALL INIT, CALL LINK, CALL LOAD,CALL PEEK, CALL PEEKV,
+                      CALL POKEV, and CALL CHARPAT) have been removed from the
+                      Editor/Assembler. If you have a program that must be run from
+                      TI BASIC and requires these routines, you must plug an
+                      Editor/Assembler module into the cartridge connector.
+                      There are some assembly language programs that access data
+                      internal to the Editor/Assembler cartridge. These programs
+                      will not run correctly due to the re-structuring of the data
+                      in the Editor/Assembler module. For these programs you must
+                      use your Editor/Assembler cartridge. On the other hand like
+                      FunnelWeb REA loads the support routines before EA3 or EA5
+                      loaders to engage, so C, FORTRAM, and FORTH will load from
+                      the EA5 prompt.
+
+                      NO 32K NEEDED TO WHAT?
+                      REA has been totally re-written so the user can now use some
+                      of the features of REA without that nasty *NO MEMORY EXPANSION*
+                      error turning up. The error routine only disallows the user
+                      from accessing those aspects of REA that absolutely needs 32K
+                      to work. The user may now use the REA EDITOR PRINT FILE menu,
+                      or use the x R X B file loader menu, or use D DIRECTORY menu.
+                      That means with RXB and REA the user can now print files, view
+                      files, load any BASIC or XB program and catalog from REA with
+                      or without a 32K memory.
+
+                      EASTER EGGS
+                      When on main menu of REA 2015 using keys 1 will still go to
+                      the Editor, 2 will still go to Assembler, 3 will still go to
+                      the Load and Run, and 5 will still go to RUN PROGRAM FILE.
+                      There are more to look for.

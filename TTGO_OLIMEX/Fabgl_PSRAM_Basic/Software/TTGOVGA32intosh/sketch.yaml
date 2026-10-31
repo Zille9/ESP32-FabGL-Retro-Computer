@@ -1,0 +1,3 @@
+default_fqbn: esp32:esp32:esp32:PSRAM=enabled,PartitionScheme=huge_app,DebugLevel=debug
+default_port: /dev/ttyACM0
+default_protocol: serial

@@ -21,6 +21,7 @@
 #include "../core/mc6809.h"
 #include "../supervisor/supervisor.h"
 #include "../supervisor/sv_disk.h"
+#include "../core/vhd.h"
 #include "../utils/debug.h"
 
 static Machine*         s_machine   = nullptr;
@@ -46,6 +47,7 @@ static void exec_read_regs(DebugCmd* c) {
     MC6809* cpu = &s_machine->cpu;
     c->pc = cpu->pc; c->d = cpu->d; c->x = cpu->x; c->y = cpu->y;
     c->u = cpu->u;   c->s = cpu->s; c->dp = cpu->dp; c->cc = cpu->cc;
+    c->w = cpu->w;   c->v = cpu->v; c->md = cpu->md; c->cpu = cpu->variant;
     c->cycles = (uint32_t)cpu->cycles;
     c->result = DBG_OK;
 }
@@ -60,6 +62,9 @@ static void exec_write_regs(DebugCmd* c) {
     if (c->reg_mask & DBG_REG_S)  cpu->s  = c->s;
     if (c->reg_mask & DBG_REG_DP) cpu->dp = c->dp;
     if (c->reg_mask & DBG_REG_CC) cpu->cc = c->cc;
+    if (c->reg_mask & DBG_REG_W)  cpu->w  = c->w;
+    if (c->reg_mask & DBG_REG_V)  cpu->v  = c->v;
+    if (c->reg_mask & DBG_REG_MD) cpu->md = c->md;
     c->result = DBG_OK;
 }
 
@@ -109,7 +114,24 @@ static void exec_inject(DebugCmd* c) {
 // Same effect as the OSD Disk Manager, including remembering the mounts.
 Machine* debug_rpc_machine(void) { return s_machine; }
 
+// Hard disks HD0/HD1 arrive as drives SV_DISK_MAX_DRIVES + n.
+static void exec_hd(DebugCmd* c, uint8_t d) {
+    bool ok = true;
+    switch (c->disk_op) {
+        case DBG_DISK_MOUNT: ok = c->path && vhd_mount(d, c->path); break;
+        case DBG_DISK_EJECT: vhd_unmount(d); break;
+        case DBG_DISK_FLUSH: vhd_flush_all(); break;
+        default:             ok = false; break;
+    }
+    if (ok && c->disk_op != DBG_DISK_FLUSH) supervisor_save_state();
+    c->result = ok ? DBG_OK : DBG_ERR_RANGE;
+}
+
 static void exec_disk(DebugCmd* c) {
+    if (c->addr >= SV_DISK_MAX_DRIVES && c->addr < SV_DISK_MAX_DRIVES + VHD_NUM_DRIVES) {
+        exec_hd(c, (uint8_t)(c->addr - SV_DISK_MAX_DRIVES));
+        return;
+    }
     if (c->addr >= SV_DISK_MAX_DRIVES) { c->result = DBG_ERR_RANGE; return; }
     uint8_t d = (uint8_t)c->addr;
     bool ok = true;

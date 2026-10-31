@@ -27,6 +27,10 @@
 #include "sv_joystick.h"
 #include "sv_wifi.h"
 #include "sv_fujinet.h"
+#include "sv_cart.h"
+#include "../core/orch90.h"
+#include "../core/ssc/ssc.h"
+#include "../core/vhd.h"
 #include "../net/dw_bus.h"
 #include "sv_render.h"
 #include "../hal/hal.h"
@@ -76,6 +80,8 @@ static bool uses_wide_frame(SV_State st) {
         case SV_FILE_BROWSER:
         case SV_SETTINGS:
         case SV_KEYBOARD_MENU:
+        case SV_MACHINE_MENU:
+        case SV_SOUND_MENU:
         case SV_ABOUT:
         case SV_DEBUG_MENU:
         case SV_DEBUG_DUMP:
@@ -84,6 +90,7 @@ static bool uses_wide_frame(SV_State st) {
         case SV_KEYMAP_TEST:
         case SV_WIFI:
         case SV_FUJINET:
+        case SV_CART:
             return true;
         default:
             return false;
@@ -277,6 +284,7 @@ void supervisor_toggle(void) {
     if (sv.state == SV_INACTIVE) {
         // Activate
         capture_snapshot();
+        vhd_flush_all();   // the user may pull the SD card next
         sv.state = SV_MAIN_MENU;
         sv.menu_cursor = 0;
         sv.needs_redraw = true;
@@ -357,6 +365,30 @@ void supervisor_on_key(uint8_t hid_usage, bool pressed) {
             sv_fujinet_on_key(&sv, hid_usage, pressed);
             break;
 
+        case SV_CART:
+            sv_cart_on_key(&sv, hid_usage, pressed);
+            break;
+
+        case SV_CART_POPUP:
+            sv_cart_popup_on_key(&sv, hid_usage, pressed);
+            break;
+
+        case SV_SOUND_MENU:
+            sv_sound_menu_on_key(&sv, hid_usage, pressed);
+            break;
+
+        case SV_CPU_POPUP:
+            sv_cpu_popup_on_key(&sv, hid_usage, pressed);
+            break;
+
+        case SV_MACHINE_MENU:
+            sv_machine_menu_on_key(&sv, hid_usage, pressed);
+            break;
+
+        case SV_RAM_SELECT:
+            sv_ram_select_on_key(&sv, hid_usage, pressed);
+            break;
+
         case SV_KEYBOARD_MENU:
             sv_keyboard_menu_on_key(&sv, hid_usage, pressed);
             break;
@@ -399,11 +431,14 @@ bool supervisor_update_and_render(void) {
                 case SV_DEBUG_MENU:   sv_debug_menu_invalidate();  break;
                 case SV_ABOUT:        break;    // always repaints in full
                 case SV_SETTINGS:
+                case SV_MACHINE_MENU:
+                case SV_SOUND_MENU:
                 case SV_KEYBOARD_MENU: sv_settings_invalidate();   break;
                 case SV_KEYMAP_LIST:
                 case SV_KEYMAP_TEST:   sv_keymap_invalidate();     break;
                 case SV_WIFI:          sv_wifi_invalidate();       break;
                 case SV_FUJINET:       sv_fujinet_invalidate();    break;
+                case SV_CART:          sv_cart_invalidate();       break;
                 default:              sv_debug_invalidate();       break;
             }
         }
@@ -411,9 +446,11 @@ bool supervisor_update_and_render(void) {
     } else if (sv.state == SV_MACHINE_SELECT) {
         // Popup over the Settings list: leave the wide frame in place.
         if (s_last_rendered != sv.state) sv_machine_select_invalidate();
-    } else if (sv.state == SV_KEYMAP_CAPTURE || sv.state == SV_JOY_SENSE) {
-        // Popups over the Key Mapper keyboard / the Settings list: leave the
-        // wide frame in place.
+    } else if (sv.state == SV_KEYMAP_CAPTURE || sv.state == SV_JOY_SENSE ||
+               sv.state == SV_CART_POPUP || sv.state == SV_CPU_POPUP ||
+               sv.state == SV_RAM_SELECT) {
+        // Popups over the Key Mapper keyboard / the Settings, Machine and
+        // Sound Carts lists: leave the wide frame in place.
     } else if (s_main_box_on_screen && sv.state != SV_CONFIRM_DIALOG) {
         // The confirm dialog is left floating over the main menu.
         sv_render_wide_clear();
@@ -478,6 +515,30 @@ bool supervisor_update_and_render(void) {
             sv_fujinet_render(&sv);
             break;
 
+        case SV_CART:
+            sv_cart_render(&sv);
+            break;
+
+        case SV_CART_POPUP:
+            sv_cart_popup_render(&sv);
+            break;
+
+        case SV_SOUND_MENU:
+            sv_sound_menu_render(&sv);
+            break;
+
+        case SV_CPU_POPUP:
+            sv_cpu_popup_render(&sv);
+            break;
+
+        case SV_MACHINE_MENU:
+            sv_machine_menu_render(&sv);
+            break;
+
+        case SV_RAM_SELECT:
+            sv_ram_select_render(&sv);
+            break;
+
         case SV_KEYBOARD_MENU:
             sv_keyboard_menu_render(&sv);
             break;
@@ -518,6 +579,22 @@ void supervisor_save_state(void) {
             prefs.remove(key);
         }
     }
+    // Hard disks: forgotten once the hard disk is turned off (vhd_en already
+    // saved false for the next boot), so turning it back on starts empty.
+    if (!prefs.getBool("vhd_en", false)) {
+        for (int i = 0; i < VHD_NUM_DRIVES; i++) {
+            char key[10];
+            snprintf(key, sizeof(key), "hd%d_path", i);
+            prefs.remove(key);
+        }
+    } else if (vhd_enabled()) {
+        for (int i = 0; i < VHD_NUM_DRIVES; i++) {
+            char key[10];
+            snprintf(key, sizeof(key), "hd%d_path", i);
+            if (vhd_is_mounted(i)) prefs.putString(key, vhd_get_path(i));
+            else                   prefs.remove(key);
+        }
+    }
     prefs.end();
 }
 
@@ -538,6 +615,12 @@ void supervisor_load_state(void) {
                 sv_disk_mount(&sv.machine->fdc, i, path.c_str());
             }
         }
+        for (int i = 0; vhd_enabled() && i < VHD_NUM_DRIVES; i++) {
+            char key[10];
+            snprintf(key, sizeof(key), "hd%d_path", i);
+            String path = prefs.getString(key, "");
+            if (path.length() > 0) vhd_mount(i, path.c_str());
+        }
     }
 
     prefs.end();
@@ -553,6 +636,36 @@ uint8_t supervisor_load_machine_type(void) {
     uint8_t mt = prefs.getUChar("machine_type", (uint8_t)MACHINE_TYPE);
     prefs.end();
     return mt;
+}
+
+uint8_t supervisor_load_cpu_variant(void) {
+    Preferences prefs;
+    prefs.begin("sv", true);
+    uint8_t v = prefs.getUChar("cpu_variant", (uint8_t)CPU_VARIANT);
+    prefs.end();
+    return (v == CPU_VARIANT_HD6309) ? CPU_VARIANT_HD6309 : CPU_VARIANT_MC6809;
+}
+
+void supervisor_save_cpu_variant(uint8_t variant) {
+    Preferences prefs;
+    prefs.begin("sv", false);
+    prefs.putUChar("cpu_variant", variant);
+    prefs.end();
+}
+
+uint16_t supervisor_load_coco3_ram(void) {
+    Preferences prefs;
+    prefs.begin("sv", true);
+    uint16_t kb = prefs.getUShort("coco3_ram", (uint16_t)COCO3_RAM_KB);
+    prefs.end();
+    return coco3_ram_kb_valid(kb) ? kb : (uint16_t)COCO3_RAM_KB;
+}
+
+void supervisor_save_coco3_ram(uint16_t kb) {
+    Preferences prefs;
+    prefs.begin("sv", false);
+    prefs.putUShort("coco3_ram", kb);
+    prefs.end();
 }
 
 SerialPortMode supervisor_load_serial_mode(void) {
@@ -622,10 +735,77 @@ void supervisor_load_joystick(void) {
     // Default level 7 == config.h divisor 4 (11 - 7 == 4).
     uint8_t level  = prefs.getUChar("joyLevel", 7);
     bool    invert = prefs.getBool("joyInv", false);
+    uint8_t kbd    = prefs.getUChar("joy_kbd", JOY_KBD_OFF);
     prefs.end();
     hal_joystick_set_sensitivity(level);   // clamps internally
     hal_joystick_set_invert_y(invert);
+    hal_joystick_set_kbd_mode(kbd);        // out-of-range -> OFF
 }
+
+void supervisor_save_joy_kbd(uint8_t mode) {
+    Preferences prefs;
+    prefs.begin("sv", false);
+    prefs.putUChar("joy_kbd", mode);
+    prefs.end();
+}
+
+static char s_cart_rom[256] = "";         // requested at boot
+static char s_cart_rom_saved[256] = "";   // stored in NVS for the next restart
+
+void supervisor_load_cart_config(void) {
+    Preferences prefs;
+    prefs.begin("sv", true);
+    g_orch90_enabled = prefs.getBool("orch90", false);
+    g_ssc_enabled    = prefs.getBool("ssc", false);
+    g_vhd_enabled    = prefs.getBool("vhd_en", false);
+    String rom = prefs.getString("cart_rom", "");
+    prefs.end();
+
+    strncpy(s_cart_rom, rom.c_str(), sizeof(s_cart_rom) - 1);
+    s_cart_rom[sizeof(s_cart_rom) - 1] = '\0';
+    strcpy(s_cart_rom_saved, s_cart_rom);
+    if (s_cart_rom[0]) {
+        g_cart_rom_request[0] = s_cart_rom;
+        g_cart_rom_request[1] = s_cart_rom;
+    }
+    DEBUG_PRINTF("Cartridge: Orchestra-90 %s, Speech/Sound %s, hard disk %s, cart ROM %s",
+                 g_orch90_enabled ? "on" : "off", g_ssc_enabled ? "on" : "off",
+                 g_vhd_enabled ? "on" : "off", s_cart_rom[0] ? s_cart_rom : "(default)");
+}
+
+void supervisor_save_orch90(bool enabled) {
+    Preferences prefs;
+    prefs.begin("sv", false);
+    prefs.putBool("orch90", enabled);
+    prefs.end();
+}
+
+void supervisor_save_vhd(bool enabled) {
+    Preferences prefs;
+    prefs.begin("sv", false);
+    prefs.putBool("vhd_en", enabled);
+    prefs.end();
+}
+
+void supervisor_save_ssc(bool enabled) {
+    Preferences prefs;
+    prefs.begin("sv", false);
+    prefs.putBool("ssc", enabled);
+    prefs.end();
+}
+
+void supervisor_save_cart_rom(const char* name) {
+    Preferences prefs;
+    prefs.begin("sv", false);
+    if (name && name[0]) prefs.putString("cart_rom", name);
+    else                 prefs.remove("cart_rom");
+    prefs.end();
+    strncpy(s_cart_rom_saved, name ? name : "", sizeof(s_cart_rom_saved) - 1);
+    s_cart_rom_saved[sizeof(s_cart_rom_saved) - 1] = '\0';
+}
+
+const char* supervisor_cart_rom_boot(void)  { return s_cart_rom; }
+const char* supervisor_cart_rom_saved(void) { return s_cart_rom_saved; }
 
 void supervisor_save_and_restart(void) {
     // Flush dirty disk caches to SD before the restart — esp_restart() below
@@ -633,6 +813,7 @@ void supervisor_save_and_restart(void) {
     if (sv.machine) {
         sv_disk_flush_all(&sv.machine->fdc);
     }
+    vhd_flush_all();
 
     // Preserve supervisor state (mounted disks, last_dir) across the restart.
     supervisor_save_state();

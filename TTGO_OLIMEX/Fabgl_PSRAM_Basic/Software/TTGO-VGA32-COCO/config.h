@@ -25,8 +25,8 @@
 // Firmware version (reported by the WiFi debug API /api/status and shown on
 // the supervisor About screen). Bump both of these together on a release —
 // they are the single source of truth; nothing else should hardcode a version.
-#define FIRMWARE_VERSION        "0.14.0"
-#define FIRMWARE_BUILD_DATE     "06.10.2026"
+#define FIRMWARE_VERSION        "0.19.0"
+#define FIRMWARE_BUILD_DATE     "20.10.2026"
 
 // ------------------------------------------------------------
 // Build target — standalone USB flash vs. ESP32_Bootloader
@@ -41,8 +41,8 @@
 // Standalone is the default; do NOT edit this to switch. The build script
 // passes -DBUILD_TARGET=1 on the command line for the bootloader image
 // (tools/build_firmware.sh), so both flavours come from unmodified sources.
-#define BUILD_TARGET_STANDALONE 0
-#define BUILD_TARGET_BOOTLOADER 1
+#define BUILD_TARGET_STANDALONE 1
+#define BUILD_TARGET_BOOTLOADER 0
 
 #ifndef BUILD_TARGET
 #define BUILD_TARGET BUILD_TARGET_STANDALONE
@@ -80,6 +80,8 @@
 #endif
 
 // CPU variant: 0 = MC6809, 1 = HD6309
+// Compile-time default only — the active CPU is g_cpu_variant (core/machine.h),
+// initialized from NVS at boot and changed from Settings -> CPU.
 #define CPU_VARIANT             0
 
 // RAM size in KB (CoCo3 = 512)
@@ -194,7 +196,7 @@
 
 #define PIN_SD_CS               13
 #define PIN_SD_MOSI             12
-#define PIN_SD_MISO             35 //2
+#define PIN_SD_MISO             35
 #define PIN_SD_SCLK             14
 
 // ============================================================
@@ -217,8 +219,24 @@
 #define ROM_BECKER_TO_COCO3_FILE  "hdbdw3bc3t.rom"
 
 #define ROM_COCO3_FILE          "coco3.rom"
+
+// Orchestra-90/CC cartridge ROM (8 KB). Optional: without it the DAC ports
+// still work for software loaded from disk.
+#define ROM_ORCH90_FILE         "orch90.rom"
+// Speech/Sound Cartridge: TMS7040 firmware and SP0256-AL2 mask ROM (MAME names).
+#define ROM_SSC_PIC_FILE        "pic-7040-510.bin"
+#define ROM_SSC_SPEECH_FILE     "sp0256-al2.bin"
+// VCC RGB-DOS: Disk BASIC for the virtual hard disk at $FF80-$FF86. Optional:
+// without it the ports still work for NitrOS-9 (emudsk driver).
+#define ROM_RGBDOS_FILE         "rgbdos.rom"
 #define COCO3_ROM_SIZE          (32 * 1024)
 #define COCO3_PHYSICAL_RAM      (512 * 1024)
+
+// CoCo 3 RAM in KB: 128, 512, 1024 or 2048. Compile-time default only — the
+// active size is g_coco3_ram_kb (core/machine.h), initialized from NVS at boot
+// and changed from Setup -> Machine -> CoCo 3 Memory. 1024 and 2048 emulate a
+// memory expansion board (extra MMU bits 7-6, video bank in $FF9B).
+#define COCO3_RAM_KB            512
 
 // ============================================================
 // Memory layout

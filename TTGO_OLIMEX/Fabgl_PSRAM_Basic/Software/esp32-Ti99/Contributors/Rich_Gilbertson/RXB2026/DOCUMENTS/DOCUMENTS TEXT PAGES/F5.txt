@@ -1,0 +1,24 @@
+          F18            subprogram                            PAGE  F5
+          -------------------------------------------------------------
+
+          20000 ! THIS JUST INCLUDED IN THE TEXT FILE FOR REFERENCE 
+                (REMS SO YOU CAN PASTE XB SAFELY)
+          20010 ! ASM PROGRAM STUB - COPIES PALETTE BYTES TO GPU'S VDP@>5000 
+                - THIS IS A SIMPLE GREYSCALE PALETTE
+          20020 ! ASSEMBLED AT >1000
+          20030 !    aorg >1000
+          20040 !    LI R0,DAT
+          20050 !    LI R1,>5000   
+                * THE SECOND BYTE OF >50XX IS OVERWRITTEN BY PALNUM*32 - 
+                SO >5000, >5020, >5040 OR >5060
+          20060 !    LI R2,16
+          20070 ! LP
+          20080 !    MOV *R0+,*R1+
+          20090 !    DEC R2
+          20100 !    JNE LP
+          20110 !    IDLE
+          20120 ! * F18A GREYSCALE PALETTE (WE ACTUALLY GENERATE THIS INSTEAD)
+          20130 ! DAT
+          20140 ! DATA >0000,>0111,>0222,>0333,>0444,>0555,>0666,>0777
+          20150 ! DATA >0888,>0999,>0AAA,>0BBB,>0CCC,>0DDD,>0EEE,>0FFF
+          20160 !    end

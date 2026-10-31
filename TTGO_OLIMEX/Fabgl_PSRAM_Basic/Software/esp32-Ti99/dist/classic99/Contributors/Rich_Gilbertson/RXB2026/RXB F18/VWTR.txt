@@ -1,0 +1,10 @@
+VDPWA  EQU >8C02              VDP write address address
+
+*
+**     VDP write to register
+*
+VWTR   MOV  *R13,R1           Get register number and value
+       MOVB @1(R13),@VDPWA    Write out value
+       ORI  R1,>8000          Set for register write
+       MOVB R1,@VDPWA         Write out register number
+       RTWP   

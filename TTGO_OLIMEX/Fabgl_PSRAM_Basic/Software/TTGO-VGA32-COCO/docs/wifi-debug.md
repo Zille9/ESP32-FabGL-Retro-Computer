@@ -107,22 +107,23 @@ Responses are JSON. Transfers are capped at 4 KB per request.
 
 | Method / Path | Description |
 |---|---|
-| `GET /api/status` | machine type, paused flag, firmware/API version, bus summary, internal RAM (`int_free`, `int_min`, `int_largest` — includes the ~20 KB IRAM heap that only 32-bit accesses can use; `int8_free`, `int8_min`, `int8_largest` — byte-addressable part, what malloc/new can actually get), emulated `fps` (last second), `srv_stack_free` (debug-server task stack never used, bytes) |
+| `GET /api/status` | machine type, paused flag, firmware/API version, bus summary, internal RAM (`int_free`, `int_min`, `int_largest` — includes the ~20 KB IRAM heap that only 32-bit accesses can use; `int8_free`, `int8_min`, `int8_largest` — byte-addressable part, what malloc/new can actually get), emulated `fps` (last second), `srv_stack_free` (debug-server task stack never used, bytes), `ssc` (Speech/Sound Cartridge: `enabled`, and while on `busy`, `commands`, `allophones`, `ay_writes`, `underruns`, `queued`, `stack_free` — see [ssc.md](ssc.md)) |
 | `POST /api/pause`, `POST /api/resume` | freeze / un-freeze at frame boundary |
-| `GET /api/registers` | A,B,D,X,Y,U,S,PC,DP,CC + decoded flags + cycles |
-| `POST /api/registers` | set any subset: `pc=`, `a=`, `b=`, `d=`, `x=`, `y=`, `u=`, `s=`, `dp=`, `cc=` |
+| `GET /api/registers` | A,B,D,X,Y,U,S,PC,DP,CC + decoded flags + cycles, and `cpu` (`"6809"` / `"6309"`). On a 6309 also `e`, `f`, `w`, `v`, `md`, `native` |
+| `POST /api/registers` | set any subset: `pc=`, `a=`, `b=`, `d=`, `x=`, `y=`, `u=`, `s=`, `dp=`, `cc=`, and the 6309's `e=`, `f=`, `w=`, `v=`, `md=` |
 | `GET /api/mem?addr=&len=&space=cpu\|phys` | read bytes → `{..,"data":"hex"}` |
 | `POST /api/mem` | `addr=`, `data=`hex, `space=` — write bytes |
 | `POST /api/inject` | `addr=`, `data=`hex, optional `pc=`, `resume=1` |
 | `GET /api/screenshot.png` | arm capture, advance one frame, return PNG (core line output, before the video HAL). `?fb=1`: return the live display framebuffer instead (640x200, after HAL scaling/border), read with the emulator held paused |
 | `POST /api/reset` | clean in-place `machine_reset()` (device stays up) |
-| `GET /api/machine` | current machine type (3 = CoCo 2, 4 = CoCo 3) |
-| `POST /api/machine` | `type=3\|4` — **reboots the device** (see below) |
+| `GET /api/machine` | current machine type (3 = CoCo 2, 4 = CoCo 3), `cpu` (`"6809"` / `"6309"`) and `coco3_ram_kb` |
+| `POST /api/machine` | `type=3\|4`, optional `cpu=6809\|6309` and `ram=128\|512\|1024\|2048` (CoCo 3 memory in KB) — **reboots the device** if any of them changes (see below) |
 | `GET /api/nvram` | dump all `"sv"` NVS settings as JSON |
 | `GET /api/bus` | DriveWire bus mode, host/port, link state, byte counters, `connects`, `max_reply_ms`, `slow_replies` |
 | `POST /api/bus` | `mode=0\|1` (Off / External), `host=`, `port=`, `rom_to=` — **reboots** |
-| `GET /api/disk` | Disk Manager drives 0–3: path, size, read-only, dirty |
-| `POST /api/disk` | `op=mount&drive=N&path=/X.DSK`, `op=eject&drive=N`, `op=flush&drive=N` (runs on core 1; mounts are remembered like the OSD's) |
+| `GET /api/disk` | Disk Manager drives 0–3 (`drives`: path, size, read-only, dirty); `hd_enabled` and the hard disks (`hard_disks`: `hd0`/`hd1`, path, read-only — see [vhd.md](vhd.md)) |
+| `POST /api/disk` | `op=mount&drive=N&path=/X.DSK`, `op=eject&drive=N`, `op=flush&drive=N`; `drive=hd0` / `hd1` for the hard disks (`op=flush` flushes both). Runs on core 1; mounts are remembered like the OSD's |
+| `POST /api/key` | `hid=<USB HID usage>` presses and releases a key in the supervisor menu (only while it is open; never reaches the emulated keyboard); `toggle=1` opens or closes the menu like F3 |
 
 ### Examples (curl)
 
@@ -152,6 +153,11 @@ curl       http://$IP/api/nvram
   one frame is stepped on core 1 (which renders + fills the PSRAM capture
   buffer), then the prior pause state is restored. The PNG covers the active
   GIME area at its native width (320 or 640) × active lines.
+- **While the supervisor menu is open**, requests that run on core 1 (memory,
+  registers, inject, reset, disk mount/eject/flush, screenshot) time out with
+  `504`: `loop()` returns from `supervisor_update_and_render()` before
+  `debug_rpc_poll()`. `GET /api/status` (`osd_state`, 0 = closed),
+  `GET /api/disk`, `GET /api/nvram` and `POST /api/key` still answer.
 - **No authentication / TLS** — intended for a trusted LAN.
 
 ## Screenshot capture
@@ -191,4 +197,5 @@ See [`../mcp-bridge/README.md`](../mcp-bridge/README.md). Configure `COCO_DEBUG_
 register `coco_mcp_bridge.py` with Claude Code or Claude Desktop. Tools:
 `status`, `read_registers`, `write_registers`, `read_memory`, `write_memory`,
 `pause`, `resume`, `inject_code`, `reset`, `get_machine`, `set_machine`,
-`read_nvram`, `screenshot`.
+`list_disks`, `mount_disk`, `eject_disk`, `flush_disk` (floppies 0–3 and hard
+disks `hd0`/`hd1`), `osd_keys`, `read_nvram`, `screenshot`.

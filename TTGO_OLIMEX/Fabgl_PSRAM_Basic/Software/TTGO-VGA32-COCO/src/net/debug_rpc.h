@@ -38,6 +38,10 @@
 #define DBG_REG_S   (1u << 5)
 #define DBG_REG_DP  (1u << 6)
 #define DBG_REG_CC  (1u << 7)
+// HD6309 only; written whatever the CPU, read back as stored
+#define DBG_REG_W   (1u << 8)
+#define DBG_REG_V   (1u << 9)
+#define DBG_REG_MD  (1u << 10)
 
 // --- Memory address space ---
 #define DBG_SPACE_CPU  0   // MMU-correct, via machine_read/write
@@ -74,6 +78,9 @@ typedef struct {
     // Registers (read output / write input)
     uint16_t pc, d, x, y, u, s;
     uint8_t  dp, cc;
+    uint16_t w, v;       // HD6309 registers
+    uint8_t  md;
+    uint8_t  cpu;        // read-only: CPU_VARIANT_*
     uint32_t cycles;     // read-only: total CPU cycles
     uint16_t reg_mask;   // DBG_CMD_WRITE_REGS: which fields to apply
 

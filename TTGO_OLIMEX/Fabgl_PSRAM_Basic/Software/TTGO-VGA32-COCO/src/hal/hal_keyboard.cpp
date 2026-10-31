@@ -22,59 +22,90 @@
 #define COCO_SHIFT_COL  7
 
 bool  backto = false;
-// Shared matrix state
+// Shared matrix state — what the emulated CPU reads (bit clear = pressed)
 static uint8_t key_matrix[8] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
 };
+// The matrix as it will be once every queued change has been applied
+static uint8_t key_target[8] = {
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+};
+
+// Paced key queue. Color BASIC's KEYIN ($A1CB) keeps a rollover byte per
+// column ($0152), decodes only the lowest newly pressed bit of a column, then
+// debounces by re-reading that column a few ms later: if the column changed
+// in between, the key is dropped and, already marked in the rollover table,
+// never seen again. Copying PS/2 events straight into the matrix therefore
+// loses characters — a fast re-tap of a key still held for MIN_HOLD_FRAMES
+// stays one continuous press, two keys of one column landing in the same
+// frame decode as one, and a release landing mid-debounce kills a key in the
+// same column. So changes go through a FIFO and reach the matrix at most one
+// per frame, each key held MIN_HOLD_FRAMES and left released MIN_GAP_FRAMES
+// before it is pressed again.
+#define MIN_HOLD_FRAMES 4
+#define MIN_GAP_FRAMES  2
+#define KEYQ_SIZE       64
+struct KeyOp {
+    uint8_t col;
+    uint8_t row;
+    bool    press;
+};
+static KeyOp   keyq[KEYQ_SIZE];
+static uint8_t keyq_len;
+static uint8_t cell_age[8][8];   // frames since the cell last changed (saturates)
 
 static void set_key(uint8_t col, uint8_t row, bool pressed) {
     if (col >= 8 || row >= 8) return;
     if (pressed) key_matrix[col] &= ~(1 << row);
     else         key_matrix[col] |=  (1 << row);
+    cell_age[col][row] = 0;
+}
+
+static void keyq_remove(int i) {
+    memmove(&keyq[i], &keyq[i + 1], (keyq_len - i - 1) * sizeof(KeyOp));
+    keyq_len--;
+}
+
+// Queue a matrix change; one the queue already ends in (typematic repeats,
+// SHIFT already in the wanted state) is dropped.
+static void queue_key(uint8_t col, uint8_t row, bool pressed) {
+    if (col >= 8 || row >= 8) return;
+    bool target_down = !(key_target[col] & (1 << row));
+    if (target_down == pressed) return;
+    if (pressed) key_target[col] &= ~(1 << row);
+    else         key_target[col] |=  (1 << row);
+    if (keyq_len == KEYQ_SIZE) {   // backlog full — force the oldest change out
+        set_key(keyq[0].col, keyq[0].row, keyq[0].press);
+        keyq_remove(0);
+    }
+    keyq[keyq_len++] = { col, row, pressed };
 }
 
 static void apply_shift(bool active) {
-    set_key(COCO_SHIFT_COL, COCO_SHIFT_ROW, active);
+    queue_key(COCO_SHIFT_COL, COCO_SHIFT_ROW, active);
 }
 
-// Deferred releases — keep the key in the matrix for MIN_HOLD_FRAMES so the
-// emulated CPU's KEYIN routine sees it through one full debounce pass.
-#define MIN_HOLD_FRAMES 4
-struct DeferredRelease {
-    uint8_t col;
-    uint8_t row;
-    uint8_t frames_left;
-};
-#define MAX_DEFERRED 8
-static DeferredRelease deferred_releases[MAX_DEFERRED];
-
-static void defer_release(uint8_t col, uint8_t row) {
-    for (int i = 0; i < MAX_DEFERRED; i++) {
-        if (deferred_releases[i].frames_left > 0 &&
-            deferred_releases[i].col == col && deferred_releases[i].row == row) {
-            deferred_releases[i].frames_left = MIN_HOLD_FRAMES;
+static void tick_key_queue() {
+    for (int c = 0; c < 8; c++)
+        for (int r = 0; r < 8; r++)
+            if (cell_age[c][r] < 0xFF) cell_age[c][r]++;
+    // Apply the oldest change that is due. Only a key release still serving
+    // its hold time may be overtaken (by a change to another cell); presses
+    // and SHIFT changes keep their order, so characters arrive in sequence
+    // and each with the SHIFT state it was typed with.
+    for (int i = 0; i < keyq_len; i++) {
+        const KeyOp& op = keyq[i];
+        bool blocked = false;
+        for (int j = 0; j < i && !blocked; j++)
+            blocked = (keyq[j].col == op.col && keyq[j].row == op.row);
+        uint8_t need = op.press ? MIN_GAP_FRAMES : MIN_HOLD_FRAMES;
+        if (!blocked && cell_age[op.col][op.row] >= need) {
+            set_key(op.col, op.row, op.press);
+            keyq_remove(i);
             return;
         }
-    }
-    for (int i = 0; i < MAX_DEFERRED; i++) {
-        if (deferred_releases[i].frames_left == 0) {
-            deferred_releases[i].col = col;
-            deferred_releases[i].row = row;
-            deferred_releases[i].frames_left = MIN_HOLD_FRAMES;
+        if (op.press || (op.col == COCO_SHIFT_COL && op.row == COCO_SHIFT_ROW))
             return;
-        }
-    }
-    set_key(col, row, false);
-}
-
-static void tick_deferred_releases() {
-    for (int i = 0; i < MAX_DEFERRED; i++) {
-        if (deferred_releases[i].frames_left > 0) {
-            deferred_releases[i].frames_left--;
-            if (deferred_releases[i].frames_left == 0) {
-                set_key(deferred_releases[i].col, deferred_releases[i].row, false);
-            }
-        }
     }
 }
 
@@ -384,6 +415,8 @@ static void process_vk(const fabgl::VirtualKeyItem& it) {
 
     // Supervisor / hotkey gate — F3 always toggles supervisor.
     if (vk == fabgl::VK_F3 && pressed) { supervisor_toggle(); return; }
+    // Joy-Keyboard Emulation: releases always reach it so nothing sticks.
+    if (!pressed) hal_joystick_kbd_key((int)vk, false);
     if (supervisor_is_active()) {
         // Key Mapper capture/test screens need the raw VirtualKey — the HID
         // translation below is lossy (most symbol keys map to usage 0).
@@ -435,6 +468,11 @@ static void process_vk(const fabgl::VirtualKeyItem& it) {
         }
     }
 
+    // Joy-Keyboard Emulation takes the arrows and Space from the CoCo keyboard.
+    if (pressed && hal_joystick_kbd_key((int)vk, true)) return;
+    if (!pressed && hal_joystick_get_kbd_mode() != JOY_KBD_OFF &&
+        hal_joystick_kbd_key((int)vk, false)) return;
+
     // User remap first — a custom-bound key replaces its default meaning.
     VkMap custom_map;
     const VkMap* k = nullptr;
@@ -455,23 +493,22 @@ static void process_vk(const fabgl::VirtualKeyItem& it) {
 
     bool is_shift_key = (k->col == COCO_SHIFT_COL && k->row == COCO_SHIFT_ROW);
     if (is_shift_key) {
-        if (pressed) apply_shift(true);
-        else         defer_release(COCO_SHIFT_COL, COCO_SHIFT_ROW);
+        apply_shift(pressed);
     } else {
         if (pressed) {
             bool want_shift = (shift_held && !k->suppress_shift) || k->needs_shift;
             apply_shift(want_shift);
-            set_key(k->col, k->row, true);
+            queue_key(k->col, k->row, true);
         } else {
-            defer_release(k->col, k->row);
-            if (!shift_held) defer_release(COCO_SHIFT_COL, COCO_SHIFT_ROW);
+            queue_key(k->col, k->row, false);
+            if (!shift_held) apply_shift(false);
         }
     }
 }
 
 void hal_keyboard_init(void) {
     hal_keyboard_release_all();
-    memset(deferred_releases, 0, sizeof(deferred_releases));
+    memset(cell_age, 0xFF, sizeof(cell_age));
     // PS2Preset::KeyboardPort0_MousePort1 defaults to keyboard on GPIO33/32
     // and mouse on GPIO26/27 — both matching the TTGO VGA32 v1.4 headers.
     // It allocates Keyboard *and* Mouse objects; hal_joystick.cpp grabs the
@@ -513,7 +550,7 @@ const char* hal_keyboard_layout_name(KbdLayout layout) {
 
 void hal_keyboard_tick(void) {
 
-    tick_deferred_releases();
+    tick_key_queue();
     fabgl::Keyboard* kbd = fabgl::PS2Controller::keyboard();
     if (!kbd) return;
     while (kbd->virtualKeyAvailable() > 0) {
@@ -541,13 +578,20 @@ uint8_t hal_keyboard_scan(uint8_t column) {
 }
 
 void hal_keyboard_press(uint8_t row, uint8_t col) {
-    if (row < 8 && col < 8) key_matrix[col] &= ~(1 << row);
+    if (row < 8 && col < 8) {
+        key_matrix[col] &= ~(1 << row);
+        key_target[col] &= ~(1 << row);
+    }
 }
 
 void hal_keyboard_release(uint8_t row, uint8_t col) {
-    if (row < 8 && col < 8) key_matrix[col] |= (1 << row);
+    if (row < 8 && col < 8) {
+        key_matrix[col] |= (1 << row);
+        key_target[col] |= (1 << row);
+    }
 }
 
 void hal_keyboard_release_all(void) {
-    for (int i = 0; i < 8; i++) key_matrix[i] = 0xFF;
+    for (int i = 0; i < 8; i++) key_matrix[i] = key_target[i] = 0xFF;
+    keyq_len = 0;
 }

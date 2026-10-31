@@ -1,0 +1,30 @@
+/*
+
+## Allowlist
+!.gitignore
+!.gitmodules
+!.gitattributes
+!.clang-format*
+!README.md
+!LICENSE
+
+# Arduino sketch
+!/TTGOVGA32intosh.ino
+!/sketch.yaml
+!/src/
+
+# Build/packaging helpers
+!/tools/
+
+## Denylist
+# Cydintosh Home Assistant automations (kept locally, not used by the firmware)
+/homeassistant/
+
+# Local Claude Code guidance
+/CLAUDE.md
+
+# Build artifacts (arduino-cli --output-dir / --build-path)
+build/
+**/*.o
+**/*.elf
+**/*.map

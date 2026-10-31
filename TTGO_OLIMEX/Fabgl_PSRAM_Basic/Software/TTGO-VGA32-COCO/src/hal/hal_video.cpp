@@ -319,6 +319,28 @@ static inline void capture_scanline_vdg(int line, const uint8_t* pixels, int wid
     }
 }
 
+// Map a GIME active-area line to a framebuffer row, or -1 to drop it.
+// Shorter frames (192/199 lines) are centred. The 225-line mode (LPF=3,
+// NitrOS-9's 25-row screen) is taller than the 200-line viewport: instead of
+// cutting off the bottom 25 lines, drop the last line of every 9-line block —
+// with 9-line text rows that is the blank gap under each glyph, so all 25 rows
+// stay visible and the text itself is not distorted.
+static inline int gime_display_y(int line, int total_lines, int vp_h) {
+    if (line < 0) return -1;
+    if (total_lines <= 0) total_lines = vp_h;
+    if (total_lines <= vp_h) {
+        const int y = line + (vp_h - total_lines) / 2;
+        return (y < vp_h) ? y : -1;
+    }
+    const int excess = total_lines - vp_h;
+    const int period = total_lines / excess;          // 225 → 9
+    int dropped = (line + 1) / period;
+    if (dropped <= excess && (line + 1) % period == 0) return -1;
+    if (dropped > excess) dropped = excess;
+    const int y = line - dropped;
+    return (y < vp_h) ? y : -1;
+}
+
 // GIME (CoCo 3) scanline: pre-converted RGB565 from tcc1014 — convert each
 // pixel to a raw VGA byte. Width is 320 or 640 (post-OPT-C4).
 void hal_video_render_scanline_gime(int line, int total_lines,
@@ -330,11 +352,8 @@ void hal_video_render_scanline_gime(int line, int total_lines,
     capture_scanline(line, total_lines, pixels, width);
     const int vp_w = s_vga.getViewPortWidth();
     const int vp_h = s_vga.getViewPortHeight();
-    if (total_lines <= 0 || total_lines > vp_h) total_lines = vp_h;
-    int y_off = (vp_h - total_lines) / 2;
-    if (y_off < 0) y_off = 0;
-    int y = line + y_off;
-    if (y < 0 || y >= vp_h) return;
+    const int y = gime_display_y(line, total_lines, vp_h);
+    if (y < 0) return;
 
     volatile uint8_t* row = s_vga.getScanline(y);
     uint8_t border_byte = s_gime_raw_lut[border_colour & 0x3F];
@@ -404,11 +423,8 @@ void hal_video_render_scanline_gime_raw(int line, int total_lines,
     if (!display_available || !raw || width <= 0) return;
     const int vp_w = s_vga.getViewPortWidth();
     const int vp_h = s_vga.getViewPortHeight();
-    if (total_lines <= 0 || total_lines > vp_h) total_lines = vp_h;
-    int y_off = (vp_h - total_lines) / 2;
-    if (y_off < 0) y_off = 0;
-    int y = line + y_off;
-    if (y < 0 || y >= vp_h) return;
+    const int y = gime_display_y(line, total_lines, vp_h);
+    if (y < 0) return;
 
     uint8_t* row = (uint8_t*)s_vga.getScanline(y);
     const uint8_t border_byte = s_gime_raw_lut[border_colour & 0x3F];

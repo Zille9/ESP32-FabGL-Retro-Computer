@@ -1,177 +1,20 @@
 # TTGO-VGA32-COCO Core Modules — Implementation Details
 
-> **Runtime machine selection:** `MACHINE_TYPE` in `config.h` is a compile-time default only; the active machine is `g_machine_type` (declared in `machine.h`, seeded from NVS at boot). Public machine functions (`machine_init`, `machine_read`, `machine_run_frame`, etc.) are dispatchers that call the `_coco2` / `_coco3` variant matching `g_machine_type`. The 6809 hot path is pinned to the active machine's read/write during init, so per-cycle memory access bypasses the dispatcher. See `runtime-machine-switch.md`.
+> **Runtime machine selection:** `MACHINE_TYPE` in `config.h` is a compile-time default only; the active machine is `g_machine_type` (declared in `machine.h`, seeded from NVS at boot). Public machine functions (`machine_init`, `machine_read`, `machine_run_frame`, etc.) are dispatchers that call the `_coco2` / `_coco3` variant matching `g_machine_type`. The CPU hot path is pinned to the active machine's read/write during init, so per-cycle memory access bypasses the dispatcher. See `runtime-machine-switch.md`.
 
 ## Overview
 
-The `TTGO-VGA32-COCO/src/core/` directory contains the emulation core: the four major ICs of the CoCo 2 plus the machine integration layer that wires t
-hem together. All modules are derived from XRoar's C source by Ciaran Anscomb, adapted to C++ for the ESP32-S3 Arduino environment.
+The `TTGO-VGA32-COCO/src/core/` directory contains the emulation core: the major ICs of the CoCo plus the machine integration layer that wires them together. This document covers the support chips and the machine; **the CPU (MC6809 and HD6309) has its own document, `cpu.md`**, and the Orchestra-90 cartridge is in `orchestra90.md`. All modules are derived from XRoar's C source by Ciaran Anscomb, adapted to C++ for the ESP32-S3 Arduino environment.
 
 **Source files:**
 
 | File | IC / Role | Lines |
 |------|-----------|-------|
-| `mc6809.h` / `mc6809.cpp` | Motorola MC6809 CPU | ~2,650 |
-| `mc6809_opcodes.h` | Opcode definitions & cycle tables | 88 |
 | `mc6821.h` / `mc6821.cpp` | Motorola 6821 PIA (×2) | 175 |
 | `mc6847.h` / `mc6847.cpp` | Motorola MC6847 VDG (CoCo 2) | 396 |
 | `sam6883.h` / `sam6883.cpp` | SAM6883 Address Multiplexer (CoCo 2) | 164 |
 | `tcc1014.h` / `tcc1014.cpp` | TCC1014 GIME — MMU, video, interrupts (CoCo 3) | ~940 |
 | `machine.h` / `machine.cpp` | System integration & memory map (CoCo 2 + CoCo 3) | ~640 |
-
----
-
-## MC6809 — CPU (`mc6809.h`, `mc6809.cpp`)
-
-Full emulation of the Motorola MC6809E 8-bit processor, the heart of the CoCo.
-
-### Registers
-
-| Register | Width | Description |
-|----------|-------|-------------|
-| `pc` | 16-bit | Program counter |
-| `d` | 16-bit | Accumulator D (A = high byte, B = low byte) |
-| `x`, `y` | 16-bit | Index registers |
-| `s` | 16-bit | Hardware stack pointer |
-| `u` | 16-bit | User stack pointer |
-| `dp` | 8-bit | Direct page register |
-| `cc` | 8-bit | Condition codes (E, F, H, I, N, Z, V, C) |
-
-### Condition Code Flags
-
-| Flag | Bit | Description |
-|------|-----|-------------|
-| E | 7 | Entire state saved (1 = full push on interrupt, 0 = partial/FIRQ) |
-| F | 6 | FIRQ mask (1 = FIRQ disabled) |
-| H | 5 | Half carry (bit 3 carry, used by DAA) |
-| I | 4 | IRQ mask (1 = IRQ disabled) |
-| N | 3 | Negative (MSB of result) |
-| Z | 2 | Zero (result == 0) |
-| V | 1 | Overflow (signed arithmetic) |
-| C | 0 | Carry / borrow |
-
-### Execution Loop (`mc6809_run`)
-
-```
-mc6809_run(cpu, budget):
-  cycles = 0
-  while cycles < budget:
-    if cpu->halted:
-      cycles = budget; break          // FDC HALT burns budget
-    check_interrupts(cpu)             // NMI > FIRQ > IRQ priority
-    if cpu->wait_for_interrupt:
-      cycles = budget; break          // CWAI/SYNC idles
-    execute_one(cpu)                  // Fetch-decode-execute
-  return cycles
-```
-
-- **HALT support**: When `cpu->halted` is true (set by the FDC's DRQ/HALT mechanism), the CPU burns its entire budget doing nothing — essential fo
-r disk I/O synchronization.
-- **CWAI/SYNC**: `wait_for_interrupt` flag causes the CPU to idle until an interrupt arrives. Any code that sets `irq_pending` or `firq_pending` must also clear `wait_for_interrupt` to wake the CPU — see "SYNC Wake-up Fix" below.
-
-### Interrupt Handling
-
-Three interrupt types, checked before each instruction in priority order:
-
-**NMI** (`mc6809_nmi(cpu, active)`)
-- **Edge-triggered**: Latches `nmi_pending` on inactive→active transition of `nmi_line`. After servicing, `nmi_line` is cleared — a new edge is re
-quired for the next NMI.
-- **Non-maskable**: Cannot be disabled via CC flags.
-- **nmi_armed gate**: NMI is ignored until the first LDS instruction executes (per MC6809 spec). This prevents spurious NMI during reset when S is
- uninitialized.
-- **Stack push**: Full state (E=1) — CC, A, B, DP, X, Y, U, PC → 12 bytes on S stack (19 cycles). If `cwai_state` is true, push is skipped (7 cycl
-es).
-- **Masks**: Sets both I and F flags.
-- **Vector**: $FFFC.
-- **Used by**: FDC INTRQ for disk transfer completion.
-
-**FIRQ** (`mc6809_firq(cpu, active)`)
-- **Level-triggered**: `firq_pending` mirrors the pin state.
-- **Masked by**: F flag in CC.
-- **Fast**: Pushes only CC and PC (E=0) — 3 bytes (10 cycles). Exception: if `cwai_state` is true, the full state was already pushed with E=1 by C
-WAI.
-- **Masks**: Sets both I and F flags.
-- **Vector**: $FFF6.
-- **Used by**: Cartridge interrupt (PIA1 IRQA/IRQB).
-
-**IRQ** (`mc6809_irq(cpu, active)`)
-- **Level-triggered**: `irq_pending` mirrors the pin state.
-- **Masked by**: I flag in CC.
-- **Stack push**: Full state (E=1) — 12 bytes (19 cycles), or 7 cycles if CWAI.
-- **Masks**: Sets I flag only (F unchanged).
-- **Vector**: $FFF8.
-- **Used by**: 60Hz vsync timer (PIA0 CB1) and keyboard.
-
-**CWAI and SYNC operations:**
-- **CWAI** ($3C): ANDs an immediate byte with CC (clearing mask bits to allow interrupt), sets E=1, pre-pushes entire state to S stack, then enter
-s `wait_for_interrupt`. When an interrupt arrives, the handler skips the redundant push — only vectoring and masking are needed (7 cycles instead
-of 19).
-- **SYNC** ($13): Enters `wait_for_interrupt` without pushing state. The interrupt that wakes SYNC causes a normal push-and-vector sequence.
-
-### Interrupt Vector Table
-
-| Vector | Address | Use |
-|--------|---------|-----|
-| RESET | $FFFE | Power-on / reset |
-| NMI | $FFFC | FDC disk transfer |
-| SWI | $FFFA | Software interrupt |
-| IRQ | $FFF8 | 60Hz timer, keyboard |
-| FIRQ | $FFF6 | Cartridge |
-| SWI2 | $FFF4 | (unused on CoCo) |
-| SWI3 | $FFF2 | (unused on CoCo) |
-
-### Opcode Coverage
-
-All documented MC6809 opcodes are implemented across three pages:
-
-- **Page 1** (no prefix): 8-bit ALU (ADD, ADC, SUB, SBC, AND, OR, EOR, CMP, TST, NEG, COM, CLR, INC, DEC, LSR, LSL/ASL, ASR, ROR, ROL), loads/stor
-es (LD, ST for A, B, D, X, Y, S, U), branches (BRA, BEQ, BNE, BCC, BCS, BPL, BMI, BVS, BVC, BGE, BGT, BLE, BLT, BHI, BLS, BSR), stack ops (PSHS, P
-ULS, PSHU, PULU), LEA (LEAX, LEAY, LEAS, LEAU), TFR, EXG, MUL, DAA, SEX, ABX, NOP, SYNC, CWAI, SWI, RTI, RTS
-- **Page 2** (prefix `$10`): 16-bit comparisons (CMPD, CMPY), long branches (LBRA, LBSR, LBcc), LDY/STY, LDS/STS, SWI2
-- **Page 3** (prefix `$11`): CMPU, CMPS, SWI3
-
-### Addressing Modes
-
-All MC6809 addressing modes are implemented:
-
-| Mode | Syntax | Example | Notes |
-|------|--------|---------|-------|
-| Inherent | — | CLRA | No operand |
-| Immediate 8 | #nn | LDA #$42 | |
-| Immediate 16 | #nnnn | LDD #$1234 | |
-| Direct | dp:nn | LDA $30 | DP register provides high byte |
-| Extended | nnnn | LDA $1234 | Full 16-bit address |
-| Indexed | various | LDA ,X | Complex postbyte decoding (see below) |
-| Relative 8 | offset | BNE loop | Signed 8-bit (-128..+127) |
-| Relative 16 | offset | LBNE loop | Signed 16-bit |
-
-**Indexed sub-modes** (decoded from postbyte):
-- Constant offset: 5-bit signed, 8-bit signed, 16-bit signed
-- Register offset: A,R / B,R / D,R
-- Auto-increment: ,R+ / ,R++ (post-increment by 1 or 2)
-- Auto-decrement: ,-R / ,--R (pre-decrement by 1 or 2)
-- Zero offset: ,R
-- PC-relative: 8-bit or 16-bit offset from PC
-- Indirect: [any of the above] — adds an extra memory read for the effective address
-- Extended indirect: [nnnn]
-
-### `mc6809_opcodes.h`
-
-Reference tables for cycle counts (PROGMEM-ready) and opcode constant definitions. The cycle counts in this header are informational — actual coun
-ting is done inline within `mc6809.cpp` to avoid lookup overhead. Also defines common opcode constants (`MC6809_OP_LDA_IMM`, `MC6809_OP_SWI`, etc.
-) and TFR/EXG register codes.
-
-### Performance Optimizations
-
-- **Branchless flag computation**: ALU helpers (`op_add8`, `op_sub8`, `op_add16`, `op_sub16`, `update_nz8`, `update_nz16`) use a compute-and-mask
-pattern — flags are accumulated into a local variable `f` and written to `cpu->cc` in a single masked OR. The `CC_PUT` macro uses a branchless ter
-nary that compiles to Xtensa MOVNEZ. This optimization improved performance from ~23.5 to ~25–27 fps.
-- **Inline memory helpers**: `mem_read`, `mem_write`, `fetch8`, `fetch16`, push/pull helpers are all `static inline` to eliminate function call ov
-erhead in the hot instruction loop.
-- **D register as single uint16_t**: A and B are stored as the high and low bytes of a single `uint16_t d`, accessed via `GET_A()` / `GET_B()` mac
-ros and `SET_A()` / `SET_B()`. This makes 16-bit D operations (ADDD, SUBD, LDD, STD) naturally efficient.
-- **No IRAM_ATTR**: Testing showed that placing CPU functions in IRAM actually hurt performance on ESP32-S3 (flash cache is faster than IRAM for l
-arge code).
 
 ---
 
@@ -211,14 +54,12 @@ Bit 0: CA1/CB1 IRQ enable (1 = enable IRQ output)
 **DDR/Data selection:**
 - Control register bit 2 selects whether offset 0/2 accesses the Data Direction Register (DDR) or the data register.
 - DDR bit = 0 means the corresponding pin is an input; DDR bit = 1 means output.
-- After reset, all DDR bits are 0 (all inputs) and CRx bit 2 is 0 (DDR selected). BASIC ROM configures the DDR first, then sets bit 2 to switch to
- data mode.
+- After reset, all DDR bits are 0 (all inputs) and CRx bit 2 is 0 (DDR selected). BASIC ROM configures the DDR first, then sets bit 2 to switch to data mode.
 
 **Read behavior:**
 - Port A reads: output bits come from `data_a & ddr_a`, input bits from `input_a & ~ddr_a` (mixed read).
 - Port B reads: identical mixing of output and input bits.
-- Reading the data register clears both IRQ flags (bits 7 and 6 of the control register) and recalculates the IRQ output — this is how BASIC ackno
-wledges the 60Hz timer.
+- Reading the data register clears both IRQ flags (bits 7 and 6 of the control register) and recalculates the IRQ output — this is how BASIC acknowledges the 60Hz timer.
 
 **Write behavior:**
 - Writing the control register preserves bits 7–6 (read-only IRQ flags); only bits 5–0 are written.
@@ -273,8 +114,7 @@ PIA1 PB7 → VDG AG            (alpha/graphics select)
 
 ## MC6847 — VDG (`mc6847.h`, `mc6847.cpp`)
 
-Emulates the Motorola MC6847 Video Display Generator. Renders 256×192 active pixels into a per-scanline palette-indexed buffer (`line_buffer[256]`
-).
+Emulates the Motorola MC6847 Video Display Generator. Renders 256×192 active pixels into a per-scanline palette-indexed buffer (`line_buffer[256]`).
 
 ### Mode Bits
 
@@ -345,8 +185,7 @@ Emulates the Motorola MC6847 Video Display Generator. Renders 256×192 active pi
 - CSS=0: Dark Green background / Bright Green foreground
 - CSS=1: Dark Orange background / Bright Orange foreground
 
-**Upscaling:** All modes are upscaled to 256 pixels wide in the line buffer. Scale factor = 256 / native_width (1× for RG6, 2× for 128-wide modes,
- 4× for 64-wide modes).
+**Upscaling:** All modes are upscaled to 256 pixels wide in the line buffer. Scale factor = 256 / native_width (1× for RG6, 2× for 128-wide modes, 4× for 64-wide modes).
 
 ### Rendering Pipeline
 
@@ -361,8 +200,7 @@ Emulates the Motorola MC6847 Video Display Generator. Renders 256×192 active pi
 
 ### Mode Change Detection
 
-`mc6847_set_mode()` is called by `update_vdg_mode()` in machine.cpp whenever PIA1 port B or SAM V0–V2 changes. It only logs when the mode actually
- changes (avoids debug spam during normal operation).
+`mc6847_set_mode()` is called by `update_vdg_mode()` in machine.cpp whenever PIA1 port B or SAM V0–V2 changes. It only logs when the mode actually changes (avoids debug spam during normal operation).
 
 ---
 
@@ -383,7 +221,7 @@ Any write to the address triggers the action (the data byte is ignored).
 | 0–2 | V0–V2 | VDG graphics mode (maps to GM0–GM2) |
 | 3–9 | F0–F6 | Display offset → base address = (F-value << 9) = F × 512 |
 | 10 | P1 | Page select (all-RAM mode) |
-| 11–12 | R0–R1 | CPU rate (not used in our emulation) |
+| 11–12 | R0–R1 | CPU rate. CoCo 3: R1 ($FFD9) runs 1.79 MHz, 2 × 14,916 cycles per frame, latched at frame start. CoCo 2: ignored (always 0.895 MHz) |
 | 13–14 | M0–M1 | Memory size |
 | 15 | TY | Map type (ROM/RAM) |
 
@@ -406,16 +244,13 @@ sam6883_write(sam, addr):   // addr = offset from $FFC0 (0–31)
 
 ### VDG Address Counter
 
-The SAM maintains a running address counter that feeds the VDG with display data addresses. This is the most complex part of the SAM emulation and
- must match XRoar exactly for all graphics modes to display correctly.
+The SAM maintains a running address counter that feeds the VDG with display data addresses. This is the most complex part of the SAM emulation and must match XRoar exactly for all graphics modes to display correctly.
 
 **Counter lifecycle:**
 
 1. **Field sync (vsync)** — `sam6883_vdg_fsync(true)`: Resets counter to `vdg_base`, clears X and Y divide counters.
-2. **Data fetch** — `sam6883_vdg_fetch_bytes(nbytes)`: Called once per active scanline with `bytes_per_row` for the current mode. Advances the cou
-nter with divide-by-X/Y logic, processing in 16-byte chunks to match XRoar's `sam_vdg_bytes()` behavior.
-3. **Horizontal sync** — `sam6883_vdg_hsync(false)`: Supplementary counter adjustment — adds `vdg_mod_add` bytes via divide logic, then clears ali
-gnment bits.
+2. **Data fetch** — `sam6883_vdg_fetch_bytes(nbytes)`: Called once per active scanline with `bytes_per_row` for the current mode. Advances the counter with divide-by-X/Y logic, processing in 16-byte chunks to match XRoar's `sam_vdg_bytes()` behavior.
+3. **Horizontal sync** — `sam6883_vdg_hsync(false)`: Supplementary counter adjustment — adds `vdg_mod_add` bytes via divide logic, then clears alignment bits.
 
 **Divide-by-X/Y row repetition (indexed by GM value):**
 
@@ -452,8 +287,7 @@ the 32-byte level. Together they produce the correct row repetition for all 8 gr
 
 ### Fetch Bytes Implementation
 
-`sam6883_vdg_fetch_bytes()` processes the requested byte count in 16-byte aligned chunks. Within a 16-byte block, the address advances without div
-ide logic. At each 16-byte boundary crossing, `vdg_address_add()` applies the divide counters.
+`sam6883_vdg_fetch_bytes()` processes the requested byte count in 16-byte aligned chunks. Within a 16-byte block, the address advances without divide logic. At each 16-byte boundary crossing, `vdg_address_add()` applies the divide counters.
 
 ```
 fetch_bytes(nbytes):
@@ -490,8 +324,7 @@ GM: 7   → no clear (mask ~0)
 
 ## Machine — System Integration (`machine.h`, `machine.cpp`)
 
-The machine module wires all components into a complete CoCo 2 emulation. It owns all chip instances, memory buffers, and implements the 64KB addr
-ess decoder.
+The machine module wires all components into a complete CoCo 2 emulation. It owns all chip instances, memory buffers, and implements the 64KB address decoder.
 
 ### Machine Structure
 
@@ -528,6 +361,7 @@ $FF20–$FF3F  PIA1 (4 regs mirrored every 4 bytes)
 $FF40–$FF5F  WD1793 Disk Controller (DSKREG + FDC regs)
 $FF60–$FFBF  Reserved (reads $FF) — except $FF68–$FF6B below
 $FF68–$FF6B  MC6551 ACIA — RS-232 Pak, only when enabled (see rs232-hal.md)
+$FF7A–$FF7B  Orchestra-90 left/right DAC latches (write-only), only when enabled (see audio-hal.md)
 $FFC0–$FFDF  SAM control (write-only bit set/clear)
 $FFE0–$FFFF  Interrupt vectors (from Color BASIC ROM $BFE0–$BFFF)
 ```
@@ -580,8 +414,7 @@ Joystick ADC is refreshed every 16 scanlines (~16 times per frame) to balance re
 
 When the CPU writes to PIA1:
 - **Port A write** (or CRA write): Extracts 6-bit DAC value from bits 2–7 of `data_a & ddr_a`, calls `hal_audio_write_dac()`.
-- **Port B write** (or CRB write): Extracts single-bit audio from bit 1, calls `hal_audio_write_bit()`. Also updates VDG mode (AG from PB7, CSS fr
-om PB3).
+- **Port B write** (or CRB write): Extracts single-bit audio from bit 1, calls `hal_audio_write_bit()`. Also updates VDG mode (AG from PB7, CSS from PB3).
 
 ### VDG Mode Update (`update_vdg_mode`)
 
@@ -616,22 +449,9 @@ FIRQ = PIA1 (IRQA | IRQB) OR GIME FIRQ
 
 Unlike CoCo 2 (which uses PIA callbacks → `mc6809_irq()`/`mc6809_firq()`), CoCo 3 computes the combined interrupt state each scanline via direct assignment to `cpu.irq_pending` and `cpu.firq_pending`. This is necessary because GIME interrupt state changes between scanlines (HBORD, VBORD, TMR).
 
-#### SYNC Wake-up Fix (April 2026)
+#### SYNC / CWAI wake-up
 
-**Bug:** The direct assignment `cpu.irq_pending = pia0_irq || gime.IRQ` bypassed `mc6809_irq()`, which normally clears `wait_for_interrupt`. When the 6809 executed a SYNC instruction (used by Super Extended BASIC's main loop at $E62D to wait for the 60Hz IRQ), the CPU would never wake up — `wait_for_interrupt` stayed true even though `irq_pending` was true.
-
-**Fix:** After computing the combined interrupt state, explicitly clear `wait_for_interrupt` when any interrupt becomes active:
-
-```cpp
-bool new_irq  = pia0_irq || m->gime.IRQ;
-bool new_firq = pia1_irq || m->gime.FIRQ;
-if (new_irq || new_firq)
-    m->cpu.wait_for_interrupt = false;
-m->cpu.irq_pending  = new_irq;
-m->cpu.firq_pending = new_firq;
-```
-
-This correctly wakes both SYNC (wake + continue or service) and CWAI (wake + vector to handler).
+The direct assignment does not need to wake the CPU. `mc6809_run()` / `hd6309_run()` test the line state on every pass through the run loop: SYNC ends when `irq_pending` or `firq_pending` is set (masked or not), CWAI ends when an unmasked interrupt is taken. Super Extended BASIC's main loop at $E62D relies on this to wait for the 60Hz IRQ with SYNC. See `cpu.md`.
 
 ### Frame Execution
 
@@ -658,15 +478,12 @@ Each `machine_run_scanline()`:
 
 ### Memory Allocation
 
-All large buffers (64 KB RAM, ROM images) are allocated from PSRAM when available (`ps_malloc`), falling back to heap. This keeps internal SRAM fr
-ee for stack and DMA buffers. The helper `machine_alloc(size, label)` logs the allocation source.
+All large buffers (64 KB RAM, ROM images) are allocated from PSRAM when available (`ps_malloc`), falling back to heap. This keeps internal SRAM free for stack and DMA buffers. The helper `machine_alloc(size, label)` logs the allocation source.
 
 ### Initialization Sequence
 
-1. `machine_init()`: Allocate memory (RAM, 3 ROM buffers from PSRAM), init all chips, wire CPU `read`/`write` callbacks and PIA IRQ routing callba
-cks
-2. `machine_load_roms()`: Load Color BASIC ($A000), Extended BASIC ($8000), and optionally Disk BASIC ($C000) from SD card via `hal_storage_load_f
-ile()`
+1. `machine_init()`: Allocate memory (RAM, 3 ROM buffers from PSRAM), init all chips, wire CPU `read`/`write` callbacks and PIA IRQ routing callbacks
+2. `machine_load_roms()`: Load Color BASIC ($A000), Extended BASIC ($8000), and optionally Disk BASIC ($C000) from SD card via `hal_storage_load_file()`
 3. `machine_reset()`: Clear RAM, reset all chips, set VDG VRAM pointer, reset SAM counter, CPU reads reset vector from ROM
 
 ---
@@ -752,7 +569,7 @@ typedef struct Machine {
     SV_DiskController fdc;
     uint8_t* ram_physical;          // 512KB in PSRAM
     uint8_t* rom_coco3;             // 32KB Super Extended Color BASIC
-    uint8_t* rom_disk;              // 8KB Disk BASIC
+    uint8_t* rom_disk;              // Disk BASIC (8KB) or cartridge ROM (up to 16KB)
     // ...
 } Machine;
 ```
@@ -793,13 +610,12 @@ Write fast path:
 ```
 machine_run_scanline() — CoCo 3:
   1. sv_disk_tick()                    // FDC deferred INTRQ
-  2. mc6809_run(cycles_to_run)         // CPU execution
+  2. mc6809_run_variant(cycles_to_run) // CPU execution (see cpu.md)
   3. tcc1014_tick_scanline()           // GIME timer decrement
   4. PIA0 CA1 HS transitions           // Horizontal sync → PIA
   5. Combined IRQ routing:             // PIA + GIME → CPU
        new_irq  = pia0_irq || gime.IRQ
        new_firq = pia1_irq || gime.FIRQ
-       if (new_irq || new_firq) wait_for_interrupt = false  // SYNC wake-up
   6. Vertical state machine:
        Scanline 0:   FS falling → PIA0 CB1, latch vertical params
        Scanline 4:   FS rising → PIA0 CB1
@@ -826,7 +642,7 @@ The Hardware Abstraction Layer (`src/hal/`) bridges the emulation core to the TT
 | `hal_video_present*()` | `machine_run_frame()` | Frame-end no-op — FabGL DMA scans the framebuffer continuously. Updates the FPS counter and clears the dirty flag. |
 | `hal_video_get_canvas()` | `supervisor.cpp` | Returns the `OSDCanvas` instance backed by FabGL Canvas for OSD rendering. |
 
-**VGA32 backend**: FabGL `VGAController` @ 640×200 @ 70 Hz (64-color RGB222 direct). Scanline writes go through `s_vga.getScanline(y)` with `createRawPixel(RGB222(...))` per pixel. The 64-entry GIME palette is pre-converted to raw VGA bytes once at init. No per-frame "push" — FabGL's DMA scans the framebuffer continuously. See `docs/video.md`.
+**VGA32 backend**: FabGL `VGAController` @ 640×200 @ 60 Hz (64-color RGB222 direct). Scanline writes go through `s_vga.getScanline(y)` with `createRawPixel(RGB222(...))` per pixel. The 64-entry GIME palette is pre-converted to raw VGA bytes once at init. No per-frame "push" — FabGL's DMA scans the framebuffer continuously. See `docs/video.md`.
 
 **Historical S3+TFT backend (removed)**: used a 320×240 `TFT_eSprite` framebuffer in PSRAM with SPI push, VRAM-shadow compare, and CRC32 dirty-skip. That code has been removed from the codebase.
 

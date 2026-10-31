@@ -7,7 +7,8 @@
  *   GPL-3.0-or-later License
  * ============================================================
  *  File   : hal_joystick.cpp
- *  Module : Joystick HAL — PS/2 mouse → CoCo joystick 1; port 1 is a neutral stub
+ *  Module : Joystick HAL — PS/2 mouse → CoCo right joystick; arrow keys + Space
+ *           as either joystick (Joy-Keyboard Emulation)
  * ============================================================
 */
 
@@ -42,6 +43,69 @@ static bool    s_btn_left = false;
 static int  s_scale  = JOYSTICK_MOUSE_SCALE;
 static bool s_invert = (JOYSTICK_MOUSE_INVERT_Y != 0);
 
+// Joy-Keyboard Emulation (Supervisor -> Settings): a held arrow key glides
+// the stick at KJ_STEP_US per position (64 steps ~ 1 s edge to edge) and it
+// stays where it is on release, like the mouse; Space is the fire button. On
+// the right joystick it moves the same position as the mouse, and either
+// Space or the mouse button fires. The left joystick has its own position.
+enum { KJ_UP = 1, KJ_DOWN = 2, KJ_LEFT = 4, KJ_RIGHT = 8, KJ_FIRE = 16 };
+#define KJ_STEP_US  15625u
+static uint8_t  s_kbd_mode = JOY_KBD_OFF;
+static uint8_t  s_kbd_keys = 0;
+static int16_t  s_left_x = 32, s_left_y = 32;   // left joystick (port 1)
+static uint32_t s_kbd_last_us = 0;
+static uint32_t s_kbd_acc_us  = 0;
+
+static inline bool kbd_drives(int port) {
+    return s_kbd_mode != JOY_KBD_OFF && port == (s_kbd_mode == JOY_KBD_RIGHT ? 0 : 1);
+}
+
+static inline int16_t clamp63(int v) { return (int16_t)(v < 0 ? 0 : v > 63 ? 63 : v); }
+
+// Advance the keyboard stick by the time since the last call.
+static void kbd_glide(void) {
+    uint32_t now = micros();
+    uint32_t dt = now - s_kbd_last_us;
+    s_kbd_last_us = now;
+    int dx = ((s_kbd_keys & KJ_RIGHT) ? 1 : 0) - ((s_kbd_keys & KJ_LEFT) ? 1 : 0);
+    int dy = ((s_kbd_keys & KJ_DOWN)  ? 1 : 0) - ((s_kbd_keys & KJ_UP)   ? 1 : 0);
+    if (s_kbd_mode == JOY_KBD_OFF || (!dx && !dy)) { s_kbd_acc_us = 0; return; }
+    if (dt > 100000) dt = 100000;      // emulator paused / supervisor open
+    s_kbd_acc_us += dt;
+    int steps = (int)(s_kbd_acc_us / KJ_STEP_US);
+    if (!steps) return;
+    s_kbd_acc_us -= (uint32_t)steps * KJ_STEP_US;
+    int16_t* px = (s_kbd_mode == JOY_KBD_RIGHT) ? &s_pos_x : &s_left_x;
+    int16_t* py = (s_kbd_mode == JOY_KBD_RIGHT) ? &s_pos_y : &s_left_y;
+    *px = clamp63(*px + dx * steps);
+    *py = clamp63(*py + dy * steps);
+}
+
+void hal_joystick_set_kbd_mode(uint8_t mode) {
+    s_kbd_mode = (mode <= JOY_KBD_LEFT) ? mode : JOY_KBD_OFF;
+    s_kbd_keys = 0;
+}
+
+uint8_t hal_joystick_get_kbd_mode(void) { return s_kbd_mode; }
+
+bool hal_joystick_kbd_key(int vk, bool pressed) {
+    uint8_t bit;
+    switch (vk) {
+        case fabgl::VK_UP:    case fabgl::VK_KP_UP:    bit = KJ_UP;    break;
+        case fabgl::VK_DOWN:  case fabgl::VK_KP_DOWN:  bit = KJ_DOWN;  break;
+        case fabgl::VK_LEFT:  case fabgl::VK_KP_LEFT:  bit = KJ_LEFT;  break;
+        case fabgl::VK_RIGHT: case fabgl::VK_KP_RIGHT: bit = KJ_RIGHT; break;
+        case fabgl::VK_SPACE:                          bit = KJ_FIRE;  break;
+        default: return false;
+    }
+    // Releases always clear (a key held when the mode was turned off or the
+    // supervisor opened must not stick); presses only count while on.
+    kbd_glide();                        // settle the time held so far
+    if (!pressed)                       s_kbd_keys &= ~bit;
+    else if (s_kbd_mode != JOY_KBD_OFF) s_kbd_keys |= bit;
+    return s_kbd_mode != JOY_KBD_OFF;
+}
+
 void hal_joystick_init(void) {
     // The PS2Controller itself is brought up in hal_keyboard_init() via
     // PS2Preset::KeyboardPort0_MousePort1. Here we just verify the Mouse
@@ -56,6 +120,7 @@ void hal_joystick_init(void) {
 }
 
 void hal_joystick_update(void) {
+    kbd_glide();
     fabgl::Mouse* m = fabgl::PS2Controller::mouse();
     if (!m) return;
     while (m->deltaAvailable()) {
@@ -83,18 +148,18 @@ void hal_joystick_update(void) {
 }
 
 uint8_t hal_joystick_read_axis(int port, int axis) {
-    if (port != 0) return 32;   // Joystick 2 stub
+    if (port != 0) return (uint8_t)((axis == 0) ? s_left_x : s_left_y);
     return (uint8_t)((axis == 0) ? s_pos_x : s_pos_y);
 }
 
 uint8_t hal_joystick_read_button(int port) {
-    if (port != 0) return 0;    // Joystick 2 stub
-    return s_btn_left ? 1 : 0;
+    bool fire = kbd_drives(port) && (s_kbd_keys & KJ_FIRE);
+    if (port == 0 && s_btn_left) fire = true;
+    return fire ? 1 : 0;
 }
 
 bool hal_joystick_compare(int port, int axis, uint8_t dac_value) {
-    if (port != 0) return false;
-    int v = (axis == 0) ? s_pos_x : s_pos_y;
+    int v = hal_joystick_read_axis(port, axis);
     // 6-bit (0..63) → 8-bit DAC space (2..254), matches the inline math at
     // the PIA0 PA read site in machine.cpp.
     return (v * 4 + 2) >= (int)dac_value;

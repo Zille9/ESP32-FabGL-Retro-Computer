@@ -2,7 +2,7 @@
 
 ## Overview
 
-The **TCC1014 GIME** (General Interface Multi-purpose Enhanced) chip is the heart of the CoCo 3. It replaces the SAM6883 + MC6847 VDG combination from CoCo 2 and adds:
+The **TCC1014 GIME** (Graphics Interrupt Memory Enhancement) chip is the heart of the CoCo 3. It replaces the SAM6883 + MC6847 VDG combination from CoCo 2 and adds:
 
 - 512 KB physical RAM with 8-bank MMU (64 × 8 KB pages)
 - 16-color programmable palette (64 possible RGB colors)
@@ -83,6 +83,28 @@ Maximum physical: 64 banks × 8 KB = 512 KB
 ```
 
 At reset: identity map — banks 0x38 through 0x3F (CPU $0000-$FFFF = physical $70000-$7FFFF).
+
+#### RAM sizes: 128 KB, 512 KB, 1 MB, 2 MB
+
+The size is chosen in F3 → Setup → Machine → CoCo 3 Memory (`g_coco3_ram_kb`, NVS `"sv"` / `coco3_ram`, default `COCO3_RAM_KB` = 512) and applied at boot. `tcc1014_set_ram()` gives the GIME the buffer and derives the masks below.
+
+| Size | MMU register bits | Behaviour |
+|---|---|---|
+| 128 KB | 6 | Only 16 pages exist; the top address lines are unconnected, so every bank number mirrors onto them (`$30` and `$00` are the same RAM). Video addresses wrap at 128 KB. |
+| 512 KB | 6 | The stock maximum: 64 pages. |
+| 1 MB | 7 | A memory expansion board: bit 6 of each MMU register selects the second 512 KB. |
+| 2 MB | 8 | Bits 7-6 select one of four 512 KB banks. |
+
+The 1 MB and 2 MB models follow XRoar's "DAT" board:
+
+- The extra bits are stored with the bank number (`mmu_bank[]` is 8 bits wide, masked by `bank_mask`) and read back from `$FFA0-$FFAF`.
+- ROM select uses the GIME's own six bits only, so page `$3C-$3F` of any bank is ROM while TY = 0.
+- With the MMU off, and for `$FE00-$FEFF` with MC3 set, the address is in bank 0 (`$38-$3F`).
+- Video is read from one 512 KB bank, chosen by `$FF9B` bits 1-0 (`vram_base`); the register reads back on these sizes only. Reset returns it to bank 0.
+
+Every physical address is wrapped with `ram_mask` (`ram_size - 1`), in `machine_read_coco3()` / `machine_write_coco3()` and in the CPU's direct page tables, so no access can leave the buffer.
+
+RAM comes from PSRAM. 2 MB takes half of the board's 4 MB, shared with the disk caches (about 161 KB per mounted 35-track disk) and the screenshot buffers; if the block cannot be allocated at boot the machine falls back to 512 KB. `tools/gime_ram_test/run.sh` checks the translation for all four sizes on the host.
 
 **ROM mapping (banks 0x3C-0x3F) by MC1/MC0/TY:**
 

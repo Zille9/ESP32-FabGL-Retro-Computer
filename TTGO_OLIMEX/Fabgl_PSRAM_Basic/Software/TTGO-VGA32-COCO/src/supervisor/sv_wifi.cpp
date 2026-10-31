@@ -129,7 +129,11 @@ static void set_view(Supervisor_t* sv, WifiView view) {
     sv->needs_redraw = true;
 }
 
-void sv_wifi_open(Supervisor_t* sv) {
+// Opened from the main-menu tile rather than the Settings row.
+static bool s_from_main = false;
+
+void sv_wifi_open(Supervisor_t* sv, bool from_main) {
+    s_from_main = from_main;
     sv->state = SV_WIFI;
     sv->menu_cursor = 0;
     s_last_state = wifi_mgr_state();
@@ -423,6 +427,10 @@ void sv_wifi_on_key(Supervisor_t* sv, uint8_t hid_usage, bool pressed) {
             wifi_execute(sv, sv->menu_cursor);
             break;
         case HID_ESC:
+            if (s_from_main) {
+                sv_menu_return(sv);
+                break;
+            }
             sv->state = SV_SETTINGS;
             sv->menu_cursor = SV_SET_WIFI;
             sv->needs_redraw = true;

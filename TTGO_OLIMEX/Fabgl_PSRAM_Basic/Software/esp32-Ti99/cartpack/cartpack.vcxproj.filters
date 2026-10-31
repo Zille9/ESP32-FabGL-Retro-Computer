@@ -1,0 +1,286 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="DataFiles\ROMS">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="DataFiles">
+      <UniqueIdentifier>{93d90d3b-7ae0-4870-8964-1ff0f289ef0d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="DataFiles\ROMS">
+      <UniqueIdentifier>{8b1473ca-ea88-4e4c-97a1-98cbf51ce4ed}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="DataFiles\DiskFiles">
+      <UniqueIdentifier>{4421de1b-1a45-422a-81de-5fa619d73abb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{344f2eb7-98fd-4d80-9574-6588ee9e1323}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cartpack.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="cartpack.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="roms\ALPINERC.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\AMAZEG.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\ALPINERG.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\CarWarsG.Bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\BlakjakG.Bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\ChishlmG.Bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\ChishlmC.Bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\V-CHESSG.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\V-CHESSC.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\PARSECG.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\PARSECC.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\MunchMnG.Bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\MunchMnC.Bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\MiniMemG.Bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\MiniMemC.Bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\MinChalG.Bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\LOGOG.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\LOGOC.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\HustleG.Bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\HomFDecG.Bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\FootbalG.Bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\fbForth200_9.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\EPSGMODG.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\EA_Utils.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\DiagnosG.Bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\TE-IIG.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\TE-IIC.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\XB27_ROM_060315.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\XB27_GROM_060315.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\XB27_EEPROM_060315.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\WUMPUSG.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\TurboForthD.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\TurboForthC.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\TunDoomG.Bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\TOMBCITG.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\TOMBCITC.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\tiworkshop379.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\TI-InvaG.Bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\TI-InvaC.Bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\TIEXTG.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\TIEXTD.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\TIEXTC.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\TIEAG.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="cartpack.def">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="roms\QUEST">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\PENNIES">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\EDIT1.BIN">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ASSM2.bin">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ASSM1.bin">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\p1f00g_0000_f800.GRM">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\PCardD.ROM">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\PCardC.ROM">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\ScottAdams\AdventurePatchedG.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\ScottAdams\ADVENTURE">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\COUNT">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\FUNHOUSE">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\GHOSTTOWN">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\MISSION">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\ODYSSEY">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\PIRATE">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\PYRAMID">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\SAVAGE1">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\SAVAGE2">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\SORCERER">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\VOODOO">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\ScottAdams\VOYAGE">
+      <Filter>DataFiles\DiskFiles</Filter>
+    </None>
+    <None Include="roms\XB29GEM_G.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\XB29GEM_8.BIN">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\RXB2026_8.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\RXB2026_G.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\ssa8.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\TF3_8.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\MegaDemo8.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\HeroX_C.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\stranger32KB8.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\ZMOTIFC.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\rickd8.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\MINES32k_8.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+    <None Include="roms\Taipan32K_8.bin">
+      <Filter>DataFiles\ROMS</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="cartpack.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+</Project>

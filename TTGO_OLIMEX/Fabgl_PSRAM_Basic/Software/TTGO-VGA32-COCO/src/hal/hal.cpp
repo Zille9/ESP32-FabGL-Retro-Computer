@@ -48,7 +48,7 @@ void hal_init(void) {
 }
 
 void hal_process_input(void) {
-    // Tick deferred key releases (ensures keys stay held for min frames)
+    // Apply queued key changes (paced: one per frame, min hold/gap per key)
     hal_keyboard_tick();
     // Update joystick ADC readings
     hal_joystick_update();

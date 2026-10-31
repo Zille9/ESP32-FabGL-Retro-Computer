@@ -97,7 +97,9 @@ typedef struct TCC1014 {
 
     // --- MMU (from tcc1014.c:224-226) ---
     // $FFA0-$FFA7: task 1 banks, $FFA8-$FFAF: task 2 banks
-    uint8_t  mmu_bank[16];   // 6-bit bank numbers
+    // 6-bit bank numbers; with more than 512 KB fitted, bits 7-6 pick the
+    // 512 KB bank (see bank_mask).
+    uint8_t  mmu_bank[16];
     // Phase 5: Pre-computed active bank mapping for current task register
     // active_banks[slot] = mmu_bank[TR | slot] when MMUEN, else 0x38|slot
     uint8_t  active_banks[8];
@@ -188,8 +190,17 @@ typedef struct TCC1014 {
     uint16_t line_width;       // Actual pixel width of current line
 
     // --- External memory pointers (set by machine) ---
+    // RAM is 128 KB, 512 KB, 1 MB or 2 MB (tcc1014_set_ram). The GIME itself
+    // addresses 512 KB. 128 KB leaves the top address lines unconnected, so
+    // the 16 pages repeat. 1 MB / 2 MB model the usual expansion board (as
+    // XRoar's "DAT"): bits 7-6 of the MMU registers select one of up to four
+    // 512 KB banks, and $FF9B bits 1-0 select the bank video is read from.
     uint8_t* ram;
     uint32_t ram_size;
+    uint32_t ram_mask;       // ram_size - 1: wraps a physical address into RAM
+    uint32_t vram_mask;      // wraps a video address inside its bank (512 KB at most)
+    uint32_t vram_base;      // start of the bank $FF9B selected
+    uint8_t  bank_mask;      // MMU register bits that exist: $3F, $7F (1 MB) or $FF (2 MB)
 } TCC1014;
 
 // === Public API ===
@@ -264,5 +275,9 @@ void tcc1014_init_palette_lut(void);
 
 // Phase 5: Recompute active_banks[8] from current MMU state
 void tcc1014_update_active_banks(TCC1014* gime);
+
+// Attach physical RAM. `size` must be 128 KB, 512 KB, 1 MB or 2 MB. Call
+// after tcc1014_reset(), which leaves the MMU pointing at no RAM.
+void tcc1014_set_ram(TCC1014* gime, uint8_t* ram, uint32_t size);
 
 #endif // TCC1014_H

@@ -34,6 +34,17 @@
 #define MC6809_VEC_FIRQ     0xFFF6
 #define MC6809_VEC_SWI2     0xFFF4
 #define MC6809_VEC_SWI3     0xFFF2
+#define HD6309_VEC_TRAP     0xFFF0   // HD6309 illegal instruction / divide by zero
+
+// HD6309 MD register bits
+#define HD6309_MD_D0    0x80   // Divide-by-zero trap taken
+#define HD6309_MD_IL    0x40   // Illegal-instruction trap taken
+#define HD6309_MD_FM    0x02   // FIRQ stacks the entire state, like IRQ
+#define HD6309_MD_NM    0x01   // Native mode
+
+// CPU variants (MC6809.variant, config.h CPU_VARIANT)
+#define CPU_VARIANT_MC6809  0
+#define CPU_VARIANT_HD6309  1
 
 // CPU state
 typedef struct MC6809 {
@@ -73,6 +84,15 @@ typedef struct MC6809 {
     uint8_t** rd_page;
     uint8_t** wr_page;
     uint16_t  fast_limit;
+
+    // HD6309 state. Only hd6309_run() uses it; it is kept after the fields
+    // above so the MC6809 build sees the same offsets as before.
+    uint16_t w;         // W register (E = high byte, F = low byte)
+    uint16_t v;         // V register (survives reset)
+    uint8_t  md;        // Mode/error register (HD6309_MD_*)
+    uint8_t  variant;   // CPU_VARIANT_*, set by the machine after mc6809_init()
+    bool     tfm_busy;  // a TFM is part-way through (it re-executes per byte)
+    uint16_t tfm_pc;    // address of that TFM, so a stale flag cannot match another one
 } MC6809;
 
 // Initialize CPU state (zero all registers, mask interrupts)
@@ -84,6 +104,10 @@ void mc6809_reset(MC6809* cpu);
 // Execute instructions for up to 'budget' cycles.
 // Returns actual cycles consumed.
 int mc6809_run(MC6809* cpu, int budget);
+
+// Same contract, executing as an HD6309 (emulation or native mode per MD).
+// Shares mc6809_init/reset and the interrupt-line functions below.
+int hd6309_run(MC6809* cpu, int budget);
 
 // Debug: dump CPU trace buffer to serial
 void mc6809_dump_trace(void);
@@ -109,6 +133,12 @@ static inline void mc6809_set_a(MC6809* cpu, uint8_t val) {
 
 static inline void mc6809_set_b(MC6809* cpu, uint8_t val) {
     cpu->d = (cpu->d & 0xFF00) | val;
+}
+
+// Run one budget on whichever CPU the machine was configured with.
+static inline int mc6809_run_variant(MC6809* cpu, int budget) {
+    return (cpu->variant == CPU_VARIANT_HD6309) ? hd6309_run(cpu, budget)
+                                                : mc6809_run(cpu, budget);
 }
 
 #endif // MC6809_H

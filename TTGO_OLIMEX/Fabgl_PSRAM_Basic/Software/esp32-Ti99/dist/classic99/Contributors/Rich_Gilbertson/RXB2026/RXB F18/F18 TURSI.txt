@@ -1,0 +1,42 @@
+1000  >0000  DATA >0000
+1002  >0732  SETO
+1004  >1000  >1000
+1006  >0340  IDLE
+
+
+
+
+0000 3F00 DEF MAIN
+ AORG >3F00
+ MAIN
+3F00 04E0 CLR @>3F00
+3F02 3F00 
+3F04 0340 IDLE
+3F06 0000 END
+
+
+
+Location:YYC
+Report
+Posted Sunday at 05:19 AM
+  On 6/20/2026 at 9:45 PM, RXB said:
+- upload the program to VDP                        Wait are you said I load the Assembly into VDP and run it?
+- ask the GPU to start                             How do I do this as I do not see any examples of this?
+- read the target byte back from VDP               Now the IDLE @MAGIC example above would makes sense.
+- if it changed, there must be an F18A present  Ok that makes more sense to use in ROM, MAGIC is in VDP.
+
+1) Correct. the GPU runs 9900 code from VDP RAM at roughly 100MHz. 
+It's very fast and has direct access to VDP RAM (but NO access to the rest of the system). 
+So you get the assembly bytes and copy them somewhere safe in VDP RAM.
+2) To start the GPU, you use registers 54 and 55. 
+Write the MSB of the starting address to 54, and the LSB to 55. 
+Writing the LSB also starts the GPU automatically. 
+So in my example code above, if you uploaded it to VDP >1000, 
+then MAGIC would be at >1000, and CODE would be at >1002. 
+So we would write >10 (or 16) to register 54, then write >02 (or 2) to register 55. 
+The GPU would then start immediately. In that code, all it would do is SETO at >1000 (in VDP RAM),
+ and then IDLE which stops the GPU again.
+
+ 
+
+I think you got the rest 

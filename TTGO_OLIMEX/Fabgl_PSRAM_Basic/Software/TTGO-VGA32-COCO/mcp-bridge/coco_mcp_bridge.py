@@ -53,8 +53,10 @@ def status() -> dict:
 
 @mcp.tool()
 def read_registers() -> dict:
-    """Read the 6809 CPU registers (A, B, D, X, Y, U, S, PC, DP, CC),
-    decoded condition-code flags (E F H I N Z V C), and the cycle count."""
+    """Read the CPU registers (A, B, D, X, Y, U, S, PC, DP, CC), decoded
+    condition-code flags (E F H I N Z V C), and the cycle count. `cpu` is
+    "6809" or "6309"; on a 6309 the reply also has E, F, W, V, MD and `native`
+    (MD bit 0)."""
     return _get("/api/registers").json()
 
 
@@ -70,12 +72,20 @@ def write_registers(
     s: int | None = None,
     dp: int | None = None,
     cc: int | None = None,
+    e: int | None = None,
+    f: int | None = None,
+    w: int | None = None,
+    v: int | None = None,
+    md: int | None = None,
 ) -> dict:
-    """Set any subset of the 6809 registers. Only the values you pass are
-    changed. Returns the full register set after the write."""
-    fields = {k: v for k, v in dict(
-        pc=pc, a=a, b=b, d=d, x=x, y=y, u=u, s=s, dp=dp, cc=cc
-    ).items() if v is not None}
+    """Set any subset of the CPU registers. Only the values you pass are
+    changed. E, F, W, V and MD are the HD6309 registers (MD bit 0 = native
+    mode, bit 1 = FIRQ stacks everything). Returns the full register set
+    after the write."""
+    fields = {k: val for k, val in dict(
+        pc=pc, a=a, b=b, d=d, x=x, y=y, u=u, s=s, dp=dp, cc=cc,
+        e=e, f=f, w=w, v=v, md=md
+    ).items() if val is not None}
     if not fields:
         raise ValueError("provide at least one register to write")
     return _post("/api/registers", **fields).json()
@@ -137,34 +147,129 @@ def reset() -> dict:
 
 @mcp.tool()
 def get_machine() -> dict:
-    """Get the current machine type (3 = CoCo 2, 4 = CoCo 3)."""
+    """Get the current machine type (3 = CoCo 2, 4 = CoCo 3), CPU ("6809" or
+    "6309") and CoCo 3 memory size in KB."""
     return _get("/api/machine").json()
 
 
 @mcp.tool()
-def set_machine(machine_type: int, wait: bool = True) -> dict:
-    """Switch machine type (3 = CoCo 2, 4 = CoCo 3).
+def set_machine(machine_type: int, wait: bool = True, cpu: int | None = None,
+                ram_kb: int | None = None) -> dict:
+    """Switch machine type (3 = CoCo 2, 4 = CoCo 3) and, optionally, the CPU
+    (`cpu` = 6809 or 6309) and the CoCo 3 memory size (`ram_kb` = 128, 512,
+    1024 or 2048). Pass the current machine type to change only the others.
 
     IMPORTANT: this reboots the device — the current connection drops. If
     `wait` is true, the tool polls /api/status until the device comes back
     (requires auto-connect enabled so it rejoins WiFi automatically).
     """
-    resp = _post("/api/machine", type=machine_type).json()
-    if not wait:
+    fields = {"type": machine_type}
+    if cpu is not None:
+        fields["cpu"] = cpu
+    if ram_kb is not None:
+        fields["ram"] = ram_kb
+    resp = _post("/api/machine", **fields).json()
+    if not wait or not resp.get("rebooting"):
         return resp
-    # Device reboots; wait for it to rejoin and report the new type.
+    # Device reboots; wait for it to rejoin and report the new settings.
     deadline = time.time() + 60
     time.sleep(3)
     while time.time() < deadline:
         try:
             st = _get("/api/status").json()
-            if int(st.get("machine_type", -1)) == machine_type:
+            if int(st.get("machine_type", -1)) == machine_type and \
+               (cpu is None or st.get("cpu") == str(cpu)) and \
+               (ram_kb is None or int(st.get("coco3_ram_kb", -1)) == ram_kb):
                 return {"rebooted": True, "status": st}
         except Exception:
             pass
         time.sleep(2)
     return {"rebooted": True, "warning": "device did not report new type within timeout",
             "initial_response": resp}
+
+
+# Disk mounts can read a whole floppy image into PSRAM, so the device allows
+# them up to 10 s (h_post_disk).
+DISK_TIMEOUT = float(os.environ.get("COCO_DISK_TIMEOUT", "15.0"))
+
+
+def _disk_drive(drive: int | str) -> str:
+    """Normalise a drive: 0-3 (floppy) or "hd0" / "hd1" (hard disk)."""
+    d = str(drive).strip().lower()
+    if d in ("0", "1", "2", "3", "hd0", "hd1"):
+        return d
+    raise ValueError('drive must be 0-3 (floppy) or "hd0" / "hd1" (hard disk)')
+
+
+def _disk_post(**data) -> dict:
+    r = httpx.post(f"{HOST}/api/disk", data=data, timeout=DISK_TIMEOUT)
+    r.raise_for_status()
+    return r.json()
+
+
+@mcp.tool()
+def list_disks() -> dict:
+    """List the mounted images. `drives` are the WD1793 floppy drives 0-3
+    (path, bytes, read_only, dirty). `hd_enabled` says whether the virtual hard
+    disk at $FF80-$FF86 is on (Settings > Cartridges > Hard Disk); `hard_disks`
+    are its two drives hd0 / hd1 (path, read_only)."""
+    return _get("/api/disk").json()
+
+
+@mcp.tool()
+def mount_disk(drive: int | str, path: str) -> dict:
+    """Mount an image from the SD card, as the Disk Manager does (the mount is
+    remembered and comes back at boot). `drive` is 0-3 for a floppy (.DSK /
+    .VDK) or "hd0" / "hd1" for a hard disk (.VHD). `path` is the full SD path,
+    e.g. "/vhd/EOU.VHD". Hard disks are only seen by the CoCo while the hard
+    disk is on (see list_disks); RGB-DOS checks for one at cold start, so
+    reset after mounting."""
+    return _disk_post(op="mount", drive=_disk_drive(drive), path=path)
+
+
+@mcp.tool()
+def eject_disk(drive: int | str) -> dict:
+    """Unmount drive 0-3 or "hd0" / "hd1". Floppy writes are flushed to the SD
+    card first."""
+    return _disk_post(op="eject", drive=_disk_drive(drive))
+
+
+@mcp.tool()
+def flush_disk(drive: int | str) -> dict:
+    """Write pending changes to the SD card now: floppy drive 0-3, or "hd0" /
+    "hd1" (flushes both hard disks)."""
+    return _disk_post(op="flush", drive=_disk_drive(drive))
+
+
+# USB HID usages the supervisor understands.
+OSD_KEYS = {
+    "up": 0x52, "down": 0x51, "left": 0x50, "right": 0x4F,
+    "enter": 0x28, "esc": 0x29, "backspace": 0x2A, "tab": 0x2B,
+    "pgup": 0x4B, "pgdn": 0x4E, "home": 0x4A, "end": 0x4D, "f": 0x09,
+}
+
+
+@mcp.tool()
+def osd_keys(keys: list[str], delay_s: float = 0.3) -> dict:
+    """Press keys in the supervisor menu (the OSD), in order. "toggle" opens or
+    closes it (like F3); the others reach it only while it is open: up, down,
+    left, right, enter, esc, backspace, tab, pgup, pgdn, home, end, f (flush in
+    the Disk Manager), or a raw HID usage number as a string. They never reach
+    the emulated keyboard. Screenshots don't work while the OSD is open (the
+    emulation is paused), so close it before taking one."""
+    sent = []
+    for k in keys:
+        name = str(k).strip().lower()
+        if name == "toggle":
+            _post("/api/key", toggle=1)
+        else:
+            hid = OSD_KEYS.get(name)
+            if hid is None:
+                hid = int(name, 0)
+            _post("/api/key", hid=hid)
+        sent.append(name)
+        time.sleep(delay_s)   # one menu step per frame or two
+    return {"ok": True, "sent": sent}
 
 
 @mcp.tool()

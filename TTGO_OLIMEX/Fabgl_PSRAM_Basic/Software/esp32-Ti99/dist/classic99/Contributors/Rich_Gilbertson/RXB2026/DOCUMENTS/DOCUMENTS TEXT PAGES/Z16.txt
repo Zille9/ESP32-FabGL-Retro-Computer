@@ -1,0 +1,52 @@
+                                                                        PAGE REA4
+                     
+                      D DIRECTORY
+                      A new feature that prompts for a device name. EXAMPLE: DSK1.
+                      The period MUST be included if the full device name is used.
+                      Or type in a path name EXAMPLE: WDS1.DIRECTORY. The quicker way
+                      is to just type a number or letter then enter. Thus DSK#. is
+                      used and the key pressed represents the # used. While the
+                      catalog is being scrolled on screen, ANY KEY will pause the
+                      display and reading of a disk, an arrow will appear next to the
+                      file read and the ARROW KEYS will move the arrow up or down.
+                      (FCNT/CTRL optional). To page forward or backward a screen at
+                      a time press left and right arrow keys. The arrow last pointing
+                      to will stay at the top or bottom of the screen display. This
+                      in much better than other paging methods like DM1000 or Funnel
+                      Web Disk review to see single lines.
+ 
+                      ONLY the SPACE BAR will pause the catalog until pressed again.
+
+                      2015 added new keys to Directory: 1 = Editor.
+                                                   A or a = Assembler file.
+                                                   G or g = GPL Assembler file.
+
+                      Use ENTER to select the filename so it will be placed into into
+                      a buffer, the cataloger will auto-load Dis/Fix 80 files into
+                      the EA3 menu, Programs will be EA5, and only Dis/Var 254 is
+                      considered to be XB programs. So to load XB programs use the
+                      SPACE BAR to buffer the filename, thus loading is automatic
+                      from there for XB programs. For DIS/VAR 80 or DIS/FIX 80 files
+                      to be edited or assembled use ENTER or SPACE BAR, then select
+                      the Edit or Assembler from the main menu. Loading is automatic
+                      from there.
+
+                      Directory will automatically assume you wish to catalog a
+                      sub-directory if a Directory was selected. To buffer anything
+                      else you must use the SPACE BAR, to select a filename to be
+                      placed into a buffer, then auto return to REA main menu. Now
+                      select the option to be used from this buffer.
+
+                      If you select D DIRECTORY again, the buffer will be used and the
+                      last device accessed will be used again. If you wish to clear
+                      the buffer just use FCTN BACK to the REA main menu.
+
+                      NOTE:
+                      SOURCE file name must be filled in as this is the default. But
+                      if you use DIRECTORY to flag a file it will be placed into
+                      S SET PATH NAMES for all uses.
+
+                      . R X B
+                      A previous feature that was optional since version 1000 but had
+                      no menu option on screen indicating it was a option. (Period) .
+                      will return to RXB menu screen.

@@ -1,0 +1,28 @@
+
+          F18UNLOCK      subprogram                            PAGE  F1
+          -------------------------------------------------------------
+ 
+          Format         CALL F18UNLOCK 
+
+ 
+          Description
+ 
+          The F18UNLOCK only does one thing send the command to unlock
+          to the F18A allowing use of the Registers, GPU and memory. I
+          did not name the subprogram F18A or F18B as it was assumed 
+          it was still named F18 over time despite alpha designation.  
+ 
+          Programs
+ 
+          This line will unlock F18     | >100 CALL F18UNLOCK
+          This line makes 28 sprites    | >110 CALL POKER(30,28)
+          not flicker when sprites get  |
+          overlapped.                   | 
+                                        | 
+          This line relocks the F18     | >100 CALL POKER(50,128)
+                                        | 
+
+
+          Options
+          F18 also can be programmed to run Assembly so check out
+          the following RXB program in Documents and XB examples.

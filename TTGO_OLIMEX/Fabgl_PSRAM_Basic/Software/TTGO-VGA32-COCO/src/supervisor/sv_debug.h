@@ -53,6 +53,7 @@ struct SV_DebugState {
     SV_DumpPhase   dump_phase;
     char           dump_name[SV_DUMP_NAME_MAX + 1];
     uint8_t        dump_name_len;
+    bool           dump_name_default; // name is the suggested default: typing replaces it
     char           dump_result[4][44];  // up to 4 result/error lines
     uint8_t        dump_result_lines;
 };

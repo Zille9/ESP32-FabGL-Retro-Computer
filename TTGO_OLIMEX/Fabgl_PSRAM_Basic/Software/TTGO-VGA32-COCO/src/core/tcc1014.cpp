@@ -111,15 +111,26 @@ void tcc1014_init_palette_lut(void) {
 // ============================================================
 
 // OPT-M2: mirror of the RAM fast path in machine_read_coco3/machine_write_coco3
-// (Z = bank << 13 | offset, valid while Z is inside physical RAM).
+// (Z = (bank << 13 | offset) wrapped into physical RAM).
 static void update_fast_pages(TCC1014* gime) {
     for (int i = 0; i < 8; i++) {
         const unsigned bank = gime->active_banks[i];
-        const uint32_t base = (uint32_t)bank << 13;
-        uint8_t* p = (gime->ram && base + 0x2000 <= gime->ram_size) ? gime->ram + base : nullptr;
+        const uint32_t base = ((uint32_t)bank << 13) & gime->ram_mask;
+        uint8_t* p = gime->ram ? gime->ram + base : nullptr;
         gime->wr_page[i] = p;
-        gime->rd_page[i] = (gime->TY || bank < 0x3C) ? p : nullptr;
+        // ROM select looks at the GIME's own six bits only
+        gime->rd_page[i] = (gime->TY || (bank & 0x3F) < 0x3C) ? p : nullptr;
     }
+}
+
+void tcc1014_set_ram(TCC1014* gime, uint8_t* ram, uint32_t size) {
+    gime->ram = ram;
+    gime->ram_size = size;
+    gime->ram_mask = size - 1;
+    gime->vram_mask = (size < 0x80000u ? size : 0x80000u) - 1;
+    gime->vram_base = 0;
+    gime->bank_mask = (size > 0x100000u) ? 0xFF : (size > 0x80000u) ? 0x7F : 0x3F;
+    tcc1014_update_active_banks(gime);
 }
 
 void tcc1014_update_active_banks(TCC1014* gime) {
@@ -234,9 +245,9 @@ void tcc1014_mem_cycle(TCC1014* gime, uint16_t addr, bool RnW,
                                 : (0x38 | (addr >> 13));
 
         // ROM/CTS/RAM select — port of tcc1014.c:711-719
-        if (!gime->TY && bank >= 0x3C) {
+        if (!gime->TY && (bank & 0x3F) >= 0x3C) {
             if (!gime->MC1) {
-                gime->S = (bank >= 0x3E) ? 1 : 0;
+                gime->S = ((bank & 0x3F) >= 0x3E) ? 1 : 0;
             } else {
                 gime->S = gime->MC0 ? 1 : 0;
             }
@@ -303,6 +314,9 @@ void tcc1014_mem_cycle(TCC1014* gime, uint16_t addr, bool RnW,
                     }
                 } else {
                     *read_data = 0xFF;  // Other GIME regs are write-only
+                    // ...except that a 1 MB / 2 MB board answers $FF9B
+                    if (addr == 0xFF9B && gime->bank_mask != 0x3F)
+                        *read_data = 0xFC | (uint8_t)(gime->vram_base >> 19);
                 }
             }
         }
@@ -445,8 +459,13 @@ void tcc1014_write_register(TCC1014* gime, unsigned reg, uint8_t val) {
         update_from_gime_registers(gime);
         break;
 
-    // $FF9B: Disto bank select (unused on ESP32)
+    // $FF9B: with 1 MB / 2 MB fitted, bits 1-0 pick the 512 KB bank that
+    // video is read from.
     case 0x0B:
+        if (gime->bank_mask != 0x3F) {
+            gime->vram_base = ((uint32_t)(val & 0x03) << 19) & gime->ram_mask;
+            gime->dirty_frame = true;
+        }
         break;
 
     // VSC ($FF9C) — tcc1014.c:974-977
@@ -511,12 +530,12 @@ uint8_t tcc1014_read_register(TCC1014* gime, unsigned reg) {
 // ============================================================
 
 void tcc1014_write_mmu(TCC1014* gime, uint8_t offset, uint8_t val) {
-    gime->mmu_bank[offset & 0x0F] = val & 0x3F;
+    gime->mmu_bank[offset & 0x0F] = val & gime->bank_mask;
     tcc1014_update_active_banks(gime);
 }
 
 uint8_t tcc1014_read_mmu(TCC1014* gime, uint8_t offset) {
-    return gime->mmu_bank[offset & 0x0F] & 0x3F;
+    return gime->mmu_bank[offset & 0x0F];
 }
 
 // ============================================================
@@ -727,9 +746,9 @@ static inline uint8_t fetch_byte_vram(TCC1014* g) {
     } else {
         // X offset is dynamically added — from tcc1014.c:1242
         uint32_t addr = g->B + (g->Xoff & 0xFF);
-        addr &= (g->ram_size - 1);  // Wrap to physical RAM
-        r = g->ram[addr];
-        g->vdata_cache = g->ram[(addr + 1) & (g->ram_size - 1)];
+        addr &= g->vram_mask;       // Wrap inside the video bank
+        r = g->ram[g->vram_base + addr];
+        g->vdata_cache = g->ram[g->vram_base + ((addr + 1) & g->vram_mask)];
         g->have_vdata_cache = true;
         // Xoff only advances on actual fetch, NOT on cached return
         // (XRoar tcc1014.c:1243 — Xoff+=2 is inside the else block)
@@ -987,7 +1006,7 @@ done:
 // compiler can keep the palette and state in registers across pixel stores.
 //
 // The legacy fetch_byte_vram() pair-cache consumes a strictly sequential
-// byte stream: byte k of the line is ram[(B + k) & (ram_size - 1)] (Xoff
+// byte stream: byte k of the line is ram[vram_base + ((B + k) & vram_mask)] (Xoff
 // starts at 0 and never reaches the & 0xFF wrap — max 160 bytes/line). So
 // the renderers read a plain byte array: a direct pointer into RAM when the
 // line doesn't wrap, otherwise a staged copy.
@@ -997,10 +1016,11 @@ done:
 static uint8_t s_line_bytes[160];
 
 static inline const uint8_t* fetch_line_bytes(const TCC1014* g, unsigned n) {
-    const uint32_t mask = g->ram_size - 1;
+    const uint32_t mask = g->vram_mask;
     const uint32_t a = g->B & mask;
-    if (a + n <= g->ram_size) return g->ram + a;
-    for (unsigned k = 0; k < n; k++) s_line_bytes[k] = g->ram[(a + k) & mask];
+    const uint8_t* bank = g->ram + g->vram_base;
+    if (a + n <= mask + 1) return bank + a;
+    for (unsigned k = 0; k < n; k++) s_line_bytes[k] = bank[(a + k) & mask];
     return s_line_bytes;
 }
 

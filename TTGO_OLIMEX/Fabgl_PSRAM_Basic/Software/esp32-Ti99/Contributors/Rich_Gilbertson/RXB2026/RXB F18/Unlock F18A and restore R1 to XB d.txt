@@ -1,0 +1,15 @@
+* Unlock F18A and restore R1 to XB default:
+  LI R0,>8C02   * VDPWA for setting the VDP registers
+  LI R1,>1CB9	* Register 57 (>39), OR with >80 for reg write, value 28 (>1C), PRE-SWAPPED
+  MOVB R1,*R0   * Write first byte
+  SWPB R1
+  MOVB R1,*R0   * Write second byte
+  SWPB R1       * Gonna do it again
+  MOVB R1,*R0   * Write first byte
+  SWPB R1
+  MOVB R1,*R0   * Now we are unlocked! But VDPR1 is probably corrupt
+  LI R1,>E081   * Register 1, OR with >80 for reg write, value 224 (>E0), PRE-SWAPPED
+  MOVB R1,*R0   * Write first byte
+  SWPB R1
+  MOVB R1,*R0   * Write second byte
+* All done

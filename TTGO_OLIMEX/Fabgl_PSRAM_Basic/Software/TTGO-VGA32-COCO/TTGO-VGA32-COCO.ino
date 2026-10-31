@@ -14,6 +14,7 @@
 #include "config.h"
 #include "esp_timer.h"
 #include "src/core/machine.h"
+#include "src/core/speed_meter.h"
 #include "src/hal/hal.h"
 #include "src/hal/osd_canvas.h"
 #include "src/supervisor/supervisor.h"
@@ -30,7 +31,7 @@ File fp;
 //------------------------------------- OTA-Update-Lib --------------------------------------------------------------------------------------------
 #include <Update.h>
 //-------------------------------------------------------------------------------------------------------------------------------------------------
-extern bool backto;
+extern bool backto;   //in hal/hal_keyboard.cpp
 // Uncomment to enable integration tests (serial command 'R' to run)
 // CoCo2: LOADM verify, VRAM dump    CoCo3: GIME, video, audio tests
 //#define RUN_INTEGRATION_TESTS 1
@@ -38,6 +39,20 @@ extern bool backto;
 #ifdef RUN_INTEGRATION_TESTS
 #include "src/tests/integration_test.h"
 #endif
+
+// Boot halt screen types. Declared ahead of every function in this file:
+// arduino-cli inserts its generated prototypes before the first function, and
+// in the bootloader build that is bootloader_release_otadata() below, so types
+// declared later would not exist yet for boot_halt_screen()'s prototype.
+
+// One centred text line of a boot halt screen.
+struct HaltLine {
+    const char* text;
+    uint8_t     y;
+    uint16_t    color;
+};
+
+enum HaltIcon : uint8_t { HALT_ICON_SD, HALT_ICON_CHIP };
 
 #if BUILD_TARGET == BUILD_TARGET_BOOTLOADER
 #include "esp_partition.h"
@@ -67,26 +82,70 @@ Machine coco;
 extern OSDCanvas* hal_video_get_canvas(void);
 
 // Paint a full-screen fatal message on the VGA display and never return.
-// Used at boot when the SD card or required ROMs are missing.
-static void boot_halt_screen(const char* const* lines, int n) {
+// Used at boot when the SD card or required ROMs are missing. Everything is
+// centred: a red warning triangle and an SD card or chip icon above the text.
+// 640x200 pixels are ~2.4x taller than wide, so the icons are stretched
+// horizontally to look right.
+static void boot_halt_screen(HaltIcon icon, const HaltLine* lines, int n) {
     hal_video_init();
     OSDCanvas* canvas = hal_video_get_canvas();
     if (canvas) {
+        const int ICON_H = 44, TRI_W = 104, GAP = 40;
+        const int ICON_W = (icon == HALT_ICON_SD) ? 72 : 96;
+        const int cx = DISPLAY_WIDTH / 2;
+        const int tx = cx - (TRI_W + GAP + ICON_W) / 2;     // triangle left edge
+        const int ix = tx + TRI_W + GAP;                    // icon left edge
+        const int y0 = 14;
+
         canvas->startWrite();
         canvas->fillScreen(OSD_BLACK);
         canvas->setTextFont(2);        // 8x14, readable on 640x200
-        canvas->setTextDatum(TL_DATUM);
-        int y = 16;
-        for (int i = 0; i < n; i++) {
-            canvas->setTextColor(i == 0 ? OSD_RED : OSD_WHITE, OSD_BLACK);
-            canvas->drawString(lines[i], 16, y);
-            y += 16;
+        canvas->setTextDatum(TC_DATUM);
+
+        // Warning triangle with a white exclamation mark
+        for (int r = 0; r < ICON_H; r++) {
+            int half = 2 + r * (TRI_W / 2 - 2) / (ICON_H - 1);
+            canvas->fillRect(tx + TRI_W / 2 - half, y0 + r, half * 2, 1, OSD_RED);
         }
+        canvas->fillRect(tx + TRI_W / 2 - 5, y0 + 13, 10, 17, OSD_WHITE);
+        canvas->fillRect(tx + TRI_W / 2 - 5, y0 + 34, 10, 5, OSD_WHITE);
+
+        if (icon == HALT_ICON_SD) {
+            // SD card: body with a cut corner, gold contacts, label
+            canvas->fillRect(ix, y0, ICON_W, ICON_H, OSD_BLUE);
+            for (int r = 0; r < 10; r++) {
+                int cut = (10 - r) * 24 / 10;
+                canvas->fillRect(ix + ICON_W - cut, y0 + r, cut, 1, OSD_BLACK);
+            }
+            for (int c = 0; c < 5; c++) {
+                canvas->fillRect(ix + 6 + c * 9, y0 + 4, 5, 11, OSD_YELLOW);
+            }
+            canvas->fillRect(ix + 8, y0 + 22, ICON_W - 16, 16, OSD_WHITE);
+            canvas->setTextColor(OSD_BLUE, OSD_WHITE);
+            canvas->drawString("SD", ix + ICON_W / 2, y0 + 23);
+        } else {
+            // ROM chip: pins top and bottom, body with a notch, label
+            for (int p = 0; p < 8; p++) {
+                canvas->fillRect(ix + 9 + p * 10, y0, 6, ICON_H, 0xAD55);
+            }
+            canvas->fillRect(ix, y0 + 8, ICON_W, ICON_H - 16, 0x52AA);
+            canvas->fillEllipse(ix + 2, y0 + ICON_H / 2, 16, 8, OSD_BLACK);
+            canvas->setTextColor(OSD_WHITE, 0x52AA);
+            canvas->drawString("ROM", ix + ICON_W / 2, y0 + 15);
+        }
+
+        for (int i = 0; i < n; i++) {
+            canvas->setTextColor(lines[i].color, OSD_BLACK);
+            canvas->drawString(lines[i].text, cx, lines[i].y);
+        }
+        canvas->setTextDatum(TL_DATUM);
         canvas->endWrite();
     }
-    for (int i = 0; i < n; i++) DEBUG_PRINT(lines[i]);
+    for (int i = 0; i < n; i++) DEBUG_PRINT(lines[i].text);
     while (true) { delay(1000); }
 }
+
+#define HALT_DOC_URL "https://github.com/reyco2000/TTGO-VGA32-COCO"
 
 // Emulator + OSD task stack. Measured peak 3,348 B (2026-09-27: full OSD tour,
 // disk mounts from OSD and API, RAM dump to SD, screenshots, emulation); the
@@ -137,11 +196,19 @@ void setup() {
     // Seed the runtime machine type from NVS (falls back to MACHINE_TYPE).
     // Must happen before machine_init() so later steps can branch on it.
     g_machine_type = supervisor_load_machine_type();
+    g_cpu_variant  = supervisor_load_cpu_variant();
+    g_coco3_ram_kb = supervisor_load_coco3_ram();
 
     // DriveWire bus mode (Becker port). Read before ROM loading so later
     // phases can pick the HDB-DOS Becker ROM instead of disk11.rom.
     dw_bus_load_config();
+
+    // Orchestra-90 setting. After the DriveWire config so its cartridge
+    // ROM replaces the HDB-DOS ROM.
+    supervisor_load_cart_config();
     DEBUG_PRINTF("g_machine_type = %u (compile-time default %u)", g_machine_type, (uint8_t)MACHINE_TYPE);
+    DEBUG_PRINTF("CPU: %s", g_cpu_variant == CPU_VARIANT_HD6309 ? "HD6309" : "MC6809");
+    DEBUG_PRINTF("CoCo 3 RAM: %u KB", (unsigned)g_coco3_ram_kb);
 
     // Initialize emulated machine
     machine_init(&coco);
@@ -153,16 +220,15 @@ void setup() {
     // anything essential is missing, paint a message and halt instead of
     // booting into a broken emulator (garbage reset vector -> blank/crash).
     if (!hal_storage_is_ready()) {
-        const char* msg[] = {
-            "CoCo Emulator - Cannot Start",
-            "",
-            "SD card not found.",
-            "Please check the SD card is inserted",
-            "and properly connected, then reboot.",
-            "",
-            "Emulator halted.",
+        static const HaltLine msg[] = {
+            { "SD card not found or it has an incorrect format.", 70,  OSD_RED    },
+            { "Please insert an SD card formatted \"FAT\" (FAT32)", 94,  OSD_WHITE  },
+            { "and restart the emulator.",                        110, OSD_WHITE  },
+            { "See the documentation at",                         134, OSD_WHITE  },
+            { HALT_DOC_URL,                                       150, OSD_YELLOW },
+            { "Emulator halted.",                                 178, OSD_CYAN   },
         };
-        boot_halt_screen(msg, sizeof(msg) / sizeof(msg[0]));  // never returns
+        boot_halt_screen(HALT_ICON_SD, msg, sizeof(msg) / sizeof(msg[0]));  // never returns
     }
 
     // Collect the required ROMs that failed to load for the active machine.
@@ -185,19 +251,18 @@ void setup() {
             off += snprintf(missline + off, sizeof(missline) - off, "%s%s",
                             missing[i], (i + 1 < nmiss) ? ", " : "");
         }
-        const char* msg[] = {
-            "CoCo Emulator - Cannot Start",
-            "",
-            "No valid Basic & Disk Color Basic ROMs.",
-            missline,
-            "",
-            "Place ROMs in the /roms directory of the SD:",
-            (g_machine_type == 4) ? "  coco3.rom, disk11.rom"
-                                  : "  bas13.rom, extbas11.rom, disk11.rom",
-            "",
-            "Emulator halted.",
+        const HaltLine msg[] = {
+            { "Required ROM files are missing.",                      68,  OSD_RED    },
+            { missline,                                               86,  OSD_YELLOW },
+            { "Copy them into the /roms folder on the SD card",       108, OSD_WHITE  },
+            { "and restart the emulator.",                            124, OSD_WHITE  },
+            { (g_machine_type == 4) ? "CoCo 3 needs: coco3.rom, disk11.rom"
+                                    : "CoCo 2 needs: bas13.rom, extbas11.rom, disk11.rom",
+                                                                      144, OSD_WHITE  },
+            { HALT_DOC_URL,                                           164, OSD_YELLOW },
+            { "Emulator halted.",                                     184, OSD_CYAN   },
         };
-        boot_halt_screen(msg, sizeof(msg) / sizeof(msg[0]));  // never returns
+        boot_halt_screen(HALT_ICON_CHIP, msg, sizeof(msg) / sizeof(msg[0]));  // never returns
     }
 
     // Initialize VGA display
@@ -325,6 +390,7 @@ void loop() {
     if (supervisor_update_and_render()) {
         // Supervisor is active — emulation paused
         osd_was_active = true;
+        speed_meter_gap();
         yield();
         return;
     }
@@ -334,6 +400,7 @@ void loop() {
         osd_was_active = false;
         hal_video_force_repaint();
     }
+
     //----------- zu Basic zurück (OTA) --------
     if(backto) load_binary();
     //----------- zu Basic zurück (OTA) --------
@@ -344,16 +411,20 @@ void loop() {
     // If a remote debugger paused the CPU, freeze emulation but keep draining
     // RPC commands so inspect/resume/screenshot still respond promptly.
     if (debug_rpc_is_paused()) {
+        speed_meter_gap();
         delay(2);
         return;
     }
 
     // Run one video frame worth of emulation
+    int64_t frame_t0 = esp_timer_get_time();
     machine_run_frame(&coco);
+    uint32_t frame_work_us = (uint32_t)(esp_timer_get_time() - frame_t0);
     pace_frame();
 
     // Push framebuffer to display
     hal_render_frame();
+    speed_meter_frame(&coco, frame_work_us);
 
     // Sound frequency debug — detect end-of-sound and report
     hal_audio_debug_tick();

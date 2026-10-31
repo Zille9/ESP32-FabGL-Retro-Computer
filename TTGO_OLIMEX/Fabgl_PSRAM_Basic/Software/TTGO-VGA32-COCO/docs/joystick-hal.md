@@ -4,7 +4,13 @@
 
 The joystick subsystem emulates two CoCo analog joystick ports. Each CoCo port provides two 6-bit analog axes (X/Y, range 0–63) and one fire button, read via a software successive-approximation ADC that uses the PIA's 6-bit DAC as a comparator threshold.
 
-On the **TTGO VGA32 v1.4** build, the physical board has no joystick wiring, so the HAL drives Joystick 1 (port 0) from a **PS/2 mouse** plugged into the on-board mouse header. Joystick 2 (port 1) is a neutral stub.
+On the **TTGO VGA32 v1.4** build, the physical board has no joystick wiring, so the HAL drives Joystick 1 (port 0) from a **PS/2 mouse** plugged into the on-board mouse header. Joystick 2 (port 1) is centred unless the keyboard moves it.
+
+**Joy-Keyboard Emulation** (Setup → Joy-Keyboard Emulation: OFF / RIGHT / LEFT, NVS `"sv"`/`joy_kbd`, applied live) makes the arrow keys (and keypad arrows) move the stick and Space the fire button on the chosen port — RIGHT = port 0, LEFT = port 1:
+
+- A held arrow glides its axis one position every 15.6 ms (`KJ_STEP_US`; 0→63 in about 1 s), diagonals with two arrows; on release the stick stays where it is, like the mouse. `kbd_glide()` advances it by elapsed `micros()` from `hal_joystick_update()` (the CPU's joystick reads) and on each arrow event; gaps over 100 ms (pause, supervisor) count as 100 ms.
+- On RIGHT the arrows move the same position as the mouse (`s_pos_x`/`s_pos_y`), and either Space or the left mouse button fires. LEFT has its own position (`s_left_x`/`s_left_y`, starting centred).
+- While it is on, `process_vk()` in `hal_keyboard.cpp` hands arrows and Space to `hal_joystick_kbd_key()` and they no longer reach the CoCo keyboard matrix. Releases are always passed on (even with the supervisor open), so no key sticks.
 
 **Source files:**
 - `src/hal/hal_joystick.cpp` — PS/2 mouse-as-joystick implementation

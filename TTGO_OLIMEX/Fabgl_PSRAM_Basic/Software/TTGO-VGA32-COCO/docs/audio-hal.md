@@ -2,16 +2,16 @@
 
 ## Overview
 
-The audio subsystem emulates the CoCo's two audio output paths and pushes the resulting sample stream to the **ESP32 internal DAC1 on GPIO25** (the TTGO VGA32 v1.4 board's 3.5 mm jack). A timer ISR running at 22 050 Hz pulls one sample per fire from a 262-sample, double-buffered scanline buffer and writes it via `dac_output_voltage()`.
+The audio subsystem emulates the CoCo's two audio output paths and pushes the resulting sample stream to the **ESP32 internal DAC1 on GPIO25** (the TTGO VGA32 v1.4 board's 3.5 mm jack). A timer ISR firing every 45 µs pulls samples from a ring buffer that the emulation loop fills with one sample per scanline, and writes them via `dac_output_voltage()`.
 
-A 262-sample-per-frame pitch-corrected double-buffer drives the **ESP32 internal DAC1 on GPIO25**. The output stage is a simple `dac_output_voltage()` call from the timer ISR — no PWM or LEDC involved.
+A rate-controlled sample queue (262 samples per frame) drives the **ESP32 internal DAC1 on GPIO25**. The output stage is a simple `dac_output_voltage()` call from the timer ISR — no PWM or LEDC involved.
 
 **Source files:**
 - `src/core/sound.cpp/h` — Sound mixing core: mux source/enable, 6-bit DAC and single-bit levels, XRoar-style gain/offset tables — board-independent
 - `src/core/machine.cpp` — PIA write hooks (`sound_pia0_written` / `sound_pia1_written`) that forward PIA state to the sound core
 - `src/hal/hal_audio.cpp` — DAC init, ISR, `hal_audio_set_level()` sink
 - `src/hal/hal.h` — Public API declarations
-- `config.h` — `PIN_DAC_OUT`, `AUDIO_SAMPLE_RATE`
+- `config.h` — `PIN_DAC_OUT`, `TARGET_FPS`
 
 Design rationale and the gap analysis that led to this structure:
 [`audio-improvement-plan.md`](audio-improvement-plan.md).
@@ -82,7 +82,7 @@ Design rationale and the gap analysis that led to this structure:
 |-----------|-------|-------|
 | Output pin | GPIO25 | ESP32 internal DAC1 (`PIN_DAC_OUT = 25`) |
 | DAC width | 8 bit | `dac_output_voltage(channel, 0..255)` |
-| Sample rate | 22 050 Hz | Hardware timer ISR fires at this rate |
+| ISR rate | 22 222 Hz | Hardware timer fires every 45 µs |
 | Idle level | 0 | Unipolar output like the real hardware; jack is AC-coupled |
 | Output route | 3.5 mm jack | On-board on the TTGO VGA32 v1.4 |
 
@@ -131,57 +131,93 @@ model:
 - **Silence is 0, not mid-scale** — output is unipolar like the real hardware;
   the jack's AC coupling removes DC.
 
-### Pitch-Corrected Scanline Buffer
+### Scanline Sample Queue
 
 #### The Problem
 
-The emulated 6809 executes the per-frame cycle budget (14 916 cycles) faster than real wall-clock time — currently in ~6–7 ms of the 16.67 ms NTSC frame period. If the DAC level were written directly to the output at the moment the CPU writes PIA1, every audio transition would arrive ~2.5× too early in wall time and tones would play roughly that much higher in pitch.
+The emulated 6809 runs a frame's cycle budget (14 916 cycles) in a burst and then idles until the next 60 Hz frame slot (`pace_frame()` in the sketch). If the level were written to the DAC at the moment the CPU writes PIA1, every transition would arrive too early in wall time and tones would play too high. How long the burst takes also varies with what is on screen, so the end of a frame is not a steady clock either.
 
 #### The Solution
 
-Sample-and-replay at the correct CoCo rate:
+Sample in emulated time, play back in real time, with a queue in between:
 
-1. **Capture**: after each emulated scanline in `machine_run_frame()`, `hal_audio_capture_scanline()` snapshots `audio_current_level` into a 262-entry buffer (one entry per scanline of the 262-scanline NTSC frame).
-2. **Commit**: at frame end, `hal_audio_commit_frame()` flips the double buffer (the ISR will pick up the new buffer on its next fire).
-3. **Playback**: the 22 050 Hz timer ISR walks through the buffer using a Q8 fixed-point stride calibrated so 262 samples play back over exactly one CoCo frame period (~16.67 ms).
-4. **Looping**: if the ISR reaches the buffer end during the render gap between frames, it wraps to the beginning — seamless for periodic tones like SOUND.
+1. **Capture**: after each emulated scanline, `hal_audio_capture_scanline()` pushes `audio_current_level` into a 1024-byte ring buffer. That is 262 samples per frame, 15 720 per second.
+2. **Playback**: the timer ISR takes samples from the ring with a Q16 fractional stride and writes them to the DAC. The nominal stride is one frame of samples per frame period: `262 × 65536 × 45 / 16666`.
+3. **Rate control**: at each frame end `hal_audio_commit_frame()` looks at how many samples are queued and nudges the stride to hold about 390 (`AUDIO_FILL_TARGET`: one frame plus a margin for the idle part of the frame and for late frames). It is a PI controller: the error is averaged over ~16 frames for the proportional term, and an integral term carries any lasting speed difference so the fill returns to the target. The correction is limited to +2 % / −40 %. At 60 FPS it stays within about 0.03 % on a static screen and 0.2 % on an animated one, so pitch is not audibly bent.
+4. **Slow emulation**: when the emulator cannot hold 60 FPS it delivers fewer samples per second, and playback slows down with it instead of breaking up (at 50 FPS the stride settles 17 % low: sound is slower and lower, but continuous). A second underrun within 120 frames of a restart steps the rate down 1 % at once, so the rate is found in a second or two; a single underrun, as after a pause, does not.
+5. **Held-off interrupt**: each ISR run measures the time since the previous one with the CPU cycle counter and advances one stride per 45 µs elapsed. If another interrupt or a critical section delayed it, it skips ahead rather than falling behind (`catchup_ticks`).
+6. **Empty queue**: when emulation stops (OSD open, debugger pause, long SD access) the ring runs dry. The ISR then leaves the DAC at its last level and waits; playback restarts once a whole frame is queued again.
 
 ```
 machine_run_frame():
   for each scanline (0-261):
     machine_run_scanline()       → CPU executes ~57 cycles; DAC may change
-    hal_audio_capture_scanline() → snapshot audio_current_level into buffer
-  hal_audio_commit_frame()       → signal ISR to swap to new buffer
+    hal_audio_capture_scanline() → push audio_current_level into the ring
+  hal_audio_commit_frame()       → judge fill level, adjust ISR stride
 
-audio_timer_isr() [IRAM_ATTR, 22050 Hz]:
-  1. If new buffer ready: swap read/write buffers, reset position
-  2. Read sample from playback buffer at Q8 index
-  3. Advance index by ISR_STRIDE_Q8 (wraps at 262 for looping)
-  4. dac_output_voltage(DAC_CHANNEL_1, sample)
+audio_timer_isr() [IRAM_ATTR, every 45 µs]:
+  1. If holding (ring empty): do nothing
+  2. Else read the sample at the Q16 read position, advance by the stride
+  3. dac_output_voltage(DAC_CHANNEL_1, sample)
 ```
 
-#### Pitch Fine-Tuning
+Sound runs about 20–25 ms behind the emulation because of the queued samples.
 
-The base stride is `262 * 256 * 60 / 22050 ≈ 183`. An `AUDIO_PITCH_TRIM` constant (currently `-6`) adjusts for residual scanline-boundary quantization error. Each trim unit changes pitch by ~0.55 %.
+#### Why not swap a buffer per frame
 
-| Trim | Stride | Effect |
-|------|--------|--------|
-| 0  | 183 | Base rate (slightly sharp) |
-| -6 | 177 | Current setting (~3.3 % lower) |
+Until v0.15.2 the HAL swapped two 262-sample buffers at each frame end and the ISR restarted from sample 0 on every swap, with an `AUDIO_PITCH_TRIM` constant slowing playback. With 60 Hz pacing the frames arrived faster than the ISR played them: measured on the board, 6.6 of every 262 samples were cut off, every frame, and late frames replayed stale audio. The ring buffer loses none.
 
-Tunable in `hal_audio.cpp`. Calibrated so `SOUND 84,20` matches `SOUND 82,20` on desktop XRoar to within ~1 %. The source of the discrepancy is per-frame CPU pace, not the output stage.
+#### Pitch
+
+Playback is locked to emulated time, so the pitch heard is the pitch the emulated machine generates. That is not concert pitch, and it is not supposed to be: BASIC's `PLAY` times its notes with a delay loop, and the 60 Hz interrupt takes time away from that loop.
+
+| Command | Delay-loop period (ROM table) | No interrupts | Measured at the jack |
+|---|---|---|---|
+| `PLAY "O2A"` | 4 × (26 + 8 × 124) + 3 = 4075 cycles | 219.60 Hz | 217.84 Hz |
+| `PLAY "O4A"` | 4 × (25 + 5 × 46) + 3 = 1023 cycles | 874.77 Hz | 867.73 Hz |
+
+Both measurements are 0.80 % below the loop's own frequency, which is 120 cycles per 60 Hz interrupt in each case (CoCo 3, Disk BASIC). Do not add a trim constant to "fix" these readings.
+
+Re-measured on v0.16.1 (PI rate control), 6809:
+
+| Command | CoCo 3 | CoCo 2 |
+|---|---|---|
+| `PLAY "O2A"` | 217.76 Hz | 217.94 Hz |
+| `PLAY "O4A"` | 867.70 Hz | **836.99 Hz** |
+
+The CoCo 3 is unchanged (within 0.04 %). The CoCo 2 uses the same ROM delay tables, and its `O2 A` sits slightly higher because its interrupt handler is shorter. Its `O4 A` is 3.6 % flat for a different reason: that note's delay loop (`DECA` / `BNE`) executes many more instructions per second, the CoCo 2 path has too little speed margin for it, and the frame rate falls to 57.7 FPS. Since v0.16.1 playback follows the emulator's speed, so the note comes out flat instead of breaking up. Running the ROM loop directly on the board shows it: 60.0 FPS and no correction for the `O2 A` loop on both machines and for the `O4 A` loop on the CoCo 3, but 57.7 FPS and a −4.1 % correction for the `O4 A` loop on the CoCo 2. The cure is CoCo 2 frame time, not the audio code.
+
+The measurements were taken with `tools/frequency_meter.py`: connect the board's audio jack to a PC audio input, pick the capture device with `--list-devices`, and read the frequency while the note plays.
 
 #### Bandwidth
 
-Scanline-rate sampling gives an effective sample rate of 262 × 60 = 15 720 Hz (Nyquist ≈ 7.8 kHz). Covers the full CoCo audio range — the SOUND command's maximum frequency is well under 4 kHz.
+Scanline-rate sampling gives an effective sample rate of 262 × 60 = 15 720 Hz (Nyquist ≈ 7.8 kHz). Only the last level written during a scanline is kept.
 
 ### Timer ISR
 
-`timerBegin(0, 80, true)` produces a 1 MHz timer base (APB / 80). `timerAlarmWrite(timer, 1000000 / 22050, true)` sets the 22 050 Hz alarm. `timerAttachInterrupt(timer, audio_timer_isr, true)` arms the ISR.
+`timerBegin(0, 80, true)` produces a 1 MHz timer base (APB / 80). The alarm is set to `AUDIO_ISR_PERIOD_US` = 45, so the ISR fires at 22 222 Hz; the timer counts whole microseconds, so 22 050 Hz cannot be hit exactly. The stride is computed from the real period.
 
-ISR cost is dominated by the `dac_output_voltage()` call — sub-microsecond on the original ESP32. With `IRAM_ATTR`, ISR placement is in IRAM and not affected by flash cache misses.
+The ISR takes about 6 µs worst case. Its start time varies by roughly ±14 µs around the 45 µs period (other interrupts on the same core), which adds a little noise.
 
 > The 2.x Arduino-ESP32 core timer API used here (`timerAlarmWrite` + `timerAlarmEnable`) is required because FabGL 1.0.9 is incompatible with core 3.x / IDF 5; the build pins to `esp32:esp32@2.0.17`. See `README.md` Build & Flash.
+
+### Diagnostics
+
+`/api/status` reports an `audio` object; `?audio_reset=1` clears the counters after the read.
+
+| Field | Meaning |
+|---|---|
+| `underruns`, `hold_ticks` | Times the ring ran dry, and ISR ticks spent waiting |
+| `catchup_ticks` | ISR periods made up after the ISR was held off |
+| `overruns` | Samples dropped because the ring was full |
+| `fill`, `fill_min`, `fill_max` | Queued samples at frame end (target 390) |
+| `stride_adj` | Current rate correction in Q16 stride units (nominal stride is 46 362) |
+| `commit_us_min`, `commit_us_max` | Shortest and longest time between frame ends |
+| `isr_us_max`, `isr_gap_us_min`, `isr_gap_us_max` | ISR run time and spacing |
+
+`underruns` and `overruns` should stay at 0 while the emulator is running, apart from one underrun per pause and a few while the rate control finds a new speed.
+
+History: up to v0.16.0 the rate control was proportional only and limited to 1 %, so below 60 FPS the ring ran dry several times a second (this is what made CoCo 2 sound bad in v0.15.3), and an ISR that lost ticks left the ring pinned full. Checked for v0.16.1 with a test build slowed to 50 FPS: 14 underruns while the rate settled at −17 %, then none.
 
 ---
 
@@ -229,14 +265,29 @@ The MUX only controls the speaker path; the joystick comparator always reads the
 
 ---
 
+## Orchestra-90/CC
+
+Full description in `orchestra90.md`; the audio side in short:
+
+`src/core/orch90.cpp` is a port of XRoar's `orch90.c`: two write-only 8-bit unsigned DAC latches, left at `$FF7A` and right at `$FF7B`. There is no status register, timer or interrupt; the program writes sample values directly.
+
+- **Decode:** `machine_write_coco2()` / `machine_write_coco3()` forward the two addresses to `orch90_write()` only while `orch90_enabled()` (Settings → Orchestra-90, read from NVS at boot). Reads return `$FF`.
+- **Mixing:** the board has one free DAC pin (GPIO26 is the PS/2 mouse clock), so the channels are mixed to mono: `sound_set_external()` stores `(left + right) / 2` and `sound_update()` adds it to the level the mux/DAC/single-bit model computed, saturating at 255. As in XRoar the cartridge level is added whatever the mux selects.
+- **Levels:** unsigned, no centring: `$00` is silence and an idle `$80` is a DC offset the jack's AC coupling removes. The latches start at 0 and survive a machine reset.
+- **Bandwidth:** the level is captured once per scanline like every other source, so sample playback faster than ~7.8 kHz aliases.
+- **ROM:** the cartridge's 8 KB ROM is `orch90.rom` in `/roms/`, loaded at `$C000` in place of Disk BASIC and started automatically (see "Cartridge ROM" in `supervisor.md`). The toggle refuses to turn on without it.
+
+---
+
 ## Public API
 
 | Function | Purpose |
 |---|---|
-| `hal_audio_init()` | Enable DAC1, init scanline buffers, start 22 050 Hz timer ISR |
+| `hal_audio_init()` | Enable DAC1, clear the ring, start the 45 µs timer ISR |
 | `hal_audio_set_level(l)` | Set output level 0-255 (computed by `src/core/sound.cpp`) |
-| `hal_audio_capture_scanline()` | Snapshot current level into the active buffer |
-| `hal_audio_commit_frame()` | Hand the captured buffer to the ISR |
+| `hal_audio_capture_scanline()` | Push the current level into the ring |
+| `hal_audio_commit_frame()` | Frame end: judge the fill level, steer the playback rate |
+| `hal_audio_get_stats()` / `hal_audio_reset_stats()` | Queue and ISR diagnostics for `/api/status` |
 | `hal_audio_set_volume(v)` | No-op placeholder (volume is set by output stage) |
 | `hal_audio_write_sample(l, r)` | No-op placeholder (mono only) |
 | `hal_audio_debug_tick()` | Reserved for diagnostics |
@@ -248,6 +299,6 @@ The MUX only controls the speaker path; the joystick comparator always reads the
 1. **Shared PIA resources are a CoCo design signature.** The CoCo reuses PIAs extensively for cost. Same bits that produce audio also read joysticks. Same MUX select lines that choose audio source also select joystick port/axis. Always check full hardware context before assuming a PIA bit has a single purpose.
 2. **XRoar's `sound.c` is the reference** for correct MUX behavior. `src/core/sound.cpp` is an integer port of its model: full source selection with gain/offset tables matching real hardware voltage measurements. TAPE and CART source *levels* are still unemulated (treated as 0), but their DC offsets are correct.
 3. **Single-bit audio (PIA1 PB1) is not gated by the MUX — but it isn't independent either.** On real hardware the PB1 pin's voltage interacts with the analog mix: it changes the gain and DC offset of whichever source the MUX selects. XRoar models this with a 3-column table index (pin-is-input / output-low / output-high), and so do we.
-4. **Pitch correction requires buffered playback, not CPU throttling.** Slowing the CPU to match wall-clock rate would tank emulation FPS. Scanline-rate buffering with ISR playback at the correct CoCo rate fixes pitch without sacrificing emulation speed.
+4. **Pitch correction requires buffered playback, not CPU throttling.** Samples are taken in emulated time (one per scanline) and played from a queue at a rate steered by the queue's fill level. Do not tune pitch with a constant: when frame pacing changed, the old trim silently started dropping samples.
 5. **The internal DAC sounds noticeably cleaner than LEDC PWM** — no carrier whistle, no RC-filter quality dependency, 8-bit linearity. The TTGO VGA32 jack is amplifier-driven and produces usable audio straight out of the board.
 6. **Mixing lives in `src/core/sound.cpp`, not in the HAL.** The HAL is a sink — `hal_audio_set_level()` just stores a byte. The sound core owns all MUX/DAC/single-bit state and is shared by the CoCo 2 and CoCo 3 write paths (previously three near-identical inline copies in `machine.cpp`). This keeps the HAL board-agnostic and the mix logic single-sourced.

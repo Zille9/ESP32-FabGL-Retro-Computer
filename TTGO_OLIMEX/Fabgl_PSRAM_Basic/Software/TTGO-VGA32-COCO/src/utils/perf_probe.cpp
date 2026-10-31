@@ -25,7 +25,8 @@ static const char* const probe_names[PROBE_COUNT] = {
     "render_scn  ",
     "hal_scn     ",
     "push_sprite ",
-    "audio_scn   "
+    "audio_scn   ",
+    "ssc         "
 };
 
 void perf_probe_frame_end(void) {

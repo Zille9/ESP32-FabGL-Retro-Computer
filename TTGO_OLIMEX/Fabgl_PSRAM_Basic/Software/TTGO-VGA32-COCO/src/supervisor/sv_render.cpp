@@ -356,44 +356,48 @@ void sv_render_wide_row(int y, const char* label, const char* value, bool highli
 // ============================================================
 
 #define SVP_TITLE_H  18
-#define SVP_X        ((DISPLAY_WIDTH - SVP_W) / 2)
 
-int sv_render_popup(const char* title, const char* msg1, const char* msg2,
-                    int count, bool draw_window) {
+int sv_render_popup_w(int w, const char* title, const char* msg1, const char* msg2,
+                      int count, bool draw_window) {
     const char* msgs[2] = { msg1 ? msg1 : "", msg2 ? msg2 : "" };
     int nmsg = (msgs[0][0] ? 1 : 0) + (msgs[1][0] ? 1 : 0);
     int body = SVP_TITLE_H + 8 + nmsg * 10 + (nmsg ? 4 : 0);
     int h = body + count * SVP_ROW_H + 6;
-    int x = SVP_X, y = (DISPLAY_HEIGHT - h) / 2;
+    int x = (DISPLAY_WIDTH - w) / 2, y = (DISPLAY_HEIGHT - h) / 2;
     if (!g_tft || !draw_window) return y + body;
 
-    g_tft->fillRect(x, y, SVP_W, h, SVW_WHITE);
-    g_tft->drawRect(x, y, SVP_W, h, SVW_DKBLUE);
-    g_tft->drawRect(x + 1, y + 1, SVP_W - 2, h - 2, SVW_DKBLUE);
-    g_tft->fillRect(x + 2, y + 2, SVP_W - 4, SVP_TITLE_H, SVW_DKBLUE);
+    g_tft->fillRect(x, y, w, h, SVW_WHITE);
+    g_tft->drawRect(x, y, w, h, SVW_DKBLUE);
+    g_tft->drawRect(x + 1, y + 1, w - 2, h - 2, SVW_DKBLUE);
+    g_tft->fillRect(x + 2, y + 2, w - 4, SVP_TITLE_H, SVW_DKBLUE);
     g_tft->setTextDatum(TC_DATUM);
     g_tft->setTextFont(2);
     g_tft->setTextColor(SVW_WHITE, SVW_DKBLUE);
-    g_tft->drawString(title, x + SVP_W / 2, y + 4);
+    g_tft->drawString(title, x + w / 2, y + 4);
 
     g_tft->setTextFont(1);
     g_tft->setTextColor(SVW_BLACK, SVW_WHITE);
     int my = y + SVP_TITLE_H + 8;
     for (int i = 0; i < 2; i++) {
         if (!msgs[i][0]) continue;
-        g_tft->drawString(msgs[i], x + SVP_W / 2, my);
+        g_tft->drawString(msgs[i], x + w / 2, my);
         my += 10;
     }
     g_tft->setTextDatum(TL_DATUM);
     return y + body;
 }
 
-void sv_render_popup_row(int y, const char* label, const char* value, bool highlighted) {
+int sv_render_popup(const char* title, const char* msg1, const char* msg2,
+                    int count, bool draw_window) {
+    return sv_render_popup_w(SVP_W, title, msg1, msg2, count, draw_window);
+}
+
+void sv_render_popup_row_w(int w, int y, const char* label, const char* value, bool highlighted) {
     if (!g_tft) return;
-    int x = SVP_X;
+    int x = (DISPLAY_WIDTH - w) / 2;
     uint16_t bg = highlighted ? SVW_DKBLUE : SVW_WHITE;
 
-    g_tft->fillRect(x + 4, y, SVP_W - 8, SVP_ROW_H, bg);
+    g_tft->fillRect(x + 4, y, w - 8, SVP_ROW_H, bg);
     g_tft->setTextFont(2);
     g_tft->setTextDatum(TL_DATUM);
     g_tft->setTextColor(highlighted ? SVW_WHITE : SVW_BLACK, bg);
@@ -401,7 +405,11 @@ void sv_render_popup_row(int y, const char* label, const char* value, bool highl
     if (value && value[0]) {
         g_tft->setTextColor(highlighted ? SVW_WHITE : SVW_DKBLUE, bg);
         g_tft->setTextDatum(TR_DATUM);
-        g_tft->drawString(value, x + SVP_W - 12, y + 1);
+        g_tft->drawString(value, x + w - 12, y + 1);
         g_tft->setTextDatum(TL_DATUM);
     }
+}
+
+void sv_render_popup_row(int y, const char* label, const char* value, bool highlighted) {
+    sv_render_popup_row_w(SVP_W, y, label, value, highlighted);
 }

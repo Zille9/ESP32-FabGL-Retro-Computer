@@ -19,6 +19,9 @@
 #include "mc6551.h"   // RS-232 Pak (Deluxe RS-232 Program Pak) ACIA
 #include "becker.h"   // Becker port (DriveWire) at $FF41/$FF42
 #include "sound.h"    // Sound mixing core (mux/DAC/single-bit)
+#include "orch90.h"   // Orchestra-90/CC DAC latches at $FF7A/$FF7B
+#include "vhd.h"      // VCC virtual hard disk at $FF80-$FF86
+#include "ssc/ssc.h"  // Speech/Sound Cartridge at $FF7D/$FF7E
 
 // Global machine pointer for CPU memory callbacks
 static Machine* g_machine = nullptr;
@@ -57,22 +60,34 @@ static void sound_pia1_written(Machine* m, uint8_t reg) {
 // Not yet branched on in core/HAL — that comes in later steps of coco2and3.md.
 uint8_t g_machine_type = MACHINE_TYPE;
 
+// Runtime-active CPU. Set from NVS before machine_init() in the main sketch.
+uint8_t g_cpu_variant = CPU_VARIANT;
+
+// CoCo 3 RAM size in KB. Set from NVS before machine_init() in the main sketch.
+uint16_t g_coco3_ram_kb = COCO3_RAM_KB;
+
 const char* g_cart_rom_request[2]  = { nullptr, nullptr };
 const char* g_cart_rom_loaded[2]   = { nullptr, nullptr };
 bool        g_cart_rom_fallback[2] = { false, false };
 
-// Load the 8 KB cartridge ROM for machine index `idx` (0 = CoCo 2, 1 = CoCo 3):
-// the requested ROM if any, else — or if it is missing — disk11.rom. A missing
-// HDB-DOS ROM must not halt boot, so the fallback keeps the machine usable.
-static bool load_cart_rom(int idx, const char* rom_path, uint8_t* dst) {
-    char path[64];
+// Load the cartridge ROM for machine index `idx` (0 = CoCo 2, 1 = CoCo 3) into
+// the buffer `dst` of `max` bytes: the requested ROM if any, else — or if it is
+// missing — disk11.rom. A missing HDB-DOS ROM must not halt boot, so the
+// fallback keeps the machine usable. *size gets the bytes loaded (capped at max).
+static bool load_cart_rom(int idx, const char* rom_path, uint8_t* dst, size_t max, size_t* size) {
+    char path[320];
     const char* want = g_cart_rom_request[idx];
     g_cart_rom_loaded[idx]   = nullptr;
     g_cart_rom_fallback[idx] = false;
+    *size = 0;
     if (want) {
-        snprintf(path, sizeof(path), "%s/%s", rom_path, want);
-        if (hal_storage_load_file(path, dst, 8192)) {
-            g_cart_rom_loaded[idx] = want;
+        if (want[0] == '/') snprintf(path, sizeof(path), "%s", want);
+        else                snprintf(path, sizeof(path), "%s/%s", rom_path, want);
+        if (hal_storage_load_file(path, dst, max)) {
+            const char* base = strrchr(want, '/');
+            g_cart_rom_loaded[idx] = base ? base + 1 : want;
+            *size = hal_storage_file_size(path);
+            if (*size > max) *size = max;
             return true;
         }
         DEBUG_PRINTF("  MISSING: %s — falling back to %s", path, ROM_DISK_FILE);
@@ -81,9 +96,23 @@ static bool load_cart_rom(int idx, const char* rom_path, uint8_t* dst) {
     snprintf(path, sizeof(path), "%s/%s", rom_path, ROM_DISK_FILE);
     if (hal_storage_load_file(path, dst, 8192)) {
         g_cart_rom_loaded[idx] = ROM_DISK_FILE;
+        *size = 8192;
         return true;
     }
     return false;
+}
+
+// A program cartridge ties CART to Q, so PIA1 CB1 keeps seeing edges and BASIC
+// starts the ROM as soon as it enables that FIRQ. Disk BASIC ROMs ('DK' at
+// $C000) leave CART alone. One pulse per frame is enough, as in XRoar.
+static inline bool cart_rom_autostarts(const uint8_t* rom) {
+    return !(rom[0] == 'D' && rom[1] == 'K');
+}
+
+static inline void cart_autostart_pulse(Machine* m) {
+    if (!m->cart_autostart) return;
+    mc6821_cb1_transition(&m->pia1, true);
+    mc6821_cb1_transition(&m->pia1, false);
 }
 
 // Cycles per scanline: CPU_CLOCK_HZ / TARGET_FPS / SCANLINES_PER_FRAME
@@ -180,11 +209,9 @@ uint8_t machine_read_coco3(uint16_t addr) {
     // Phase 5: Fast path — most reads are RAM below $FE00
     if (__builtin_expect(addr < 0xFE00, 1)) {
         unsigned bank = g->active_banks[addr >> 13];
-        if (g->TY || bank < 0x3C) {
-            uint32_t Z = ((uint32_t)bank << 13) | (addr & 0x1FFF);
-            if (__builtin_expect(Z < COCO3_PHYSICAL_RAM, 1))
-                return m->ram_physical[Z];
-            return 0xFF;
+        if (g->TY || (bank & 0x3F) < 0x3C) {
+            uint32_t Z = (((uint32_t)bank << 13) | (addr & 0x1FFF)) & g->ram_mask;
+            return m->ram_physical[Z];
         }
         // bank >= 0x3C, TY=0: ROM area — need full decode for ROM/CTS
         // Fall through to slow path
@@ -196,6 +223,14 @@ uint8_t machine_read_coco3(uint16_t addr) {
     if (rs232_pak_enabled() && (addr & 0xFFFC) == 0xFF68)
         return mc6551_read(addr & 0x03);
 
+    // Speech/Sound Cartridge ($FF7D/$FF7E). No-op unless the cartridge is on.
+    if (ssc_enabled() && (uint16_t)(addr - SSC_CTRL_ADDR) < 2)
+        return ssc_read(addr);
+
+    // Virtual hard disk ($FF80-$FF86). No-op unless the hard disk is on.
+    if (vhd_enabled() && vhd_is_port(addr))
+        return vhd_read(addr);
+
     // Slow path: GIME address decode for I/O, ROM, registers
     uint8_t reg_data = 0xFF;
     bool is_reg = false;
@@ -205,11 +240,8 @@ uint8_t machine_read_coco3(uint16_t addr) {
     if (is_reg) return reg_data;
 
     // RAM access
-    if (g->RAS) {
-        if (g->Z < COCO3_PHYSICAL_RAM)
-            return m->ram_physical[g->Z];
-        return 0xFF;
-    }
+    if (g->RAS)
+        return m->ram_physical[g->Z & g->ram_mask];
 
     switch (g->S) {
     case 0: // ROM — use CPU address, NOT GIME Z (which depends on MMU banks)
@@ -225,8 +257,12 @@ uint8_t machine_read_coco3(uint16_t addr) {
         return 0xFF;
 
     case 1: // CTS (cartridge) — use CPU address, not GIME Z
-        // Disk BASIC ROM is 8KB mapped at $C000-$DFFF.
-        if (m->rom_disk_loaded && addr >= 0xC000 && addr < 0xE000) {
+        // Bank-switched cartridge: the selected 16KB bank answers every CTS
+        // read (XRoar gmc.c).
+        if (m->cart_bank) return m->cart_bank[addr & (CART_BANK_SIZE - 1)];
+        // Disk BASIC ROM is 8KB mapped at $C000-$DFFF; a 16KB cartridge
+        // runs to $FEFF (rom_disk_end).
+        if (m->rom_disk_loaded && addr >= 0xC000 && addr < m->rom_disk_end) {
             return m->rom_disk[addr - 0xC000];
         }
         // Fall back to internal ROM for other CTS ranges ($8000-$BFFF, $E000-$FEFF)
@@ -308,17 +344,33 @@ void machine_write_coco3(uint16_t addr, uint8_t val) {
     // to RAM underneath ROM before switching to all-RAM mode (TY=1).
     if (__builtin_expect(addr < 0xFE00, 1)) {
         unsigned bank = g->active_banks[addr >> 13];
-        uint32_t Z = ((uint32_t)bank << 13) | (addr & 0x1FFF);
-        if (__builtin_expect(Z < COCO3_PHYSICAL_RAM, 1)) {
-            m->ram_physical[Z] = val;
-            g->dirty_frame = true;
-        }
+        uint32_t Z = (((uint32_t)bank << 13) | (addr & 0x1FFF)) & g->ram_mask;
+        m->ram_physical[Z] = val;
+        g->dirty_frame = true;
         return;
     }
 
     // RS-232 Pak ($FF68-$FF6B) — see machine_read_coco3.
     if (rs232_pak_enabled() && (addr & 0xFFFC) == 0xFF68) {
         mc6551_write(addr & 0x03, val);
+        return;
+    }
+
+    // Orchestra-90 DAC latches ($FF7A/$FF7B). No-op unless the cartridge is on.
+    if (orch90_enabled() && (addr & 0xFFFE) == ORCH90_LEFT_ADDR) {
+        orch90_write(addr, val);
+        return;
+    }
+
+    // Speech/Sound Cartridge ($FF7D/$FF7E). No-op unless the cartridge is on.
+    if (ssc_enabled() && (uint16_t)(addr - SSC_CTRL_ADDR) < 2) {
+        ssc_write(addr, val);
+        return;
+    }
+
+    // Virtual hard disk ($FF80-$FF86). No-op unless the hard disk is on.
+    if (vhd_enabled() && vhd_is_port(addr)) {
+        vhd_write(addr, val);
         return;
     }
 
@@ -331,10 +383,8 @@ void machine_write_coco3(uint16_t addr, uint8_t val) {
 
     // RAM access (from slow path — $FE00+ with MC3, or other RAS paths)
     if (g->RAS) {
-        if (g->Z < COCO3_PHYSICAL_RAM) {
-            m->ram_physical[g->Z] = val;
-            g->dirty_frame = true;
-        }
+        m->ram_physical[g->Z & g->ram_mask] = val;
+        g->dirty_frame = true;
         return;
     }
 
@@ -357,6 +407,14 @@ void machine_write_coco3(uint16_t addr, uint8_t val) {
             if (addr == BECKER_DATA_ADDR) becker_write_data(val);
             break;  // $FF41/$FF42 no longer mirror DSKREG
         }
+        // A bank-switched cartridge has its bank register at $FF40 and no
+        // disk controller behind it (MAME coco_pak_banked).
+        if (m->cart_bank) {
+            if (addr == 0xFF40) {
+                m->cart_bank = m->rom_disk + (size_t)(val & m->cart_bank_mask) * CART_BANK_SIZE;
+            }
+            break;
+        }
         sv_disk_write(&m->fdc, addr, val);
         break;
     }
@@ -371,9 +429,18 @@ void machine_init_coco3(Machine* m) {
     memset(m, 0, sizeof(Machine));
     g_machine = m;
 
-    // Allocate 512KB physical RAM
-    m->ram_size = COCO3_PHYSICAL_RAM;
-    m->ram_physical = machine_alloc(m->ram_size, "RAM-512K");
+    // Allocate physical RAM: 128 KB, 512 KB, 1 MB or 2 MB (g_coco3_ram_kb).
+    // The larger sizes share the 4 MB of PSRAM with the disk caches, so fall
+    // back to 512 KB rather than fail to boot if the block is not there.
+    if (!coco3_ram_kb_valid(g_coco3_ram_kb)) g_coco3_ram_kb = COCO3_RAM_KB;
+    m->ram_size = (size_t)g_coco3_ram_kb * 1024;
+    m->ram_physical = machine_alloc(m->ram_size, "RAM-CoCo3");
+    if (!m->ram_physical && g_coco3_ram_kb > 512) {
+        DEBUG_PRINTF("  RAM: %u KB not available, falling back to 512 KB", (unsigned)g_coco3_ram_kb);
+        g_coco3_ram_kb = 512;
+        m->ram_size = COCO3_PHYSICAL_RAM;
+        m->ram_physical = machine_alloc(m->ram_size, "RAM-CoCo3");
+    }
     if (!m->ram_physical) return;
     // Alias m->ram to the first 64KB so the CoCo 2 code path (not running
     // on this boot, but present in the binary) sees a valid buffer.
@@ -384,10 +451,12 @@ void machine_init_coco3(Machine* m) {
     if (!m->rom_coco3) return;
     memset(m->rom_coco3, 0xFF, COCO3_ROM_SIZE);
 
-    // Allocate 8KB Disk BASIC ROM buffer
-    m->rom_disk = machine_alloc(8192, "ROM-Disk");
+    // Allocate the Disk BASIC / cartridge ROM buffer (8KB Disk BASIC, up to
+    // 128KB for a bank-switched cartridge)
+    m->rom_disk = machine_alloc(CART_ROM_MAX_SIZE, "ROM-Disk");
     if (!m->rom_disk) return;
-    memset(m->rom_disk, 0xFF, 8192);
+    memset(m->rom_disk, 0xFF, CART_ROM_MAX_SIZE);
+    m->rom_disk_end = 0xE000;
 
     // CoCo 2 ROM buffers (Step 5 of coco2and3.md: always allocate so
     // machine_load_roms can populate both ROM sets on boot).
@@ -406,6 +475,7 @@ void machine_init_coco3(Machine* m) {
 
     // Initialize CPU
     mc6809_init(&m->cpu);
+    m->cpu.variant = g_cpu_variant;
     m->cpu.read = machine_read_coco3;
     m->cpu.write = machine_write_coco3;
     // OPT-M2: plain-RAM accesses below $FE00 bypass the callbacks via the
@@ -426,6 +496,7 @@ void machine_init_coco3(Machine* m) {
     m->ntsc = true;
     m->cycles_per_frame = CYCLES_PER_FRAME;
     m->cart_inserted = false;
+    m->cart_autostart = false;
 
     m->initialized = true;
     DEBUG_PRINTF("Machine: CoCo 3 init complete. Free heap: %d", ESP.getFreeHeap());
@@ -456,9 +527,21 @@ bool machine_load_roms_coco3(Machine* m, const char* rom_path) {
 
     // Disk BASIC ROM (8KB) — external cartridge at $C000-$DFFF
     // The CoCo3 checks for 'DK' signature at $C000 to detect Disk BASIC
-    if (load_cart_rom(1, rom_path, m->rom_disk)) {
+    size_t cart_size;
+    if (load_cart_rom(1, rom_path, m->rom_disk, CART_ROM_MAX_SIZE, &cart_size)) {
         m->rom_disk_loaded = true;
-        DEBUG_PRINTF("  Loaded %s (Disk BASIC 8KB)", g_cart_rom_loaded[1]);
+        m->rom_disk_end = (cart_size > 8192) ? 0xFF00 : 0xE000;
+        if (cart_size > CART_BANK_SIZE) {
+            // More than one bank: bank count rounded up to a power of two
+            // (the buffer is $FF-filled past the end of the file).
+            unsigned banks = 2;
+            while (banks * CART_BANK_SIZE < cart_size) banks *= 2;
+            m->cart_bank_mask = banks - 1;
+            m->cart_bank = m->rom_disk;
+            DEBUG_PRINTF("  Bank-switched cartridge: %u banks of 16KB", banks);
+        }
+        m->cart_autostart = cart_rom_autostarts(m->rom_disk);
+        DEBUG_PRINTF("  Loaded %s (%u bytes at $C000)", g_cart_rom_loaded[1], (unsigned)cart_size);
     } else {
         DEBUG_PRINTF("  Optional: %s not found (no Disk BASIC)", ROM_DISK_FILE);
     }
@@ -476,16 +559,17 @@ void machine_reset_coco3(Machine* m) {
 
     DEBUG_PRINT("Machine: CoCo 3 RESET");
 
+    // Bank-switched cartridge: back to bank 0
+    if (m->cart_bank) m->cart_bank = m->rom_disk;
+
     // Clear RAM (CoCo 3 clears to 0 on hard reset)
-    memset(m->ram_physical, 0, COCO3_PHYSICAL_RAM);
+    memset(m->ram_physical, 0, m->ram_size);
 
     // Reset GIME
     tcc1014_reset(&m->gime);
 
     // Wire GIME to physical RAM
-    m->gime.ram = m->ram_physical;
-    m->gime.ram_size = COCO3_PHYSICAL_RAM;
-    tcc1014_update_active_banks(&m->gime);   // rebuild the CPU's RAM page tables
+    tcc1014_set_ram(&m->gime, m->ram_physical, (uint32_t)m->ram_size);   // also rebuilds the CPU's RAM page tables
 
     // Reset PIAs
     mc6821_reset(&m->pia0);
@@ -521,12 +605,22 @@ void machine_run_scanline_coco3(Machine* m) {
     int actual;
     {
         PERF_PROBE_SCOPE(PROBE_CPU_RUN);
-        actual = mc6809_run(&m->cpu, cycles_to_run);
+        actual = mc6809_run_variant(&m->cpu, cycles_to_run);
     }
     m->cycles_this_frame += actual;
 
     // RS-232 Pak ACIA: pace TDRE/RDRF by the cycles just run this scanline.
-    if (rs232_pak_enabled()) mc6551_tick((uint32_t)actual);
+    // The ACIA counts 0.895 MHz cycles, so halve them in fast mode.
+    if (rs232_pak_enabled()) {
+        static uint32_t fast_carry;
+        uint32_t cyc = (uint32_t)actual;
+        if (m->gime.R1) {
+            cyc += fast_carry;
+            fast_carry = cyc & 1;
+            cyc >>= 1;
+        }
+        mc6551_tick(cyc);
+    }
 
     // GIME timer tick (replaces XRoar event-driven timer)
     tcc1014_tick_scanline(&m->gime);
@@ -554,11 +648,6 @@ void machine_run_scanline_coco3(Machine* m) {
         // Deluxe Pak routes its ACIA IRQ to CART → FIRQ.
         bool new_firq = pia1_irq || m->gime.FIRQ
                      || (rs232_pak_enabled() && mc6551_irq_active());
-        // Wake CPU from SYNC/CWAI when any interrupt signal goes active.
-        // Direct assignment bypasses mc6809_irq() which normally clears
-        // wait_for_interrupt — we must do it here to avoid SYNC deadlock.
-        if (new_irq || new_firq)
-            m->cpu.wait_for_interrupt = false;
         m->cpu.irq_pending  = new_irq;
         m->cpu.firq_pending = new_firq;
     }
@@ -717,6 +806,10 @@ void machine_run_frame_coco3(Machine* m) {
     if (!m->initialized) return;
     PERF_PROBE_SCOPE(PROBE_FRAME);
 
+    // MPU rate: SAM R1 ($FFD9 set / $FFD8 clear) doubles the CPU clock to
+    // 1.79 MHz across the whole address space. Latched per frame.
+    m->cycles_per_frame = m->gime.R1 ? 2 * CYCLES_PER_FRAME : CYCLES_PER_FRAME;
+
     // Precompute cycle targets
     for (int i = 0; i < SCANLINES_PER_FRAME; i++) {
         scanline_cycle_targets[i] = ((i + 1) * m->cycles_per_frame) / SCANLINES_PER_FRAME;
@@ -724,10 +817,15 @@ void machine_run_frame_coco3(Machine* m) {
 
     m->cycles_this_frame = 0;
     m->scanline = 0;
+    cart_autostart_pulse(m);
 
     for (int line = 0; line < SCANLINES_PER_FRAME; line++) {
         machine_run_scanline_coco3(m);
         becker_scanline_tick();
+        if (ssc_enabled()) {
+            PERF_PROBE_SCOPE(PROBE_SSC);
+            ssc_scanline_tick();
+        }
         {
             PERF_PROBE_SCOPE(PROBE_AUDIO_SCANLINE);
             hal_audio_capture_scanline();
@@ -801,6 +899,33 @@ static void pia1_irq_a_coco2(bool active) {
 
 static void pia1_irq_b_coco2(bool active) {
     if (g_machine) mc6809_firq(&g_machine->cpu, active);
+}
+
+// ============================================================
+// Fast RAM/ROM page tables — CoCo 2
+// ============================================================
+
+// Same inline path the CoCo 3 gets from the GIME (OPT-M2): below $FF00 the
+// CPU core reads and writes through these 8 KB page pointers instead of the
+// callbacks. They mirror machine_read_coco2/machine_write_coco2 exactly: a
+// null entry falls back to the callback (unloaded ROM reads $FF, ROM writes
+// are ignored). Rebuilt when the SAM map type changes or ROMs are loaded.
+static uint8_t* coco2_rd_page[8];
+static uint8_t* coco2_wr_page[8];
+
+static void update_fast_pages_coco2(Machine* m) {
+    for (int i = 0; i < 8; i++) {
+        uint8_t* ram = m->ram + i * 0x2000;
+        if (i < 4 || m->sam.ty) {            // $0000-$7FFF, or all-RAM mode
+            coco2_rd_page[i] = ram;
+            coco2_wr_page[i] = ram;
+            continue;
+        }
+        coco2_wr_page[i] = nullptr;
+        if (i == 4)      coco2_rd_page[i] = m->rom_extbas_loaded ? m->rom_extbas : nullptr;
+        else if (i == 5) coco2_rd_page[i] = m->rom_basic_loaded  ? m->rom_basic  : nullptr;
+        else             coco2_rd_page[i] = m->rom_cart_loaded   ? m->rom_cart + (i - 6) * 0x2000 : nullptr;
+    }
 }
 
 // ============================================================
@@ -888,6 +1013,16 @@ uint8_t machine_read_coco2(uint16_t addr) {
         // No-op unless the pak owns the serial port.
         if (rs232_pak_enabled() && (addr & 0xFFFC) == 0xFF68) {
             return mc6551_read(addr & 0x03);
+        }
+
+        // Speech/Sound Cartridge ($FF7D/$FF7E). No-op unless the cartridge is on.
+        if (ssc_enabled() && (uint16_t)(addr - SSC_CTRL_ADDR) < 2) {
+            return ssc_read(addr);
+        }
+
+        // Virtual hard disk ($FF80-$FF86). No-op unless the hard disk is on.
+        if (vhd_enabled() && vhd_is_port(addr)) {
+            return vhd_read(addr);
         }
 
         // Reserved: $FF60-$FFBF
@@ -1013,6 +1148,24 @@ void machine_write_coco2(uint16_t addr, uint8_t val) {
             return;
         }
 
+        // Orchestra-90 DAC latches ($FF7A/$FF7B). No-op unless the cartridge is on.
+        if (orch90_enabled() && (addr & 0xFFFE) == ORCH90_LEFT_ADDR) {
+            orch90_write(addr, val);
+            return;
+        }
+
+        // Speech/Sound Cartridge ($FF7D/$FF7E). No-op unless the cartridge is on.
+        if (ssc_enabled() && (uint16_t)(addr - SSC_CTRL_ADDR) < 2) {
+            ssc_write(addr, val);
+            return;
+        }
+
+        // Virtual hard disk ($FF80-$FF86). No-op unless the hard disk is on.
+        if (vhd_enabled() && vhd_is_port(addr)) {
+            vhd_write(addr, val);
+            return;
+        }
+
         // Reserved: $FF60-$FFBF
         if (addr < 0xFFC0) {
             return;
@@ -1021,6 +1174,7 @@ void machine_write_coco2(uint16_t addr, uint8_t val) {
         // SAM: $FFC0-$FFDF (write-only bit set/clear pairs)
         if (addr <= 0xFFDF) {
             sam6883_write(&m->sam, addr - 0xFFC0);
+            update_fast_pages_coco2(m);     // map type (TY) may have changed
             // Update VDG display base address from SAM F0-F6
             m->vdg.vram_offset = sam6883_get_vdg_address(&m->sam);
             // SAM V0-V2 control VDG GM0-GM2 bits
@@ -1078,20 +1232,26 @@ void machine_init_coco2(Machine* m) {
     // both sets on boot, matching the CoCo 3 init's allocation footprint).
     m->rom_coco3 = machine_alloc(COCO3_ROM_SIZE, "ROM-CoCo3");
     if (!m->rom_coco3) return;
-    m->rom_disk = machine_alloc(8192, "ROM-Disk");
+    m->rom_disk = machine_alloc(CART_BANK_SIZE, "ROM-Disk");
     if (!m->rom_disk) return;
+    m->rom_disk_end = 0xE000;
 
     // Fill ROM buffers with $FF (unloaded state)
     memset(m->rom_basic, 0xFF, 8192);
     memset(m->rom_extbas, 0xFF, 8192);
     memset(m->rom_cart, 0xFF, 16384);
     memset(m->rom_coco3, 0xFF, COCO3_ROM_SIZE);
-    memset(m->rom_disk, 0xFF, 8192);
+    memset(m->rom_disk, 0xFF, CART_BANK_SIZE);
 
     // --- Initialize core chips ---
     mc6809_init(&m->cpu);
+    m->cpu.variant = g_cpu_variant;
     m->cpu.read = machine_read_coco2;
     m->cpu.write = machine_write_coco2;
+    // Plain RAM/ROM accesses below the I/O page bypass the callbacks.
+    m->cpu.rd_page = coco2_rd_page;
+    m->cpu.wr_page = coco2_wr_page;
+    m->cpu.fast_limit = 0xFF00;
 
     mc6821_init(&m->pia0);
     mc6821_init(&m->pia1);
@@ -1104,11 +1264,13 @@ void machine_init_coco2(Machine* m) {
 
     mc6847_init(&m->vdg);
     sam6883_init(&m->sam);
+    update_fast_pages_coco2(m);
 
     // --- Timing ---
     m->ntsc = true;
     m->cycles_per_frame = CYCLES_PER_FRAME;
     m->cart_inserted = false;
+    m->cart_autostart = false;
 
     m->initialized = true;
     DEBUG_PRINTF("Machine: init complete. Free heap: %d", ESP.getFreeHeap());
@@ -1142,10 +1304,12 @@ bool machine_load_roms_coco2(Machine* m, const char* rom_path) {
         DEBUG_PRINTF("  MISSING: %s", path);
     }
 
-    // Disk BASIC / Cartridge ROM → $C000-$DFFF (8K, optional)
-    if (load_cart_rom(0, rom_path, m->rom_cart)) {
+    // Disk BASIC (8K) / Cartridge ROM (up to 16K) → $C000 (optional)
+    size_t cart_size;
+    if (load_cart_rom(0, rom_path, m->rom_cart, CART_BANK_SIZE, &cart_size)) {
         m->rom_cart_loaded = true;
         m->cart_inserted = true;
+        m->cart_autostart = cart_rom_autostarts(m->rom_cart);
         DEBUG_PRINTF("  Loaded %s → $C000", g_cart_rom_loaded[0]);
     } else {
         DEBUG_PRINTF("  Optional: %s not found", ROM_DISK_FILE);
@@ -1157,6 +1321,7 @@ bool machine_load_roms_coco2(Machine* m, const char* rom_path) {
         DEBUG_PRINTF("  Reset vector in BASIC ROM: $%04X", reset_vec);
     }
 
+    update_fast_pages_coco2(m);     // ROM pages are now readable
     return m->rom_basic_loaded;
 }
 
@@ -1178,6 +1343,7 @@ void machine_reset_coco2(Machine* m) {
     sound_reset();
     mc6847_reset(&m->vdg);
     sam6883_reset(&m->sam);
+    update_fast_pages_coco2(m);
 
     // Re-wire IRQ callbacks (reset clears them)
     m->pia0.irq_a_callback = pia0_irq_a_coco2;
@@ -1217,7 +1383,7 @@ void machine_run_scanline_coco2(Machine* m) {
     sv_disk_tick(&m->fdc);
 
     // Execute CPU
-    int actual = mc6809_run(&m->cpu, cycles_to_run);
+    int actual = mc6809_run_variant(&m->cpu, cycles_to_run);
     m->cycles_this_frame += actual;
 
     // RS-232 Pak ACIA. Its IRQ shares the cartridge FIRQ line (CART), so when
@@ -1233,7 +1399,6 @@ void machine_run_scanline_coco2(Machine* m) {
         bool pia1_firq = pia_irq(m->pia1.ctrl_a) || pia_irq(m->pia1.ctrl_b);
         bool firq = pia1_firq || mc6551_irq_active();
         m->cpu.firq_pending = firq;
-        if (firq) m->cpu.wait_for_interrupt = false;
     }
 
     // --- VDG/SAM scanline processing ---
@@ -1295,10 +1460,15 @@ void machine_run_frame_coco2(Machine* m) {
 
     m->cycles_this_frame = 0;
     m->scanline = 0;
+    cart_autostart_pulse(m);
 
     for (int line = 0; line < SCANLINES_PER_FRAME; line++) {
         machine_run_scanline_coco2(m);
         becker_scanline_tick();
+        if (ssc_enabled()) {
+            PERF_PROBE_SCOPE(PROBE_SSC);
+            ssc_scanline_tick();
+        }
         // Capture audio level after each scanline for pitch-correct playback
         hal_audio_capture_scanline();
     }
@@ -1356,6 +1526,13 @@ bool machine_load_roms(Machine* m, const char* rom_path) {
     // boot allocation/load footprint invariant across machine types.
     bool ok_coco2 = machine_load_roms_coco2(m, rom_path);
     bool ok_coco3 = machine_load_roms_coco3(m, rom_path);
+    // Speech/Sound Cartridge: one load for both machines. Missing ROMs leave
+    // it off for this boot (the NVS setting is kept).
+    if (ssc_enabled() && !ssc_load_roms()) {
+        DEBUG_PRINTF("Machine: SSC ROMs missing (%s, %s): cartridge off",
+                     ROM_SSC_PIC_FILE, ROM_SSC_SPEECH_FILE);
+        g_ssc_enabled = false;
+    }
     return (g_machine_type == 4) ? ok_coco3 : ok_coco2;
 }
 
@@ -1367,6 +1544,8 @@ void machine_reset(Machine* m) {
     // corrupt an active host link.
     mc6551_reset();
     becker_reset();
+    ssc_reset();
+    vhd_reset();
 }
 
 void machine_run_scanline(Machine* m) {
@@ -1377,6 +1556,7 @@ void machine_run_scanline(Machine* m) {
 void machine_run_frame(Machine* m) {
     if (g_machine_type == 4) machine_run_frame_coco3(m);
     else                     machine_run_frame_coco2(m);
+    if (vhd_enabled()) vhd_tick();
 }
 
 void machine_free(Machine* m) {

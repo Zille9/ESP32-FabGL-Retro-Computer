@@ -109,6 +109,10 @@ void sv_render_wide_row(int y, const char* label, const char* value, bool highli
 int  sv_render_popup(const char* title, const char* msg1, const char* msg2,
                      int count, bool draw_window);
 void sv_render_popup_row(int y, const char* label, const char* value, bool highlighted);
+// Same popup at another width, for messages longer than SVP_MSG_COLS.
+int  sv_render_popup_w(int w, const char* title, const char* msg1, const char* msg2,
+                       int count, bool draw_window);
+void sv_render_popup_row_w(int w, int y, const char* label, const char* value, bool highlighted);
 
 void sv_render_frame(const char* title, const char* footer);
 void sv_render_menu_item(int index, const char* label, const char* value,
