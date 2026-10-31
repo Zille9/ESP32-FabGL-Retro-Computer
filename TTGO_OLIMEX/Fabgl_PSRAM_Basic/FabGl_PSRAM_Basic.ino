@@ -2,7 +2,7 @@
 //             Basic32+ with FabGL VGA library + PS2 PS2Controller                                                                                //
 //               for VGA monitor output - May 2019                                                                                                //
 //          Variante mit PSRAM statt FRAM für TTGO1.4 und OLIMEX SBC                                                                              //
-//      Ursprungsversion von: Rob Cai <rocaj74@gmail.com>                                                                                         //
+//                                                                                                                                                //
 //      erweitert/modifiziert von:Reinhard Zielinski <zille09@gmail.com>                                                                          //
 //                                                                                                                                                //
 //      Connections:                                                                                                                              //

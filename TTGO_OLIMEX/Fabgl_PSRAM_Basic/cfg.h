@@ -1,7 +1,7 @@
 //******** select Board-Type - for ESP-Dev-Module deactivate TTGO_T7 ******
-//#define TTGO_T7 //TTGO VGA32-Board
+//#define TTGO_T7 1 //TTGO VGA32-Board
 
-#define OLIMEX_SBC
+#define OLIMEX_SBC 2
 
 //******** select Displaytype - only one allowed **************************
 //#define AVOUT
